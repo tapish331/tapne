@@ -1,0 +1,17 @@
+<div id="loginPromptModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="loginPromptTitle">
+    <div class="modal-backdrop" data-modal-close></div>
+    <section class="modal-panel" role="document">
+        <header class="modal-header">
+            <h2 id="loginPromptTitle">Login required</h2>
+            <button class="icon-btn" type="button" data-modal-close aria-label="Close login prompt">x</button>
+        </header>
+        <p class="modal-body">
+            This action is available to members only. Create an account to join trips, follow people,
+            bookmark posts, and leave comments.
+        </p>
+        <div class="modal-actions">
+            <a class="btn btn-primary" href="/accounts/signup/?next={{ request.get_full_path|urlencode }}">Create account</a>
+            <a class="btn btn-secondary" href="/accounts/login/?next={{ request.get_full_path|urlencode }}">Log in</a>
+        </div>
+    </section>
+</div>

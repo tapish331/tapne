@@ -50,12 +50,18 @@ $ErrorActionPreference = "Stop"
 
 if ($ExtraArgs -contains "--verbose") {
     $VerbosePreference = "Continue"
+    Write-Verbose "Verbose logging enabled via --verbose."
 }
 
 $unsupportedArgs = @($ExtraArgs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne "--verbose" })
 if ($unsupportedArgs.Count -gt 0) {
     Write-Warning ("Ignoring unsupported argument(s): {0}" -f ($unsupportedArgs -join ", "))
 }
+
+Write-Verbose (
+    "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; HealthTimeoutSeconds={4}" -f
+    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $HealthTimeoutSeconds
+)
 
 function Write-Step {
     param([string]$Message)
@@ -113,6 +119,74 @@ function Read-EnvMap {
     }
 
     return $map
+}
+
+function Convert-ToStringArray {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return @()
+    }
+
+    if ($Value -is [string]) {
+        $single = $Value.Trim()
+        if ([string]::IsNullOrWhiteSpace($single)) {
+            return @()
+        }
+        return @($single)
+    }
+
+    if ($Value -is [System.Collections.IEnumerable]) {
+        $items = @()
+        foreach ($item in $Value) {
+            if ($null -eq $item) {
+                continue
+            }
+            $text = [string]$item
+            if ([string]::IsNullOrWhiteSpace($text)) {
+                continue
+            }
+            $items += $text.Trim()
+        }
+        return $items
+    }
+
+    $fallback = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($fallback)) {
+        return @()
+    }
+    return @($fallback.Trim())
+}
+
+function Assert-RelativeFileManifest {
+    param(
+        [string]$ProjectRoot,
+        [string[]]$RelativePaths,
+        [string]$ManifestLabel
+    )
+
+    if (-not $RelativePaths -or $RelativePaths.Count -eq 0) {
+        Write-Verbose ("No {0} declared in config; skipping manifest check." -f $ManifestLabel)
+        return
+    }
+
+    Write-Step ("Validating {0}" -f $ManifestLabel)
+    $missing = @()
+    foreach ($relativePath in $RelativePaths) {
+        $fullPath = Join-Path $ProjectRoot $relativePath
+        if (-not (Test-Path -Path $fullPath -PathType Leaf)) {
+            $missing += $relativePath
+            continue
+        }
+
+        Write-Verbose ("Found {0}: {1}" -f $ManifestLabel, $relativePath)
+    }
+
+    if ($missing.Count -gt 0) {
+        throw ("Missing {0}: {1}" -f $ManifestLabel, ($missing -join ", "))
+    }
+
+    Write-Ok ("{0} are present." -f $ManifestLabel)
 }
 
 function Initialize-EnvFile {
@@ -621,6 +695,16 @@ if (-not (Test-Path -Path $configPath -PathType Leaf)) {
 }
 
 $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
+$verboseSwitches = Convert-ToStringArray -Value $config.verbose_support.switches
+if ($verboseSwitches.Count -gt 0) {
+    Write-Verbose ("Configured verbose switches: {0}" -f ($verboseSwitches -join ", "))
+}
+
+Write-Verbose ("Loaded configuration strategy: {0}" -f $config.strategy)
+Write-Verbose ("Compose file (relative): {0}" -f $config.local_stack.compose_file)
+Write-Verbose ("Dockerfile (relative): {0}" -f $config.local_stack.dockerfile)
+Write-Verbose ("Environment template (relative): {0}" -f $config.local_stack.env_template_file)
+
 $composeFilePath = Join-Path $projectRoot $config.local_stack.compose_file
 $dockerfilePath = Join-Path $projectRoot $config.local_stack.dockerfile
 $envFilePath = Join-Path $projectRoot $config.local_stack.env_file
@@ -643,6 +727,11 @@ foreach ($path in $requiredFiles) {
     Write-Verbose ("Found required file: {0}" -f $path)
 }
 Write-Ok "Infrastructure files are present."
+
+$templateAssetManifest = Convert-ToStringArray -Value $config.ui_shared_assets.required_template_files
+$staticAssetManifest = Convert-ToStringArray -Value $config.ui_shared_assets.required_static_files
+Assert-RelativeFileManifest -ProjectRoot $projectRoot -RelativePaths $templateAssetManifest -ManifestLabel "template asset files"
+Assert-RelativeFileManifest -ProjectRoot $projectRoot -RelativePaths $staticAssetManifest -ManifestLabel "static asset files"
 
 Write-Step "Preparing environment file"
 Initialize-EnvFile -EnvFilePath $envFilePath -EnvTemplatePath $envTemplatePath -Force:$ForceEnv

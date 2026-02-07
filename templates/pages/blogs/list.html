@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Blogs{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">Blogs</p>
+    <h1>Read community stories and guides.</h1>
+    <p>Guests can read full content. Comment, review, and bookmark actions are member-only.</p>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Latest blogs</h2>
+    </header>
+    <div class="card-grid">
+        {% for blog in blogs %}
+        {% include "partials/cards/blog_card.html" with blog=blog %}
+        {% empty %}
+        <div class="empty-state">No blogs yet. Publish the first post to start this feed.</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

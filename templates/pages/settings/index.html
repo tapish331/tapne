@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Settings{% endblock %}
+
+{% block content %}
+<section class="detail-shell">
+    <p class="eyebrow">Member settings</p>
+    <h1>Account settings</h1>
+    <p>This starter page mirrors the URL contract in README and can be replaced by form-driven settings UI.</p>
+
+    <form method="post" action="/settings/" class="settings-form">
+        {% csrf_token %}
+        <label for="email_updates">Email updates</label>
+        <select id="email_updates" name="email_updates">
+            <option value="all">All activity</option>
+            <option value="important">Only important updates</option>
+            <option value="none">No email updates</option>
+        </select>
+
+        <label for="profile_visibility">Profile visibility</label>
+        <select id="profile_visibility" name="profile_visibility">
+            <option value="public">Public</option>
+            <option value="members">Members only</option>
+        </select>
+
+        <button class="btn btn-primary" type="submit">Save settings</button>
+    </form>
+</section>
+{% endblock %}

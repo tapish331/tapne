@@ -72,9 +72,54 @@ Members can browse **and** do actions.
 These are shared assets:
 
 * `templates/`
-  Shared HTML layout pieces like `base.html`, cards, and the login prompt modal.
+  Shared HTML scaffold used across apps. Current shared structure:
+
+  ```text
+  templates/
+    base.html
+    partials/
+      cards/
+        trip_card.html
+        user_card.html
+        blog_card.html
+      modals/
+        login_prompt_modal.html
+    pages/
+      home.html
+      search.html
+      trips/
+        list.html
+        detail.html
+      blogs/
+        list.html
+        detail.html
+      users/
+        profile.html
+      activity/
+        index.html
+      settings/
+        index.html
+  ```
+
+  Conventions:
+  * all pages extend `base.html`
+  * shared cards/modals live under `templates/partials/`
+  * guest-only blocked actions use `.js-guest-action` and `data-action-label`
 * `static/`
-  Shared CSS/JS (small UI helpers).
+  Shared CSS/JS scaffold:
+
+  ```text
+  static/
+    css/
+      tapne.css
+    js/
+      tapne-ui.js
+  ```
+
+  Conventions:
+  * always reference files via `{% load static %}` + `{% static '...' %}`
+  * frontend guest/member behavior toggles are in `static/js/tapne-ui.js`
+  * visual system tokens/layout live in `static/css/tapne.css`
 * `infra/`
   Docker config (Postgres, MinIO/Redis).
 * `tapne/` (inner folder)
@@ -368,6 +413,25 @@ docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose
 docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml logs --tail=100 web
 ```
 
+* Page renders as plain white/unstyled text:
+  static files are likely not being served (CSS/JS 404). Verify:
+
+```powershell
+Invoke-WebRequest http://localhost:8000/static/css/tapne.css
+Invoke-WebRequest http://localhost:8000/static/js/tapne-ui.js
+```
+
+If either request is not `200`:
+* ensure Django settings include:
+  * `STATIC_ROOT = BASE_DIR / "staticfiles"`
+  * `STATICFILES_DIRS = [BASE_DIR / "static"]`
+  * WhiteNoise middleware + `CompressedManifestStaticFilesStorage`
+* rebuild/restart web so `collectstatic` runs again:
+
+```powershell
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml up -d --build web
+```
+
 ---
 
 ## 1) Django Web App (Cloud Run Service equivalent)
@@ -472,7 +536,22 @@ To avoid rewriting at deploy time:
 Production needs a strategy (dev server behavior is not production behavior):
 
 * common simple option: **WhiteNoise** (static served by Django container)
-* requires: `collectstatic` + correct `STATIC_ROOT` settings
+* requires: `collectstatic` + correct static settings:
+  * `STATIC_ROOT = BASE_DIR / "staticfiles"`
+  * `STATICFILES_DIRS = [BASE_DIR / "static"]`
+  * `STORAGES["staticfiles"]["BACKEND"] = "whitenoise.storage.CompressedManifestStaticFilesStorage"`
+* `base.html` should load project assets with:
+  * `href="{% static 'css/tapne.css' %}"`
+  * `src="{% static 'js/tapne-ui.js' %}"`
+* quick health check after startup:
+  * `GET /static/css/tapne.css` -> `200`
+  * `GET /static/js/tapne-ui.js` -> `200`
+* local dev note: this Docker setup runs from a built image (no source bind mount),
+  so template/static edits require rebuilding `web`:
+
+```powershell
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml up -d --build web
+```
 
 ### Media uploads (photos)
 

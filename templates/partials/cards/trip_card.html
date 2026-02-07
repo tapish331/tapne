@@ -1,0 +1,43 @@
+<article class="card card-trip" data-card-type="trip" data-card-id="{{ trip.id|default:'n/a' }}">
+    <header class="card-header">
+        <p class="card-kicker">Trip</p>
+        <h3 class="card-title">{{ trip.title|default:"Untitled trip" }}</h3>
+        <p class="card-subtitle">
+            Hosted by
+            {% if trip.host_username %}
+            <a href="/u/{{ trip.host_username }}/">@{{ trip.host_username }}</a>
+            {% else %}
+            @host
+            {% endif %}
+        </p>
+    </header>
+    <p class="card-description">
+        {% if trip.summary %}
+        {{ trip.summary|truncatechars:180 }}
+        {% elif trip.description %}
+        {{ trip.description|truncatechars:180 }}
+        {% else %}
+        Trip details are coming soon.
+        {% endif %}
+    </p>
+    <dl class="card-meta-grid">
+        <div>
+            <dt>Destination</dt>
+            <dd>{{ trip.destination|default:"TBD" }}</dd>
+        </div>
+        <div>
+            <dt>Traffic score</dt>
+            <dd>{{ trip.traffic_score|default:"N/A" }}</dd>
+        </div>
+    </dl>
+    <div class="card-actions">
+        <a class="btn btn-secondary" href="{{ trip.url|default:'#' }}">View details</a>
+        {% if user.is_authenticated %}
+        <button class="btn btn-primary" type="button">Request to join</button>
+        <button class="btn btn-ghost" type="button">Bookmark</button>
+        {% else %}
+        <button class="btn btn-primary js-guest-action" type="button" data-action-label="join this trip">Request to join</button>
+        <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this trip">Bookmark</button>
+        {% endif %}
+    </div>
+</article>

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Trips{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">Trips</p>
+    <h1>Browse upcoming and hosted trips.</h1>
+    <p>Guests can browse details; members can request to join and bookmark.</p>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Available trips</h2>
+    </header>
+    <div class="card-grid">
+        {% for trip in trips %}
+        {% include "partials/cards/trip_card.html" with trip=trip %}
+        {% empty %}
+        <div class="empty-state">Trip list is empty. Create your first trip to populate this page.</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

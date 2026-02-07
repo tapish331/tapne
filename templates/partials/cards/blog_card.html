@@ -1,0 +1,42 @@
+<article class="card card-blog" data-card-type="blog" data-card-id="{{ blog.id|default:'n/a' }}">
+    <header class="card-header">
+        <p class="card-kicker">Blog</p>
+        <h3 class="card-title">{{ blog.title|default:"Untitled blog" }}</h3>
+        <p class="card-subtitle">
+            {% if blog.author_username %}
+            By <a href="/u/{{ blog.author_username }}/">@{{ blog.author_username }}</a>
+            {% else %}
+            By @author
+            {% endif %}
+        </p>
+    </header>
+    <p class="card-description">
+        {% if blog.excerpt %}
+        {{ blog.excerpt|truncatechars:200 }}
+        {% elif blog.summary %}
+        {{ blog.summary|truncatechars:200 }}
+        {% else %}
+        No summary available.
+        {% endif %}
+    </p>
+    <dl class="card-meta-grid">
+        <div>
+            <dt>Reads</dt>
+            <dd>{{ blog.reads|default:"0" }}</dd>
+        </div>
+        <div>
+            <dt>Reviews</dt>
+            <dd>{{ blog.reviews_count|default:"0" }}</dd>
+        </div>
+    </dl>
+    <div class="card-actions">
+        <a class="btn btn-secondary" href="{{ blog.url|default:'#' }}">Read blog</a>
+        {% if user.is_authenticated %}
+        <button class="btn btn-primary" type="button">Comment</button>
+        <button class="btn btn-ghost" type="button">Bookmark</button>
+        {% else %}
+        <button class="btn btn-primary js-guest-action" type="button" data-action-label="comment on this blog">Comment</button>
+        <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this blog">Bookmark</button>
+        {% endif %}
+    </div>
+</article>

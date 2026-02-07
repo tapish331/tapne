@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Blog Details{% endblock %}
+
+{% block content %}
+<article class="detail-shell">
+    <p class="eyebrow">Blog details</p>
+    <h1>{{ blog.title|default:"Blog title" }}</h1>
+    <p class="detail-meta">
+        {% if blog.author_username %}
+        By <a href="/u/{{ blog.author_username }}/">@{{ blog.author_username }}</a>
+        {% else %}
+        By @author
+        {% endif %}
+    </p>
+    <div class="prose">
+        {{ blog.body|default:"Blog content appears here once posts are created."|linebreaks }}
+    </div>
+
+    <div class="inline-actions">
+        {% if user.is_authenticated %}
+        <button class="btn btn-primary" type="button">Comment</button>
+        <button class="btn btn-secondary" type="button">Review</button>
+        <button class="btn btn-ghost" type="button">Bookmark</button>
+        {% else %}
+        <button class="btn btn-primary js-guest-action" type="button" data-action-label="comment on this blog">Comment</button>
+        <button class="btn btn-secondary js-guest-action" type="button" data-action-label="review this blog">Review</button>
+        <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this blog">Bookmark</button>
+        {% endif %}
+    </div>
+</article>
+{% endblock %}

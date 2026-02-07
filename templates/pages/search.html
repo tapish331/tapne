@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Search{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">Search</p>
+    <h1>Discover trips, users, and blogs.</h1>
+    {% if user.is_authenticated %}
+    <p>Default suggestions should come from like-minded member behavior.</p>
+    {% else %}
+    <p>Default suggestions should come from global traffic and search demand.</p>
+    {% endif %}
+</section>
+
+{% with active_type=request.GET.type|default:"all" %}
+<form class="search-form" method="get" action="/search/">
+    <label for="q">Search</label>
+    <input id="q" name="q" type="search" placeholder="Try Bali, @host, or food guide..." value="{{ request.GET.q|default:'' }}">
+
+    <label for="type">Type</label>
+    <select id="type" name="type">
+        <option value="all" {% if active_type == "all" %}selected{% endif %}>All</option>
+        <option value="trips" {% if active_type == "trips" %}selected{% endif %}>Trips</option>
+        <option value="users" {% if active_type == "users" %}selected{% endif %}>Users</option>
+        <option value="blogs" {% if active_type == "blogs" %}selected{% endif %}>Blogs</option>
+    </select>
+
+    <button class="btn btn-primary" type="submit">Search</button>
+</form>
+{% endwith %}
+
+{% if trips %}
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Trip results</h2>
+    </header>
+    <div class="card-grid">
+        {% for trip in trips %}
+        {% include "partials/cards/trip_card.html" with trip=trip %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if profiles %}
+<section class="section-grid">
+    <header class="section-header">
+        <h2>User results</h2>
+    </header>
+    <div class="card-grid">
+        {% for profile in profiles %}
+        {% include "partials/cards/user_card.html" with profile=profile %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if blogs %}
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Blog results</h2>
+    </header>
+    <div class="card-grid">
+        {% for blog in blogs %}
+        {% include "partials/cards/blog_card.html" with blog=blog %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if not trips and not profiles and not blogs %}
+<div class="empty-state">No results yet. Run a query or seed demo records.</div>
+{% endif %}
+{% endblock %}

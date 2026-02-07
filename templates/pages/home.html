@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Home{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <p class="eyebrow">{% if user.is_authenticated %}Member home{% else %}Guest home{% endif %}</p>
+    <h1>Host trips, publish stories, and build your audience.</h1>
+    {% if user.is_authenticated %}
+    <p>Your feed combines creators you follow with recommendations from like-minded members.</p>
+    {% else %}
+    <p>Guests see traffic-ranked trips, people, and blogs. Sign up to unlock actions and personalized feed ranking.</p>
+    {% endif %}
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Trips</h2>
+        <a href="/trips/">Browse all trips</a>
+    </header>
+    <div class="card-grid">
+        {% for trip in trips %}
+        {% include "partials/cards/trip_card.html" with trip=trip %}
+        {% empty %}
+        <div class="empty-state">No trips yet. Create the first trip to seed this section.</div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>People</h2>
+        <a href="/search/?type=users">Find creators</a>
+    </header>
+    <div class="card-grid">
+        {% for profile in profiles %}
+        {% include "partials/cards/user_card.html" with profile=profile %}
+        {% empty %}
+        <div class="empty-state">No creators yet. User cards will appear here once accounts are active.</div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Blogs</h2>
+        <a href="/blogs/">Read all blogs</a>
+    </header>
+    <div class="card-grid">
+        {% for blog in blogs %}
+        {% include "partials/cards/blog_card.html" with blog=blog %}
+        {% empty %}
+        <div class="empty-state">No blogs yet. Publish a first post to populate this feed.</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

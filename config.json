@@ -1,6 +1,13 @@
 {
   "project": "tapne",
   "strategy": "faithful-to-production",
+  "verbose_support": {
+    "setup_script": "infra/setup-faithful-local.ps1",
+    "switches": [
+      "--verbose",
+      "-Verbose"
+    ]
+  },
   "local_stack": {
     "compose_file": "infra/docker-compose.yml",
     "dockerfile": "infra/Dockerfile.web",
@@ -30,20 +37,46 @@
       }
     }
   },
+  "ui_shared_assets": {
+    "required_template_files": [
+      "templates/base.html",
+      "templates/partials/modals/login_prompt_modal.html",
+      "templates/partials/cards/trip_card.html",
+      "templates/partials/cards/user_card.html",
+      "templates/partials/cards/blog_card.html",
+      "templates/pages/home.html",
+      "templates/pages/search.html",
+      "templates/pages/trips/list.html",
+      "templates/pages/trips/detail.html",
+      "templates/pages/blogs/list.html",
+      "templates/pages/users/profile.html",
+      "templates/pages/blogs/detail.html",
+      "templates/pages/activity/index.html",
+      "templates/pages/settings/index.html"
+    ],
+    "required_static_files": [
+      "static/css/tapne.css",
+      "static/js/tapne-ui.js"
+    ]
+  },
   "required_env_keys": [
     "APP_ENV",
     "APP_PORT",
     "HOST",
     "SCHEME",
     "SECRET_KEY",
+    "STORAGE_BACKEND",
     "DB_NAME",
     "DB_USER",
     "DB_PASSWORD",
     "DB_HOST_PORT",
     "MINIO_PORT",
+    "MINIO_CONSOLE_PORT",
     "MINIO_BUCKET",
     "MINIO_ROOT_USER",
     "MINIO_ROOT_PASSWORD",
-    "REDIS_PORT"
+    "REDIS_PORT",
+    "WEB_CONCURRENCY",
+    "GUNICORN_TIMEOUT"
   ]
 }

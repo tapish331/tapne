@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Profile{% endblock %}
+
+{% block content %}
+<article class="detail-shell">
+    <p class="eyebrow">Public profile</p>
+    <h1>
+        {% if profile.username %}
+        @{{ profile.username }}
+        {% else %}
+        @username
+        {% endif %}
+    </h1>
+    <p>{{ profile.bio|default:"No bio available yet." }}</p>
+
+    <div class="inline-actions">
+        {% if user.is_authenticated %}
+        <button class="btn btn-primary" type="button">Follow</button>
+        <button class="btn btn-secondary" type="button">Message</button>
+        <button class="btn btn-ghost" type="button">Bookmark profile</button>
+        {% else %}
+        <button class="btn btn-primary js-guest-action" type="button" data-action-label="follow this user">Follow</button>
+        <button class="btn btn-secondary js-guest-action" type="button" data-action-label="message this user">Message</button>
+        <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this user">Bookmark profile</button>
+        {% endif %}
+    </div>
+</article>
+{% endblock %}

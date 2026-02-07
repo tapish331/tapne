@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Trip Details{% endblock %}
+
+{% block content %}
+<article class="detail-shell">
+    <p class="eyebrow">Trip details</p>
+    <h1>{{ trip.title|default:"Trip title" }}</h1>
+    <p class="detail-meta">
+        Host:
+        {% if trip.host_username %}
+        <a href="/u/{{ trip.host_username }}/">@{{ trip.host_username }}</a>
+        {% else %}
+        @host
+        {% endif %}
+    </p>
+    <p>{{ trip.description|default:"Trip description is not available yet." }}</p>
+
+    <div class="inline-actions">
+        {% if user.is_authenticated %}
+        <button class="btn btn-primary" type="button">Request to join</button>
+        <button class="btn btn-ghost" type="button">Bookmark</button>
+        <button class="btn btn-secondary" type="button">Review</button>
+        {% else %}
+        <button class="btn btn-primary js-guest-action" type="button" data-action-label="join this trip">Request to join</button>
+        <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this trip">Bookmark</button>
+        <button class="btn btn-secondary js-guest-action" type="button" data-action-label="review this trip">Review</button>
+        {% endif %}
+    </div>
+</article>
+{% endblock %}
