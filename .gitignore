@@ -1,0 +1,7 @@
+.env
+.tapne-placeholder-generated
+__pycache__/
+*.py[cod]
+.venv/
+staticfiles/
+media/

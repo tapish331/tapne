@@ -1,0 +1,49 @@
+{
+  "project": "tapne",
+  "strategy": "faithful-to-production",
+  "local_stack": {
+    "compose_file": "infra/docker-compose.yml",
+    "dockerfile": "infra/Dockerfile.web",
+    "env_file": ".env",
+    "env_template_file": ".env.example",
+    "services": {
+      "web": {
+        "local_equivalent": "Docker container running gunicorn",
+        "production_equivalent": "Google Cloud Run service",
+        "port_env": "APP_PORT",
+        "cloud_port_env": "PORT"
+      },
+      "postgres": {
+        "local_equivalent": "postgres:16-alpine container",
+        "production_equivalent": "Cloud SQL for PostgreSQL",
+        "host_port_env": "DB_HOST_PORT"
+      },
+      "object_storage": {
+        "local_equivalent": "MinIO object storage",
+        "production_equivalent": "Google Cloud Storage bucket",
+        "host_port_env": "MINIO_PORT"
+      },
+      "cache_queue": {
+        "local_equivalent": "Redis container",
+        "production_equivalent": "Memorystore for Redis",
+        "host_port_env": "REDIS_PORT"
+      }
+    }
+  },
+  "required_env_keys": [
+    "APP_ENV",
+    "APP_PORT",
+    "HOST",
+    "SCHEME",
+    "SECRET_KEY",
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+    "DB_HOST_PORT",
+    "MINIO_PORT",
+    "MINIO_BUCKET",
+    "MINIO_ROOT_USER",
+    "MINIO_ROOT_PASSWORD",
+    "REDIS_PORT"
+  ]
+}

@@ -1,0 +1,18 @@
+# Core Django runtime
+Django>=5.1,<6.0
+gunicorn>=22.0,<23.0
+python-dotenv>=1.0,<2.0
+
+# Database
+psycopg[binary]>=3.1,<4.0
+dj-database-url>=2.2,<3.0
+
+# Static and storage
+whitenoise[brotli]>=6.7,<7.0
+django-storages[s3]>=1.14,<2.0
+boto3>=1.35,<2.0
+
+# Cache and queue
+redis>=5.0,<6.0
+django-redis>=5.4,<6.0
+celery>=5.4,<6.0

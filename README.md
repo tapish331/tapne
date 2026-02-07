@@ -283,6 +283,91 @@ To avoid “works on my machine” surprises, local should run the Django web ap
 
 > You can still use `python manage.py runserver` for quick debugging, but the “most faithful” path is containerized `web`.
 
+### Use `infra\setup-faithful-local.ps1` as the standard local entrypoint
+
+This script is the recommended way to run local because it enforces the same shape as production:
+
+* validates infra files (`config.json`, compose, Dockerfile, `.env.example`, `requirements.txt`)
+* initializes `.env` from `.env.example` (and validates required keys)
+* checks Docker CLI, Docker Compose, and Docker daemon availability
+* starts `web`, `db`, `minio`, `redis` with Docker Compose
+* waits for service health checks before printing final success
+
+When app code is not present yet:
+
+* if `manage.py` is missing, it auto-creates a minimal placeholder Django bootstrap so the stack can still come up
+* generated placeholder files:
+  * `manage.py`
+  * `tapne/__init__.py`
+  * `tapne/settings.py`
+  * `tapne/urls.py`
+  * `tapne/wsgi.py`
+  * `tapne/asgi.py`
+  * `.tapne-placeholder-generated`
+
+Replace placeholder files with real app code as soon as your actual Django project is available.
+
+### Common commands
+
+```powershell
+# Full local stack (build + start + health wait)
+.\infra\setup-faithful-local.ps1 --verbose
+
+# Same as above using native PowerShell verbosity switch
+.\infra\setup-faithful-local.ps1 -Verbose
+
+# Start without rebuilding web image
+.\infra\setup-faithful-local.ps1 -NoBuild --verbose
+
+# Only validate/generate files; do not start containers
+.\infra\setup-faithful-local.ps1 -GenerateOnly --verbose
+
+# Regenerate .env from template with fresh random secrets
+.\infra\setup-faithful-local.ps1 -ForceEnv --verbose
+
+# Bring up infra only (db/minio/redis), skip web
+.\infra\setup-faithful-local.ps1 -InfraOnly --verbose
+
+# Increase health wait timeout (seconds)
+.\infra\setup-faithful-local.ps1 --verbose -HealthTimeoutSeconds 300
+```
+
+### Health semantics
+
+The script prints final success only after health checks pass:
+
+* `[OK] Service 'db' is healthy.`
+* `[OK] Service 'minio' is healthy.`
+* `[OK] Service 'redis' is healthy.`
+* `[OK] Service 'web' is healthy.` (unless `-InfraOnly`)
+* `[OK] Local production-faithful stack is ready.`
+
+If a service becomes unhealthy or fails to start within timeout, the script fails fast and surfaces logs for diagnosis.
+
+### Stop and cleanup
+
+```powershell
+# Stop and remove containers + network
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml down
+
+# Optional: include volumes (deletes local Postgres/Redis/MinIO data)
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml down -v
+```
+
+### Troubleshooting
+
+* `Docker CLI was not found on PATH`:
+  install Docker Desktop, reopen terminal, rerun script.
+* `Docker daemon is not reachable`:
+  start Docker Desktop and wait for it to show Running.
+* `web` stays in `starting`:
+  wait for migrations/collectstatic to complete, then re-check with:
+
+```powershell
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml ps
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml logs --tail=100 web
+```
+
 ---
 
 ## 1) Django Web App (Cloud Run Service equivalent)
