@@ -1,17 +1,134 @@
-<div id="loginPromptModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="loginPromptTitle">
+{% if not user.is_authenticated %}
+<div
+    id="authModal"
+    class="modal auth-modal"
+    hidden
+    aria-hidden="true"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="authModalTitle"
+>
     <div class="modal-backdrop" data-modal-close></div>
-    <section class="modal-panel" role="document">
+    <section class="modal-panel auth-modal-panel" role="document">
         <header class="modal-header">
-            <h2 id="loginPromptTitle">Login required</h2>
-            <button class="icon-btn" type="button" data-modal-close aria-label="Close login prompt">x</button>
+            <h2 id="authModalTitle">Log in</h2>
+            <button class="icon-btn" type="button" data-modal-close aria-label="Close login or signup modal">x</button>
         </header>
-        <p class="modal-body">
-            This action is available to members only. Create an account to join trips, follow people,
-            bookmark posts, and leave comments.
-        </p>
-        <div class="modal-actions">
-            <a class="btn btn-primary" href="/accounts/signup/?next={{ request.get_full_path|urlencode }}">Create account</a>
-            <a class="btn btn-secondary" href="/accounts/login/?next={{ request.get_full_path|urlencode }}">Log in</a>
-        </div>
+        <p id="authModalContextNote" class="auth-modal-context-note" hidden>Please log in to continue.</p>
+
+        <section data-auth-pane="login">
+            <form method="post" action="{% url 'accounts:login' %}" class="auth-modal-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}" data-auth-next-input>
+                <input type="hidden" name="origin" value="{{ request.get_full_path }}" data-auth-origin-input>
+                <input type="hidden" name="reason" value="" data-auth-reason-input>
+
+                {% if auth_modal_errors.login.non_field %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.login.non_field %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <label for="{{ auth_modal_login_form.username.id_for_label }}">{{ auth_modal_login_form.username.label }}</label>
+                {{ auth_modal_login_form.username }}
+                {% if auth_modal_errors.login.username %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.login.username %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <label for="{{ auth_modal_login_form.password.id_for_label }}">{{ auth_modal_login_form.password.label }}</label>
+                {{ auth_modal_login_form.password }}
+                {% if auth_modal_errors.login.password %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.login.password %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <button class="btn btn-primary" type="submit">Log in</button>
+            </form>
+
+            <p class="auth-modal-switch-line">
+                Need an account?
+                <button type="button" class="text-link-button" data-auth-switch="signup">Sign up</button>
+            </p>
+        </section>
+
+        <section data-auth-pane="signup" hidden>
+            <form method="post" action="{% url 'accounts:signup' %}" class="auth-modal-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}" data-auth-next-input>
+                <input type="hidden" name="origin" value="{{ request.get_full_path }}" data-auth-origin-input>
+                <input type="hidden" name="reason" value="" data-auth-reason-input>
+
+                {% if auth_modal_errors.signup.non_field %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.signup.non_field %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <label for="{{ auth_modal_signup_form.username.id_for_label }}">{{ auth_modal_signup_form.username.label }}</label>
+                {{ auth_modal_signup_form.username }}
+                {% if auth_modal_errors.signup.username %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.signup.username %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <label for="{{ auth_modal_signup_form.email.id_for_label }}">{{ auth_modal_signup_form.email.label }}</label>
+                {{ auth_modal_signup_form.email }}
+                {% if auth_modal_errors.signup.email %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.signup.email %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <label for="{{ auth_modal_signup_form.password1.id_for_label }}">{{ auth_modal_signup_form.password1.label }}</label>
+                {{ auth_modal_signup_form.password1 }}
+                {% if auth_modal_signup_form.password1.help_text %}
+                <p class="form-help">{{ auth_modal_signup_form.password1.help_text|safe }}</p>
+                {% endif %}
+                {% if auth_modal_errors.signup.password1 %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.signup.password1 %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <label for="{{ auth_modal_signup_form.password2.id_for_label }}">{{ auth_modal_signup_form.password2.label }}</label>
+                {{ auth_modal_signup_form.password2 }}
+                {% if auth_modal_signup_form.password2.help_text %}
+                <p class="form-help">{{ auth_modal_signup_form.password2.help_text|safe }}</p>
+                {% endif %}
+                {% if auth_modal_errors.signup.password2 %}
+                <div class="form-error">
+                    {% for error in auth_modal_errors.signup.password2 %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <button class="btn btn-primary" type="submit">Create account</button>
+            </form>
+
+            <p class="auth-modal-switch-line">
+                Already have an account?
+                <button type="button" class="text-link-button" data-auth-switch="login">Log in</button>
+            </p>
+        </section>
     </section>
 </div>
+{% endif %}

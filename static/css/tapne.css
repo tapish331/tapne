@@ -406,7 +406,10 @@ a:hover {
 
 .search-form input,
 .search-form select,
-.settings-form select {
+.settings-form select,
+.settings-form input,
+.settings-form textarea,
+.form-input {
     border: 1px solid var(--line);
     border-radius: 0.45rem;
     font-family: var(--font-ui);
@@ -419,6 +422,43 @@ a:hover {
     font-family: var(--font-ui);
     font-size: 0.86rem;
     font-weight: 700;
+}
+
+.form-help {
+    color: var(--ink-600);
+    font-family: var(--font-ui);
+    font-size: 0.8rem;
+    margin: 0.1rem 0 0.2rem;
+}
+
+.form-error {
+    background: rgba(166, 56, 44, 0.08);
+    border: 1px solid rgba(166, 56, 44, 0.24);
+    border-radius: 0.45rem;
+    color: var(--danger);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    margin: 0.1rem 0 0.35rem;
+    padding: 0.45rem 0.55rem;
+}
+
+.form-error p {
+    margin: 0;
+}
+
+.muted-inline {
+    color: var(--ink-600);
+    font-family: var(--font-ui);
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.profile-mode-note,
+.profile-demo-note {
+    color: var(--ink-600);
+    font-family: var(--font-ui);
+    font-size: 0.87rem;
+    margin: 0;
 }
 
 .empty-state {
@@ -480,6 +520,57 @@ a:hover {
     gap: 0.45rem;
 }
 
+.auth-modal-panel {
+    max-width: 34rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.auth-modal-context-note {
+    background: rgba(212, 122, 48, 0.12);
+    border: 1px solid rgba(212, 122, 48, 0.34);
+    border-radius: 0.45rem;
+    color: #7a4f2d;
+    font-family: var(--font-ui);
+    font-size: 0.86rem;
+    margin: 0;
+    padding: 0.5rem 0.6rem;
+}
+
+.auth-modal-form {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.auth-modal-switch-line {
+    color: var(--ink-600);
+    font-family: var(--font-ui);
+    font-size: 0.86rem;
+    margin: 0.1rem 0 0;
+}
+
+.text-link-button {
+    background: transparent;
+    border: none;
+    color: var(--ink-800);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: 700;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 2px;
+}
+
+.text-link-button:hover {
+    color: var(--accent-strong);
+}
+
 body.modal-open {
     overflow: hidden;
 }
@@ -497,5 +588,11 @@ body.modal-open {
     .auth-links {
         justify-content: flex-start;
         order: 2;
+    }
+
+    .auth-modal-panel {
+        max-height: calc(100vh - 2rem);
+        top: 1rem;
+        transform: translateX(-50%);
     }
 }

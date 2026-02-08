@@ -6,16 +6,42 @@
 <article class="detail-shell">
     <p class="eyebrow">Public profile</p>
     <h1>
-        {% if profile.username %}
-        @{{ profile.username }}
+        {% if profile.display_name %}
+        {{ profile.display_name }} <span class="muted-inline">(@{{ profile.username }})</span>
         {% else %}
-        @username
+        @{{ profile.username|default:"username" }}
         {% endif %}
     </h1>
+    {% if viewer_is_member %}
+    <p class="profile-mode-note">Member view: profile actions are enabled where allowed.</p>
+    {% else %}
+    <p class="profile-mode-note">Guest view: reading is available, actions require login/signup.</p>
+    {% endif %}
+
     <p>{{ profile.bio|default:"No bio available yet." }}</p>
 
+    <dl class="card-meta-grid">
+        <div>
+            <dt>Location</dt>
+            <dd>{{ profile.location|default:"Not provided" }}</dd>
+        </div>
+        <div>
+            <dt>Website</dt>
+            <dd>
+                {% if profile.website %}
+                <a href="{{ profile.website }}" target="_blank" rel="noopener noreferrer">{{ profile.website }}</a>
+                {% else %}
+                Not provided
+                {% endif %}
+            </dd>
+        </div>
+    </dl>
+
     <div class="inline-actions">
-        {% if user.is_authenticated %}
+        {% if is_owner %}
+        <a class="btn btn-primary" href="{% url 'accounts:me-edit' %}">Edit profile</a>
+        <a class="btn btn-secondary" href="{% url 'accounts:me' %}">Go to my profile hub</a>
+        {% elif can_interact %}
         <button class="btn btn-primary" type="button">Follow</button>
         <button class="btn btn-secondary" type="button">Message</button>
         <button class="btn btn-ghost" type="button">Bookmark profile</button>
@@ -25,5 +51,8 @@
         <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this user">Bookmark profile</button>
         {% endif %}
     </div>
+    {% if is_demo_profile %}
+    <p class="profile-demo-note">This is a seeded demo profile record from README examples.</p>
+    {% endif %}
 </article>
 {% endblock %}

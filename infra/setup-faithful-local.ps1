@@ -733,6 +733,26 @@ $staticAssetManifest = Convert-ToStringArray -Value $config.ui_shared_assets.req
 Assert-RelativeFileManifest -ProjectRoot $projectRoot -RelativePaths $templateAssetManifest -ManifestLabel "template asset files"
 Assert-RelativeFileManifest -ProjectRoot $projectRoot -RelativePaths $staticAssetManifest -ManifestLabel "static asset files"
 
+# Optional per-app manifest checks (for example accounts app contract files).
+$djangoAppManifests = $config.django_apps
+if ($null -ne $djangoAppManifests) {
+    foreach ($property in $djangoAppManifests.PSObject.Properties) {
+        $appName = $property.Name
+        $appConfig = $property.Value
+        $requiredAppFiles = Convert-ToStringArray -Value $appConfig.required_files
+
+        if ($requiredAppFiles.Count -eq 0) {
+            Write-Verbose ("No required files declared for Django app '{0}'." -f $appName)
+            continue
+        }
+
+        Assert-RelativeFileManifest -ProjectRoot $projectRoot -RelativePaths $requiredAppFiles -ManifestLabel ("django app files ({0})" -f $appName)
+    }
+}
+else {
+    Write-Verbose "No django_apps manifest was declared in config.json."
+}
+
 Write-Step "Preparing environment file"
 Initialize-EnvFile -EnvFilePath $envFilePath -EnvTemplatePath $envTemplatePath -Force:$ForceEnv
 Assert-RequiredEnvKeys -EnvFilePath $envFilePath -RequiredKeys $config.required_env_keys

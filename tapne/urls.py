@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from typing import NotRequired, TypedDict
 
+from accounts import views as accounts_views
 from django.contrib import admin
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
-from django.urls import URLPattern, URLResolver, path
+from django.urls import URLPattern, URLResolver, include, path
 
 
 class TripData(TypedDict):
@@ -188,19 +189,6 @@ def trip_detail(request: HttpRequest, trip_id: int) -> HttpResponse:
     return render(request, "pages/trips/detail.html", {"trip": trip})
 
 
-def user_profile(request: HttpRequest, username: str) -> HttpResponse:
-    profile_match = next((item for item in DEMO_PROFILES if item["username"] == username), None)
-    profile: ProfileData = (
-        profile_match
-        if profile_match is not None
-        else {
-            "username": username,
-            "bio": "Profile record not found in demo dataset.",
-        }
-    )
-    return render(request, "pages/users/profile.html", {"profile": profile})
-
-
 def blog_list(request: HttpRequest) -> HttpResponse:
     return render(request, "pages/blogs/list.html", {"blogs": DEMO_BLOGS})
 
@@ -231,10 +219,11 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("", home, name="home"),
     path("health/", health, name="health"),
     path("search/", search, name="search"),
+    path("accounts/", include("accounts.urls")),
     path("trips/", trip_list, name="trip-list"),
     path("trips/<int:trip_id>/", trip_detail, name="trip-detail"),
     path("blogs/", blog_list, name="blog-list"),
-    path("u/<slug:username>/", user_profile, name="public-profile"),
+    path("u/<slug:username>/", accounts_views.public_profile_view, name="public-profile"),
     path("blogs/<slug:slug>/", blog_detail, name="blog-detail"),
     path("activity/", activity_page, name="activity"),
     path("settings/", settings_page, name="settings"),

@@ -21,3 +21,6 @@ celery>=5.4,<6.0
 Pillow>=10.4,<12.0
 Markdown>=3.6,<4.0
 bleach>=6.1,<7.0
+
+# Accounts and identity
+email-validator>=2.2,<3.0

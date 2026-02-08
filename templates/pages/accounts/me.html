@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | My profile{% endblock %}
+
+{% block content %}
+<section class="detail-shell">
+    <p class="eyebrow">Member profile</p>
+    <h1>@{{ profile.username }}</h1>
+    <p>{{ profile.bio|default:"Add a bio to tell others how you host trips and write blogs." }}</p>
+
+    <dl class="card-meta-grid">
+        <div>
+            <dt>Display name</dt>
+            <dd>{{ profile.display_name|default:"Not set" }}</dd>
+        </div>
+        <div>
+            <dt>Location</dt>
+            <dd>{{ profile.location|default:"Not set" }}</dd>
+        </div>
+        <div>
+            <dt>Email</dt>
+            <dd>{{ profile.email|default:"Not set" }}</dd>
+        </div>
+        <div>
+            <dt>Website</dt>
+            <dd>
+                {% if profile.website %}
+                <a href="{{ profile.website }}" target="_blank" rel="noopener noreferrer">{{ profile.website }}</a>
+                {% else %}
+                Not set
+                {% endif %}
+            </dd>
+        </div>
+    </dl>
+
+    <div class="inline-actions">
+        <a class="btn btn-primary" href="{% url 'accounts:me-edit' %}">Edit profile</a>
+        <a class="btn btn-secondary" href="{% url 'public-profile' username=profile.username %}">View public profile</a>
+    </div>
+</section>
+{% endblock %}

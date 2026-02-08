@@ -6,6 +6,9 @@
     "switches": [
       "--verbose",
       "-Verbose"
+    ],
+    "management_commands": [
+      "python manage.py bootstrap_accounts --verbose"
     ]
   },
   "local_stack": {
@@ -52,12 +55,41 @@
       "templates/pages/users/profile.html",
       "templates/pages/blogs/detail.html",
       "templates/pages/activity/index.html",
-      "templates/pages/settings/index.html"
+      "templates/pages/settings/index.html",
+      "templates/pages/accounts/me.html",
+      "templates/pages/accounts/me_edit.html"
     ],
     "required_static_files": [
       "static/css/tapne.css",
       "static/js/tapne-ui.js"
     ]
+  },
+  "django_apps": {
+    "accounts": {
+      "required_files": [
+        "accounts/apps.py",
+        "accounts/models.py",
+        "accounts/forms.py",
+        "accounts/validators.py",
+        "accounts/views.py",
+        "accounts/urls.py",
+        "accounts/admin.py",
+        "accounts/tests.py",
+        "accounts/management/__init__.py",
+        "accounts/management/commands/__init__.py",
+        "accounts/management/commands/bootstrap_accounts.py",
+        "accounts/migrations/__init__.py",
+        "accounts/migrations/0001_initial.py"
+      ],
+      "public_profile_route": "/u/<username>/",
+      "member_routes": [
+        "/accounts/signup/",
+        "/accounts/login/",
+        "/accounts/logout/",
+        "/accounts/me/",
+        "/accounts/me/edit/"
+      ]
+    }
   },
   "required_env_keys": [
     "APP_ENV",

@@ -31,7 +31,7 @@ Guests can **browse** but cannot **do actions**.
 * create/edit trips/blogs/profile
 * activity/settings
 
-If they try any action, they are prompted to **login/signup**.
+If they try any action, they are shown the shared **auth modal** (login/signup).
 
 ---
 
@@ -99,12 +99,17 @@ These are shared assets:
         index.html
       settings/
         index.html
+      accounts/
+        me.html
+        me_edit.html
   ```
 
   Conventions:
   * all pages extend `base.html`
   * shared cards/modals live under `templates/partials/`
   * guest-only blocked actions use `.js-guest-action` and `data-action-label`
+  * auth is modal-only UI: no standalone `login.html` / `signup.html` templates
+  * auth modal state is URL-driven with query keys: `auth`, `auth_reason`, `auth_error`, `auth_next`
 * `static/`
   Shared CSS/JS scaffold:
 
@@ -129,7 +134,7 @@ These are shared assets:
 
 These are feature modules:
 
-* `accounts` (signup/login/logout, profile view/edit)
+* `accounts` (modal auth endpoints, logout, profile view/edit, public profiles)
 * `feed` (home logic: guest trending vs member personalized)
 * `search` (search defaults + results)
 * `trips` (trip list/detail + trip CRUD)
@@ -176,9 +181,17 @@ This file just “connects” apps to URL prefixes.
 
 **Auth**
 
-* `GET /accounts/signup/` + `POST /accounts/signup/`
-* `GET /accounts/login/` + `POST /accounts/login/`
+* navbar shows one auth entry button: **Log in** (opens shared auth modal)
+* shared modal lives in `templates/partials/modals/login_prompt_modal.html`
+* `GET /accounts/signup/` and `GET /accounts/login/` are modal entry routes:
+  * they redirect back to a safe origin with URL state (`?auth=signup` or `?auth=login`)
+* `POST /accounts/signup/` creates user + profile and logs the user in
+* `POST /accounts/login/` authenticates and logs the user in
 * `POST /accounts/logout/`
+* success/cancel behavior:
+  * after successful login/signup, redirect to `next` (default: origin page)
+  * closing modal keeps user on the same origin page (auth query keys are cleaned)
+  * invalid submissions reopen the same modal mode with field + non-field errors visible
 
 **My profile (member-only CRUD)**
 
@@ -191,6 +204,34 @@ This file just “connects” apps to URL prefixes.
 
   * Guest: limited profile
   * Member: full profile + follow/DM/bookmark
+
+**Validation and security rules (`accounts`)**
+
+* username:
+  * validated by Django username validators
+  * uniqueness is enforced **case-insensitively** on signup
+* email:
+  * normalized/validated with `email-validator`
+  * uniqueness is enforced **case-insensitively**
+* password:
+  * must pass Django validators:
+    * similarity check against user attributes
+    * minimum length = `12`
+    * common password blocked
+    * numeric-only password blocked
+  * must also pass custom complexity validator:
+    * at least one uppercase letter
+    * at least one lowercase letter
+    * at least one digit
+    * at least one symbol
+    * no whitespace
+* password confirmation (`password1`/`password2`) must match
+
+**Modal behavior for protected actions**
+
+* guest action buttons (`.js-guest-action`) open the same auth modal in login mode
+* when action requires auth, modal shows contextual note: `Please log in to continue.`
+* user can switch inline between login and signup via modal link (no full-page auth navigation)
 
 ---
 
@@ -296,7 +337,8 @@ This file just “connects” apps to URL prefixes.
 Enforcement is simple:
 
 * backend: `@login_required` on member-only routes
-* frontend: guests clicking action buttons get a “Login/Signup” prompt
+* frontend: guests clicking action buttons open the shared login/signup modal
+* auth flow keeps users on-origin by default (`next`/origin-safe redirects)
 
 ---
 

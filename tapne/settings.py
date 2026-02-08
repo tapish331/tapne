@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "accounts",
 ]
 
 MIDDLEWARE = [
@@ -67,6 +68,7 @@ TEMPLATES: list[dict[str, Any]] = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "accounts.context_processors.auth_modal_forms",
             ],
         }
     }
@@ -104,7 +106,15 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 STORAGES: dict[str, dict[str, Any]] = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    # Manifest storage is production-faithful but requires collectstatic output.
+    # Use plain staticfiles storage in DEBUG/test runs to keep local iteration simple.
+    "staticfiles": {
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if DEBUG
+            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        )
+    },
 }
 
 storage_backend = os.getenv("STORAGE_BACKEND", "filesystem").strip().lower()
@@ -136,9 +146,19 @@ else:
     cache_backend = {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
 
 CACHES: dict[str, dict[str, Any]] = {"default": cache_backend}
+AUTH_PASSWORD_VALIDATORS: list[dict[str, Any]] = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 12}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {"NAME": "accounts.validators.ComplexityPasswordValidator"},
+]
 
 csrf_trusted_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "")
 CSRF_TRUSTED_ORIGINS: list[str] = [item.strip() for item in csrf_trusted_origins.split(",") if item.strip()]
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/accounts/me/"
+LOGOUT_REDIRECT_URL = "/"
 
 if env_bool("USE_X_FORWARDED_PROTO", False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

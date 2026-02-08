@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Edit profile{% endblock %}
+
+{% block content %}
+<section class="detail-shell">
+    <p class="eyebrow">Profile settings</p>
+    <h1>Edit my profile</h1>
+    <p>These fields shape how members and guests see your account.</p>
+
+    <form method="post" action="{% url 'accounts:me-edit' %}" class="settings-form">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="form-error">
+            {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% for field in form %}
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}
+        <p class="form-help">{{ field.help_text }}</p>
+        {% endif %}
+        {% if field.errors %}
+        <div class="form-error">
+            {% for error in field.errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        <div class="inline-actions">
+            <button class="btn btn-primary" type="submit">Save profile</button>
+            <a class="btn btn-ghost" href="{% url 'accounts:me' %}">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}
