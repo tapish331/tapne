@@ -6,6 +6,11 @@
 <article class="detail-shell">
     <p class="eyebrow">Trip details</p>
     <h1>{{ trip.title|default:"Trip title" }}</h1>
+
+    {% if trip_detail_reason %}
+    <p class="detail-meta">{{ trip_detail_reason }} ({{ trip_detail_mode|default:"unknown" }} / {{ trip_detail_source|default:"unknown" }})</p>
+    {% endif %}
+
     <p class="detail-meta">
         Host:
         {% if trip.host_username %}
@@ -14,10 +19,21 @@
         @host
         {% endif %}
     </p>
+
+    {% if trip.destination %}
+    <p class="detail-meta">Destination: {{ trip.destination }}</p>
+    {% endif %}
+
     <p>{{ trip.description|default:"Trip description is not available yet." }}</p>
 
     <div class="inline-actions">
-        {% if user.is_authenticated %}
+        {% if can_manage_trip %}
+        <a class="btn btn-secondary" href="/trips/{{ trip.id }}/edit/">Edit trip</a>
+        <form method="post" action="/trips/{{ trip.id }}/delete/" class="inline-form">
+            {% csrf_token %}
+            <button class="btn btn-ghost" type="submit">Delete trip</button>
+        </form>
+        {% elif user.is_authenticated %}
         <button class="btn btn-primary" type="button">Request to join</button>
         <button class="btn btn-ghost" type="button">Bookmark</button>
         <button class="btn btn-secondary" type="button">Review</button>

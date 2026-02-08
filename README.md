@@ -90,6 +90,8 @@ These are shared assets:
       trips/
         list.html
         detail.html
+        form.html
+        mine.html
       blogs/
         list.html
         detail.html
@@ -137,7 +139,7 @@ These are feature modules:
 * `accounts` (modal auth endpoints, logout, profile view/edit, public profiles)
 * `feed` (implemented home logic: guest trending vs member personalized, plus member feed preference seed tooling)
 * `search` (search defaults + results)
-* `trips` (trip list/detail + trip CRUD)
+* `trips` (trip list/detail + CRUD + member mine hub + trip seed tooling)
 * `blogs` (blog list/detail + blog CRUD)
 * `social` (follow + bookmark)
 * `enrollment` (join requests + approvals)
@@ -354,6 +356,69 @@ python manage.py bootstrap_search --verbose --member-username tapne --create-mis
 **My Trips hub (member-only)**
 
 * `GET /trips/mine/` (tabs: upcoming/hosting/past/saved)
+* tab is URL-driven: `?tab=upcoming|hosting|past|saved`
+
+### Current `trips` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/trips/` to `trips/urls.py`
+  * `trips/urls.py` maps:
+    * `path("", views.trip_list_view, name="list")`
+    * `path("create/", views.trip_create_view, name="create")`
+    * `path("mine/", views.trip_mine_view, name="mine")`
+    * `path("<int:trip_id>/", views.trip_detail_view, name="detail")`
+    * `path("<int:trip_id>/edit/", views.trip_edit_view, name="edit")`
+    * `path("<int:trip_id>/delete/", views.trip_delete_view, name="delete")`
+* views and context:
+  * `trips/views.py::trip_list_view` uses `build_trip_list_payload_for_user(...)`
+  * list template context keys: `trips`, `trip_mode`, `trip_reason`, `trip_source`
+  * `trips/views.py::trip_detail_view` uses `build_trip_detail_payload_for_user(...)`
+  * detail template context keys: `trip`, `trip_detail_mode`, `trip_detail_reason`, `trip_detail_source`, `can_manage_trip`
+  * `trips/views.py::trip_mine_view` uses `build_my_trips_payload_for_member(...)`
+  * mine template context keys: `mine_trips`, `active_tab`, `tab_counts`, `mine_mode`, `mine_reason`
+  * create/edit views use `TripForm` and render `templates/pages/trips/form.html`
+* data and ranking:
+  * live list mode reads published rows from `trips.Trip` (`is_published=True`)
+  * guest list ranking (`guest-trending-live`/`guest-trending-demo`) sorts by `traffic_score`, then title
+  * member list ranking (`member-like-minded-live`/`member-like-minded-demo`) boosts:
+    * creators from `MemberFeedPreference.followed_usernames`
+    * content matching `MemberFeedPreference.interest_keywords`
+  * if no preference row exists, member list still works via inferred fallback interests
+  * if no live `Trip` rows exist, list falls back to `feed.models` demo trip catalog
+  * detail route can return source `live-db`, `demo-fallback`, or `synthetic-fallback`
+  * guest detail mode is intentionally limited; member detail mode is full
+* persistence (`Trip` model):
+  * owner relation: `host -> AUTH_USER_MODEL` (`ForeignKey`)
+  * content fields: `title`, `summary`, `description`, `destination`
+  * scheduling fields: `starts_at`, `ends_at` (validation enforces `ends_at >= starts_at`)
+  * ranking/visibility fields: `traffic_score`, `is_published`
+  * ops fields: `created_at`, `updated_at`, indexed for host/time and published/time queries
+* auth and ownership:
+  * member-only: create/edit/delete/mine routes enforce `@login_required`
+  * ownership: edit/delete routes resolve `Trip` by `pk` + `host=request.user`
+  * detail allows unpublished rows only for the owning host
+* tests:
+  * `trips/tests.py` covers guest/member browse modes, CRUD auth/ownership, mine tab segmentation, verbose path, and bootstrap command behavior
+
+### Trips verbose behavior
+
+`trips` prints server-side debug lines prefixed with `[trips][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Trips seed/bootstrap command
+
+`trips` includes `bootstrap_trips` for creating/updating demo trip rows used by list/detail/search integration.
+
+```powershell
+# Seed trip rows and create missing demo hosts, with verbose logs
+python manage.py bootstrap_trips --verbose --create-missing-hosts
+
+# Seed only when hosts already exist (missing hosts are skipped)
+python manage.py bootstrap_trips --verbose
+```
 
 ---
 

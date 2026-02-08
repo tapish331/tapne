@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | My Trips{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">My trips</p>
+    <h1>Manage your hosted timeline.</h1>
+    <p>{{ mine_reason|default:"Segmenting trips into upcoming, hosting, past, and saved tabs." }}</p>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Tabs</h2>
+    </header>
+    <div class="inline-actions">
+        <a class="btn {% if active_tab == 'upcoming' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=upcoming">Upcoming ({{ tab_counts.upcoming|default:0 }})</a>
+        <a class="btn {% if active_tab == 'hosting' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=hosting">Hosting ({{ tab_counts.hosting|default:0 }})</a>
+        <a class="btn {% if active_tab == 'past' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=past">Past ({{ tab_counts.past|default:0 }})</a>
+        <a class="btn {% if active_tab == 'saved' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=saved">Saved ({{ tab_counts.saved|default:0 }})</a>
+        <a class="btn btn-ghost" href="/trips/create/">Create trip</a>
+    </div>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>{{ active_tab|title }} trips</h2>
+    </header>
+    <div class="card-grid">
+        {% for trip in mine_trips %}
+        {% include "partials/cards/trip_card.html" with trip=trip %}
+        {% empty %}
+        <div class="empty-state">
+            {% if active_tab == "saved" %}
+            Saved trips are currently sourced from the social bookmarks app and are not wired yet.
+            {% else %}
+            No trips found for this tab.
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

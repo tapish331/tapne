@@ -10,7 +10,8 @@
     "management_commands": [
       "python manage.py bootstrap_accounts --verbose",
       "python manage.py bootstrap_feed --verbose",
-      "python manage.py bootstrap_search --verbose"
+      "python manage.py bootstrap_search --verbose",
+      "python manage.py bootstrap_trips --verbose --create-missing-hosts"
     ]
   },
   "local_stack": {
@@ -53,6 +54,8 @@
       "templates/pages/search.html",
       "templates/pages/trips/list.html",
       "templates/pages/trips/detail.html",
+      "templates/pages/trips/form.html",
+      "templates/pages/trips/mine.html",
       "templates/pages/blogs/list.html",
       "templates/pages/users/profile.html",
       "templates/pages/blogs/detail.html",
@@ -131,6 +134,38 @@
         "trips",
         "users",
         "blogs"
+      ]
+    },
+    "trips": {
+      "required_files": [
+        "trips/apps.py",
+        "trips/models.py",
+        "trips/forms.py",
+        "trips/views.py",
+        "trips/urls.py",
+        "trips/admin.py",
+        "trips/tests.py",
+        "trips/management/__init__.py",
+        "trips/management/commands/__init__.py",
+        "trips/management/commands/bootstrap_trips.py",
+        "trips/migrations/__init__.py",
+        "trips/migrations/0001_initial.py"
+      ],
+      "browse_routes": [
+        "/trips/",
+        "/trips/<trip_id>/"
+      ],
+      "member_routes": [
+        "/trips/create/",
+        "/trips/<trip_id>/edit/",
+        "/trips/<trip_id>/delete/",
+        "/trips/mine/"
+      ],
+      "mine_tabs": [
+        "upcoming",
+        "hosting",
+        "past",
+        "saved"
       ]
     }
   },

@@ -32,3 +32,7 @@ email-validator>=2.2,<3.0
 # Search app note:
 # search defaults, ranking logic, and bootstrap_search command rely on Django core
 # plus existing feed/account models. No extra third-party package is required.
+
+# Trips app note:
+# trips list/detail/CRUD, mine tabs, and bootstrap_trips command rely on Django core
+# plus existing account/feed models. No extra third-party package is required.

@@ -6,7 +6,21 @@
 <section class="hero hero-compact">
     <p class="eyebrow">Trips</p>
     <h1>Browse upcoming and hosted trips.</h1>
-    <p>Guests can browse details; members can request to join and bookmark.</p>
+    {% if user.is_authenticated %}
+    <p>Member mode supports full details, trip management, and My Trips segmentation.</p>
+    {% else %}
+    <p>Guests can browse limited details. Join, bookmark, and review actions require login.</p>
+    {% endif %}
+    {% if trip_reason %}
+    <p class="detail-meta">{{ trip_reason }} ({{ trip_mode|default:"unknown" }} / {{ trip_source|default:"unknown" }})</p>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    <div class="inline-actions">
+        <a class="btn btn-primary" href="/trips/create/">Create trip</a>
+        <a class="btn btn-secondary" href="/trips/mine/">My trips</a>
+    </div>
+    {% endif %}
 </section>
 
 <section class="section-grid">
@@ -17,7 +31,7 @@
         {% for trip in trips %}
         {% include "partials/cards/trip_card.html" with trip=trip %}
         {% empty %}
-        <div class="empty-state">Trip list is empty. Create your first trip to populate this page.</div>
+        <div class="empty-state">Trip list is empty. Run <code>python manage.py bootstrap_trips --create-missing-hosts --verbose</code> to seed demo data.</div>
         {% endfor %}
     </div>
 </section>
