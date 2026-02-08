@@ -8,7 +8,8 @@
       "-Verbose"
     ],
     "management_commands": [
-      "python manage.py bootstrap_accounts --verbose"
+      "python manage.py bootstrap_accounts --verbose",
+      "python manage.py bootstrap_feed --verbose"
     ]
   },
   "local_stack": {
@@ -88,6 +89,26 @@
         "/accounts/logout/",
         "/accounts/me/",
         "/accounts/me/edit/"
+      ]
+    },
+    "feed": {
+      "required_files": [
+        "feed/apps.py",
+        "feed/models.py",
+        "feed/views.py",
+        "feed/urls.py",
+        "feed/admin.py",
+        "feed/tests.py",
+        "feed/management/__init__.py",
+        "feed/management/commands/__init__.py",
+        "feed/management/commands/bootstrap_feed.py",
+        "feed/migrations/__init__.py",
+        "feed/migrations/0001_initial.py"
+      ],
+      "home_route": "/",
+      "home_modes": [
+        "guest-trending",
+        "member-personalized"
       ]
     }
   },

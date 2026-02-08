@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from typing import Final
+
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import render
+
+from .models import build_home_payload_for_user
+
+VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
+
+
+def _is_verbose_request(request: HttpRequest) -> bool:
+    candidate = (
+        request.GET.get("verbose")
+        or request.POST.get("verbose")
+        or request.headers.get("X-Tapne-Verbose")
+        or ""
+    )
+    return candidate.strip().lower() in VERBOSE_FLAGS
+
+
+def _vprint(request: HttpRequest, message: str) -> None:
+    if _is_verbose_request(request):
+        print(f"[feed][verbose] {message}", flush=True)
+
+
+def home(request: HttpRequest) -> HttpResponse:
+    viewer_state = "member" if request.user.is_authenticated else "guest"
+    _vprint(request, f"Rendering home feed for viewer_state={viewer_state}")
+
+    payload = build_home_payload_for_user(request.user)
+    _vprint(
+        request,
+        (
+            "Feed mode={mode}; reason={reason}; counts trips={trip_count}, profiles={profile_count}, blogs={blog_count}"
+            .format(
+                mode=payload["mode"],
+                reason=payload["reason"],
+                trip_count=len(payload["trips"]),
+                profile_count=len(payload["profiles"]),
+                blog_count=len(payload["blogs"]),
+            )
+        ),
+    )
+
+    context: dict[str, object] = {
+        "trips": payload["trips"],
+        "profiles": payload["profiles"],
+        "blogs": payload["blogs"],
+        "feed_mode": payload["mode"],
+        "feed_reason": payload["reason"],
+    }
+    return render(request, "pages/home.html", context)

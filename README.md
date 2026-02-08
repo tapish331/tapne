@@ -135,7 +135,7 @@ These are shared assets:
 These are feature modules:
 
 * `accounts` (modal auth endpoints, logout, profile view/edit, public profiles)
-* `feed` (home logic: guest trending vs member personalized)
+* `feed` (implemented home logic: guest trending vs member personalized, plus member feed preference seed tooling)
 * `search` (search defaults + results)
 * `trips` (trip list/detail + trip CRUD)
 * `blogs` (blog list/detail + blog CRUD)
@@ -162,6 +162,55 @@ This file just “connects” apps to URL prefixes.
 
   * Guest: top traffic trips/users/blogs
   * Member: follows + like-minded recommendations
+
+### Current `feed` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates root path (`/`) to `feed/urls.py`
+  * `feed/urls.py` maps `path("", views.home, name="home")`
+* view:
+  * `feed/views.py::home` builds home context via `build_home_payload_for_user(...)`
+  * context keys used by template: `trips`, `profiles`, `blogs`, `feed_mode`, `feed_reason`
+* template behavior:
+  * `templates/pages/home.html` shows “Guest home” vs “Member home” copy
+  * `feed_reason` + `feed_mode` are rendered for runtime visibility/debug
+* data and ranking:
+  * `feed/models.py` defines typed demo catalog payloads for trips/users/blogs
+  * guest mode (`guest-trending`) ranks by global popularity fields:
+    * trips: `traffic_score`
+    * users: `followers_count`
+    * blogs: `reads`
+  * member mode (`member-personalized`) boosts:
+    * creators in `MemberFeedPreference.followed_usernames`
+    * content matching `MemberFeedPreference.interest_keywords`
+  * if no preference row exists, member mode still works via inferred fallback interests
+* persistence:
+  * `MemberFeedPreference` model stores one row per user (`OneToOneField`)
+  * JSON lists are normalized to lowercase on save
+* admin:
+  * `feed/admin.py` registers `MemberFeedPreference` with counts/search/read-only timestamps
+* tests:
+  * `feed/tests.py` covers guest/member ranking expectations, verbose logging path, and bootstrap command behavior
+
+### Feed verbose behavior
+
+`feed` prints server-side debug lines prefixed with `[feed][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Feed seed/bootstrap command
+
+`feed` includes `bootstrap_feed` for seeding member personalization preferences used by home ranking.
+
+```powershell
+# Seed/update feed preferences for existing demo users with verbose logs
+python manage.py bootstrap_feed --verbose
+
+# Also create missing demo users before seeding preferences
+python manage.py bootstrap_feed --verbose --create-missing-members
+```
 
 ---
 

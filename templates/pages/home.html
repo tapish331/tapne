@@ -11,6 +11,9 @@
     {% else %}
     <p>Guests see traffic-ranked trips, people, and blogs. Sign up to unlock actions and personalized feed ranking.</p>
     {% endif %}
+    {% if feed_reason %}
+    <p class="detail-meta">{{ feed_reason }} ({{ feed_mode|default:"unknown" }})</p>
+    {% endif %}
 </section>
 
 <section class="section-grid">
@@ -55,3 +58,4 @@
     </div>
 </section>
 {% endblock %}
+

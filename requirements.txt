@@ -24,3 +24,7 @@ bleach>=6.1,<7.0
 
 # Accounts and identity
 email-validator>=2.2,<3.0
+
+# Feed app note:
+# home feed ranking, personalization, and bootstrap_feed command use Django core
+# and do not require additional third-party packages.
