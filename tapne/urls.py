@@ -14,35 +14,11 @@ from feed.models import (
     get_demo_blogs,
     get_demo_trips,
     get_trip_by_id,
-    search_blogs,
-    search_profiles,
-    search_trips,
 )
 
 
 def health(_request: HttpRequest) -> JsonResponse:
     return JsonResponse({"status": "ok", "service": "tapne-placeholder"})
-
-
-def search(request: HttpRequest) -> HttpResponse:
-    query = request.GET.get("q", "")
-    result_type = request.GET.get("type", "all").lower()
-
-    trips = search_trips(query)
-    profiles = search_profiles(query)
-    blogs = search_blogs(query)
-
-    if result_type == "trips":
-        profiles = []
-        blogs = []
-    elif result_type == "users":
-        trips = []
-        blogs = []
-    elif result_type == "blogs":
-        trips = []
-        profiles = []
-
-    return render(request, "pages/search.html", {"trips": trips, "profiles": profiles, "blogs": blogs})
 
 
 def trip_list(request: HttpRequest) -> HttpResponse:
@@ -92,7 +68,7 @@ def settings_page(request: HttpRequest) -> HttpResponse:
 urlpatterns: list[URLPattern | URLResolver] = [
     path("", include("feed.urls")),
     path("health/", health, name="health"),
-    path("search/", search, name="search"),
+    path("search/", include("search.urls")),
     path("accounts/", include("accounts.urls")),
     path("trips/", trip_list, name="trip-list"),
     path("trips/<int:trip_id>/", trip_detail, name="trip-detail"),

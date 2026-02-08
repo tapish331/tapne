@@ -224,6 +224,57 @@ python manage.py bootstrap_feed --verbose --create-missing-members
 
   * shows results
 
+### Current `search` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/search/` to `search/urls.py`
+  * `search/urls.py` maps `path("", views.search_page, name="search")`
+* view:
+  * `search/views.py::search_page` builds search context via `build_search_payload_for_user(...)`
+  * context keys used by template: `trips`, `profiles`, `blogs`, `search_mode`, `search_reason`, `search_query`, `active_type`, `has_query`
+* template behavior:
+  * `templates/pages/search.html` shows guest/member default copy
+  * renders runtime ranking reason and mode (`search_reason`, `search_mode`) for visibility/debug
+  * section titles switch between default state (`Top searched ...`) vs query state (`... results`)
+* data and ranking:
+  * typed demo catalog inputs come from `feed.models` for trips/users/blogs
+  * guest mode (`guest-most-searched`) ranks by global search-demand signals
+  * member mode (`member-like-minded`) boosts:
+    * creators in `MemberFeedPreference.followed_usernames`
+    * content matching `MemberFeedPreference.interest_keywords`
+  * if no preference row exists, member mode still works via inferred fallback interests
+* query behavior (`q` provided):
+  * `type=users` and `type=all` include live account matches from `AUTH_USER_MODEL` + `AccountProfile`
+  * `type=trips`/`type=blogs` and `type=all` include live trip/blog rows when models are present:
+    * attempts to resolve `trips.Trip` and `blogs.Blog`
+    * if those models are not available yet, search gracefully falls back to demo trip/blog results
+  * dedupe strategy prefers live rows over demo placeholders on key collisions (`id`, `username`, `slug`)
+* tests:
+  * `search/tests.py` covers guest/member defaults, query type filtering, live-query merge behavior, verbose logging path, and bootstrap command behavior
+
+### Search verbose behavior
+
+`search` prints server-side debug lines prefixed with `[search][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Search seed/bootstrap command
+
+`search` includes `bootstrap_search` for previewing/validating guest/member search payload behavior.
+
+```powershell
+# Preview guest + member search payloads with verbose logs
+python manage.py bootstrap_search --verbose
+
+# Preview with a query and type filter
+python manage.py bootstrap_search --verbose --query tapne --type users
+
+# Create a missing member first, then preview member search payload
+python manage.py bootstrap_search --verbose --member-username tapne --create-missing-member
+```
+
 ---
 
 ## Auth + Profiles (accounts app)

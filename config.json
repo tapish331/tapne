@@ -9,7 +9,8 @@
     ],
     "management_commands": [
       "python manage.py bootstrap_accounts --verbose",
-      "python manage.py bootstrap_feed --verbose"
+      "python manage.py bootstrap_feed --verbose",
+      "python manage.py bootstrap_search --verbose"
     ]
   },
   "local_stack": {
@@ -109,6 +110,27 @@
       "home_modes": [
         "guest-trending",
         "member-personalized"
+      ]
+    },
+    "search": {
+      "required_files": [
+        "search/apps.py",
+        "search/models.py",
+        "search/views.py",
+        "search/urls.py",
+        "search/admin.py",
+        "search/tests.py",
+        "search/management/__init__.py",
+        "search/management/commands/__init__.py",
+        "search/management/commands/bootstrap_search.py",
+        "search/migrations/__init__.py"
+      ],
+      "search_route": "/search/",
+      "result_types": [
+        "all",
+        "trips",
+        "users",
+        "blogs"
       ]
     }
   },
