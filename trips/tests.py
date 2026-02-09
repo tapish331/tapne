@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from feed.models import MemberFeedPreference
+from social.models import Bookmark
 
 from .models import Trip
 
@@ -211,6 +212,33 @@ class TripViewsTests(TestCase):
         past_titles = {row["title"] for row in past_response.context["mine_trips"]}
         self.assertIn("Past host trip", past_titles)
         self.assertNotIn("Upcoming host trip", past_titles)
+
+    def test_trip_mine_saved_tab_reads_social_trip_bookmarks(self) -> None:
+        saved_trip = Trip.objects.create(
+            host=self.host_user,
+            title="Saved trip row",
+            summary="s",
+            description="d",
+            destination="Copenhagen",
+            starts_at=timezone.now() + timedelta(days=4),
+            traffic_score=30,
+        )
+        Bookmark.objects.create(
+            member=self.host_user,
+            target_type="trip",
+            target_key=str(saved_trip.pk),
+            target_label=saved_trip.title,
+            target_url=saved_trip.get_absolute_url(),
+        )
+
+        self.client.login(username=self.host_user.username, password=self.password)
+        response = self.client.get(f"{reverse('trips:mine')}?tab=saved")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["active_tab"], "saved")
+        saved_titles = {row["title"] for row in response.context["mine_trips"]}
+        self.assertIn("Saved trip row", saved_titles)
+        self.assertEqual(response.context["tab_counts"]["saved"], 1)
 
     def test_trip_list_verbose_query_prints_debug_lines(self) -> None:
         with patch("builtins.print") as mock_print:

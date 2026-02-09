@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Final, TypedDict, cast
 
+from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -221,6 +222,52 @@ def _live_trip_rows() -> list[Trip]:
     )
 
 
+def _saved_trip_ids_for_member(user: object, *, limit: int | None = None) -> list[int]:
+    try:
+        bookmark_model = apps.get_model("social", "Bookmark")
+    except LookupError:
+        return []
+
+    queryset = bookmark_model.objects.filter(
+        member=user,
+        target_type="trip",
+    ).order_by("-created_at", "-pk")
+
+    effective_limit = None if limit is None else max(1, int(limit or 1))
+    saved_ids: list[int] = []
+    seen_ids: set[int] = set()
+    for bookmark in queryset:
+        target_key = str(getattr(bookmark, "target_key", "") or "").strip()
+        if not target_key.isdigit():
+            continue
+
+        trip_id = int(target_key)
+        if trip_id <= 0 or trip_id in seen_ids:
+            continue
+
+        seen_ids.add(trip_id)
+        saved_ids.append(trip_id)
+
+        if effective_limit is not None and len(saved_ids) >= effective_limit:
+            break
+
+    return saved_ids
+
+
+def _saved_trip_rows_for_member(user: object, *, limit: int) -> list[Trip]:
+    saved_ids = _saved_trip_ids_for_member(user, limit=limit)
+    if not saved_ids:
+        return []
+
+    trip_rows = Trip.objects.select_related("host").filter(pk__in=saved_ids)
+    trip_map: dict[int, Trip] = {int(trip.pk): trip for trip in trip_rows}
+    return [trip_map[trip_id] for trip_id in saved_ids if trip_id in trip_map]
+
+
+def _saved_trip_count_for_member(user: object) -> int:
+    return len(_saved_trip_ids_for_member(user))
+
+
 def build_trip_list_payload_for_user(user: object, limit: int = 24) -> TripListPayload:
     effective_limit = max(1, int(limit or 24))
 
@@ -345,11 +392,13 @@ def build_my_trips_payload_for_member(
         selected_rows = list(past_qs[:effective_limit])
         reason = "Hosted trips that have already started."
     elif effective_tab == "saved":
-        selected_rows = []
-        reason = "Saved tab is reserved for bookmark integration from the social app."
+        selected_rows = _saved_trip_rows_for_member(typed_user, limit=effective_limit)
+        reason = "Saved tab is sourced from social bookmarks."
     else:
         selected_rows = list(upcoming_qs[:effective_limit])
         reason = "Upcoming hosted trips ordered by start time."
+
+    saved_count = _saved_trip_count_for_member(typed_user)
 
     return {
         "trips": [trip.to_trip_data() for trip in selected_rows],
@@ -358,7 +407,7 @@ def build_my_trips_payload_for_member(
             "upcoming": upcoming_qs.count(),
             "hosting": hosted_qs.count(),
             "past": past_qs.count(),
-            "saved": 0,
+            "saved": saved_count,
         },
         "mode": "member-mine-hosted",
         "reason": reason,

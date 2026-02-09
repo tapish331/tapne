@@ -40,3 +40,8 @@ email-validator>=2.2,<3.0
 # Blogs app note:
 # blogs list/detail/CRUD and bootstrap_blogs command rely on Django core
 # plus existing account/feed models. No extra third-party package is required.
+
+# Social app note:
+# follow/bookmark routes, bookmarks page payloads, and bootstrap_social command
+# rely on Django core plus existing account/feed/trip/blog models.
+# No additional third-party package is required.

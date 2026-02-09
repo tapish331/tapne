@@ -31,11 +31,7 @@
         {% include "partials/cards/trip_card.html" with trip=trip %}
         {% empty %}
         <div class="empty-state">
-            {% if active_tab == "saved" %}
-            Saved trips are currently sourced from the social bookmarks app and are not wired yet.
-            {% else %}
             No trips found for this tab.
-            {% endif %}
         </div>
         {% endfor %}
     </div>

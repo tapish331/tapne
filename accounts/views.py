@@ -16,6 +16,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import LoginForm, ProfileEditForm, SignUpForm
 from .models import AccountProfile, ensure_profile
+from social.models import build_follow_stats_for_user, is_following_user
 
 UserModel = get_user_model()
 
@@ -434,7 +435,16 @@ def public_profile_view(request: HttpRequest, username: str) -> HttpResponse:
     viewer_is_member = bool(request.user.is_authenticated)
     viewer_username = str(getattr(request.user, "username", ""))
     is_owner = viewer_is_member and viewer_username.lower() == lookup_username.lower()
-    can_interact = viewer_is_member and not is_owner
+    profile_user_exists = profile_user is not None
+    can_interact = viewer_is_member and not is_owner and profile_user_exists
+    is_following_profile = False
+    if can_interact and profile_user is not None:
+        is_following_profile = is_following_user(
+            follower=request.user,
+            target_user=profile_user,
+        )
+
+    follow_stats = build_follow_stats_for_user(profile_user) if profile_user is not None else {"followers": 0}
     _vprint(
         request,
         (
@@ -453,5 +463,8 @@ def public_profile_view(request: HttpRequest, username: str) -> HttpResponse:
         "can_interact": can_interact,
         "is_owner": is_owner,
         "is_demo_profile": is_demo_profile,
+        "profile_user_exists": profile_user_exists,
+        "is_following_profile": is_following_profile,
+        "profile_followers_count": follow_stats["followers"],
     }
     return render(request, "pages/users/profile.html", context)

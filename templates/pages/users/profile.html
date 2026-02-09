@@ -26,6 +26,10 @@
             <dd>{{ profile.location|default:"Not provided" }}</dd>
         </div>
         <div>
+            <dt>Followers</dt>
+            <dd>{{ profile_followers_count|default:0 }}</dd>
+        </div>
+        <div>
             <dt>Website</dt>
             <dd>
                 {% if profile.website %}
@@ -42,9 +46,31 @@
         <a class="btn btn-primary" href="{% url 'accounts:me-edit' %}">Edit profile</a>
         <a class="btn btn-secondary" href="{% url 'accounts:me' %}">Go to my profile hub</a>
         {% elif can_interact %}
-        <button class="btn btn-primary" type="button">Follow</button>
+        {% if is_following_profile %}
+        <form method="post" action="{% url 'social:unfollow' username=profile.username %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="btn btn-primary" type="submit">Unfollow</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'social:follow' username=profile.username %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="btn btn-primary" type="submit">Follow</button>
+        </form>
+        {% endif %}
         <button class="btn btn-secondary" type="button">Message</button>
-        <button class="btn btn-ghost" type="button">Bookmark profile</button>
+        <form method="post" action="{% url 'social:bookmark' %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="type" value="user">
+            <input type="hidden" name="id" value="{{ profile.username }}">
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="btn btn-ghost" type="submit">Bookmark profile</button>
+        </form>
+        {% elif viewer_is_member and not profile_user_exists %}
+        <button class="btn btn-primary" type="button" disabled>Follow unavailable</button>
+        <button class="btn btn-secondary" type="button" disabled>Message unavailable</button>
+        <button class="btn btn-ghost" type="button" disabled>Bookmark unavailable</button>
         {% else %}
         <button class="btn btn-primary js-guest-action" type="button" data-action-label="follow this user">Follow</button>
         <button class="btn btn-secondary js-guest-action" type="button" data-action-label="message this user">Message</button>

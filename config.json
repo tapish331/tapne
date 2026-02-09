@@ -12,7 +12,8 @@
       "python manage.py bootstrap_feed --verbose",
       "python manage.py bootstrap_search --verbose",
       "python manage.py bootstrap_trips --verbose --create-missing-hosts",
-      "python manage.py bootstrap_blogs --verbose --create-missing-authors"
+      "python manage.py bootstrap_blogs --verbose --create-missing-authors",
+      "python manage.py bootstrap_social --verbose --create-missing-members"
     ]
   },
   "local_stack": {
@@ -63,6 +64,7 @@
       "templates/pages/users/profile.html",
       "templates/pages/activity/index.html",
       "templates/pages/settings/index.html",
+      "templates/pages/social/bookmarks.html",
       "templates/pages/accounts/me.html",
       "templates/pages/accounts/me_edit.html"
     ],
@@ -193,6 +195,33 @@
         "/blogs/create/",
         "/blogs/<slug>/edit/",
         "/blogs/<slug>/delete/"
+      ]
+    },
+    "social": {
+      "required_files": [
+        "social/apps.py",
+        "social/models.py",
+        "social/views.py",
+        "social/urls.py",
+        "social/admin.py",
+        "social/tests.py",
+        "social/management/__init__.py",
+        "social/management/commands/__init__.py",
+        "social/management/commands/bootstrap_social.py",
+        "social/migrations/__init__.py",
+        "social/migrations/0001_initial.py"
+      ],
+      "member_routes": [
+        "/social/follow/<username>/",
+        "/social/unfollow/<username>/",
+        "/social/bookmark/",
+        "/social/unbookmark/",
+        "/social/bookmarks/"
+      ],
+      "bookmark_types": [
+        "trip",
+        "user",
+        "blog"
       ]
     }
   },

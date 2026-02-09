@@ -520,6 +520,91 @@ python manage.py bootstrap_blogs --verbose --create-missing-authors --demo-passw
 * `POST /social/unbookmark/`
 * `GET /social/bookmarks/` (member saved items)
 
+### Current `social` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/social/` to `social/urls.py`
+  * `social/urls.py` maps:
+    * `path("follow/<slug:username>/", views.follow_user_view, name="follow")`
+    * `path("unfollow/<slug:username>/", views.unfollow_user_view, name="unfollow")`
+    * `path("bookmark/", views.bookmark_view, name="bookmark")`
+    * `path("unbookmark/", views.unbookmark_view, name="unbookmark")`
+    * `path("bookmarks/", views.bookmarks_view, name="bookmarks")`
+* views and auth behavior:
+  * follow/unfollow/bookmark/unbookmark are `POST` and enforce `@login_required`
+  * bookmarks page is `GET` and enforces `@login_required`
+  * redirects use safe same-origin `next` resolution (posted `next`, then safe referer, then fallback)
+  * follow endpoint blocks self-follow attempts and keeps flow idempotent (`get_or_create`)
+  * follow/unfollow actions sync `feed.MemberFeedPreference.followed_usernames` so home/search personalization reflects social graph changes immediately
+* persistence:
+  * `social.models.FollowRelation`
+    * directed edge: `follower -> following`
+    * uniqueness: one row per `(follower, following)`
+    * integrity rule: self-follow is blocked at DB level (`CheckConstraint`)
+    * indexed for inbound/outbound follow queries
+  * `social.models.Bookmark`
+    * one row per `(member, target_type, target_key)`
+    * supported target types: `trip`, `user`, `blog`
+    * canonical key strategy:
+      * `trip`: numeric trip id as string
+      * `user`: lowercase username
+      * `blog`: lowercase slug
+    * stores `target_label` + `target_url` snapshots to keep bookmark rows readable even if source rows change
+* bookmark target resolution:
+  * `trip` bookmarks resolve against live `trips.Trip`
+  * `user` bookmarks resolve against live `AUTH_USER_MODEL`
+  * `blog` bookmarks resolve against live `blogs.Blog`
+  * invalid or missing targets are rejected on create, and unbookmark accepts canonical fallback normalization for delete paths
+* template integration:
+  * member action forms now post to social endpoints from:
+    * `templates/partials/cards/trip_card.html`
+    * `templates/partials/cards/blog_card.html`
+    * `templates/partials/cards/user_card.html`
+    * `templates/pages/trips/detail.html`
+    * `templates/pages/blogs/detail.html`
+    * `templates/pages/users/profile.html`
+  * member top nav links to `/social/bookmarks/`
+  * bookmarks page template: `templates/pages/social/bookmarks.html`
+* trips integration:
+  * `trips` saved tab (`/trips/mine/?tab=saved`) is now sourced from `social.Bookmark` trip targets
+  * `tab_counts.saved` reflects live saved-trip bookmark count
+* admin:
+  * `social/admin.py` registers `FollowRelation` and `Bookmark` with list filters/search/autocomplete/read-only timestamps
+* tests:
+  * `social/tests.py` covers auth gating, follow/unfollow behavior, preference sync, bookmark create/delete/idempotency, bookmarks payload rendering, verbose logging, and bootstrap command behavior
+  * `trips/tests.py` includes regression coverage for saved-tab bookmark integration
+
+### Social verbose behavior
+
+`social` prints server-side debug lines prefixed with `[social][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Social seed/bootstrap command
+
+`social` includes `bootstrap_social` for seeding follow graph rows and bookmark rows used by profile actions, bookmarks page, and saved-trip integration.
+
+```powershell
+# Seed social follows + bookmarks with verbose logs
+python manage.py bootstrap_social --verbose --create-missing-members
+
+# Run in existing-member mode (missing members are skipped)
+python manage.py bootstrap_social --verbose
+```
+
+Recommended seed order when starting from an empty DB:
+
+```powershell
+python manage.py bootstrap_accounts --verbose
+python manage.py bootstrap_trips --verbose --create-missing-hosts
+python manage.py bootstrap_blogs --verbose --create-missing-authors
+python manage.py bootstrap_social --verbose --create-missing-members
+```
+
+If trip/blog catalog rows are missing, `bootstrap_social` still seeds follow and user-bookmark rows and logs skipped trip/blog bookmark seeds in verbose mode.
+
 ---
 
 ## Join requests (enrollment app) (member-only actions)
