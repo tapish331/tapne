@@ -6,18 +6,31 @@
 <section class="hero hero-compact">
     <p class="eyebrow">Blogs</p>
     <h1>Read community stories and guides.</h1>
+    {% if user.is_authenticated %}
+    <p>Member mode supports full blog reads plus create/edit/delete ownership flows.</p>
+    {% else %}
     <p>Guests can read full content. Comment, review, and bookmark actions are member-only.</p>
+    {% endif %}
+    {% if blog_reason %}
+    <p class="detail-meta">{{ blog_reason }} ({{ blog_mode|default:"unknown" }} / {{ blog_source|default:"unknown" }})</p>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    <div class="inline-actions">
+        <a class="btn btn-primary" href="/blogs/create/">Create blog</a>
+    </div>
+    {% endif %}
 </section>
 
 <section class="section-grid">
     <header class="section-header">
-        <h2>Latest blogs</h2>
+        <h2>Most-read blogs</h2>
     </header>
     <div class="card-grid">
         {% for blog in blogs %}
         {% include "partials/cards/blog_card.html" with blog=blog %}
         {% empty %}
-        <div class="empty-state">No blogs yet. Publish the first post to start this feed.</div>
+        <div class="empty-state">Blog list is empty. Run <code>python manage.py bootstrap_blogs --create-missing-authors --verbose</code> to seed demo data.</div>
         {% endfor %}
     </div>
 </section>

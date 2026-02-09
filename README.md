@@ -429,14 +429,86 @@ python manage.py bootstrap_trips --verbose
 * `GET /blogs/`
 * `GET /blogs/<slug>/`
 
-  * Guest: full blog content, actions disabled
-  * Member: full blog + actions
+  * Guest: full blog content; member-only actions open the shared auth modal
+  * Member: full blog content + action buttons enabled
 
 **CRUD (member-only)**
 
 * `GET/POST /blogs/create/`
 * `GET/POST /blogs/<slug>/edit/`
 * `POST /blogs/<slug>/delete/`
+
+### Current `blogs` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/blogs/` to `blogs/urls.py`
+  * `blogs/urls.py` maps:
+    * `path("", views.blog_list_view, name="list")`
+    * `path("create/", views.blog_create_view, name="create")`
+    * `path("<slug:slug>/", views.blog_detail_view, name="detail")`
+    * `path("<slug:slug>/edit/", views.blog_edit_view, name="edit")`
+    * `path("<slug:slug>/delete/", views.blog_delete_view, name="delete")`
+* views and context:
+  * `blogs/views.py::blog_list_view` uses `build_blog_list_payload_for_user(...)`
+  * list template context keys: `blogs`, `blog_mode`, `blog_reason`, `blog_source`
+  * `blogs/views.py::blog_detail_view` uses `build_blog_detail_payload_for_user(...)`
+  * detail template context keys: `blog`, `blog_detail_mode`, `blog_detail_reason`, `blog_detail_source`, `can_manage_blog`
+  * create/edit views use `BlogForm` and render `templates/pages/blogs/form.html` with `form_mode`, `page_title`, and submit labels
+* template behavior:
+  * `templates/pages/blogs/list.html` renders runtime ranking metadata (`blog_reason`, `blog_mode`, `blog_source`) and shows `Create blog` for members
+  * `templates/pages/blogs/detail.html` renders detail metadata and conditionally shows owner-only `Edit blog` / `Delete blog` controls when `can_manage_blog=True`
+* data and ranking:
+  * live list mode reads published rows from `blogs.Blog` (`is_published=True`)
+  * guest list ranking (`guest-most-read-live`/`guest-most-read-demo`) sorts by `reads`, then title
+  * member list ranking (`member-like-minded-live`/`member-like-minded-demo`) boosts:
+    * authors from `MemberFeedPreference.followed_usernames`
+    * content matching `MemberFeedPreference.interest_keywords`
+  * if no preference row exists, member list still works via inferred fallback interests
+  * if no live `Blog` rows exist, list falls back to `feed.models` demo blog catalog
+  * detail route can return source `live-db`, `demo-fallback`, or `synthetic-fallback`
+  * guest detail mode is full-content (actions disabled in UI), member detail mode is full-content plus actions
+* persistence (`Blog` model):
+  * owner relation: `author -> AUTH_USER_MODEL` (`ForeignKey`)
+  * content fields: `slug`, `title`, `excerpt`, `body`
+  * ranking/visibility fields: `reads`, `reviews_count`, `is_published`
+  * ops fields: `created_at`, `updated_at`, indexed for author/time, published/time, and read-ranking queries
+* form and slug behavior (`BlogForm`):
+  * editable fields: `title`, `slug` (optional), `excerpt`, `body`, `is_published`
+  * when `slug` is blank, it auto-generates from title (`slugify`) and resolves collisions with numeric suffixes
+  * when `slug` is provided, it is normalized and uniqueness-validated case-insensitively
+* auth and ownership:
+  * member-only: create/edit/delete routes enforce `@login_required`
+  * ownership: edit/delete routes resolve `Blog` by `slug` + `author=request.user`
+  * detail allows unpublished rows only for the owning author
+* search integration:
+  * `search` query flows can merge live blog rows from `blogs.Blog` when available
+  * unpublished blog rows are excluded from search results to prevent draft leakage
+* tests:
+  * `blogs/tests.py` covers guest/member browse modes, publish visibility, CRUD auth/ownership, verbose path, and bootstrap command behavior
+  * `search/tests.py` includes regression coverage for excluding unpublished live blogs from query results
+
+### Blogs verbose behavior
+
+`blogs` prints server-side debug lines prefixed with `[blogs][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Blogs seed/bootstrap command
+
+`blogs` includes `bootstrap_blogs` for creating/updating demo blog rows used by list/detail/search integration.
+
+```powershell
+# Seed blog rows and create missing demo authors, with verbose logs
+python manage.py bootstrap_blogs --verbose --create-missing-authors
+
+# Seed only when authors already exist (missing authors are skipped)
+python manage.py bootstrap_blogs --verbose
+
+# Customize password for any newly created demo authors
+python manage.py bootstrap_blogs --verbose --create-missing-authors --demo-password "TapneDemoPass!123"
+```
 
 ---
 

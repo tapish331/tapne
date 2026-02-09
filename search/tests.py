@@ -8,6 +8,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
+from blogs.models import Blog
 from feed.models import MemberFeedPreference
 
 UserModel = get_user_model()
@@ -172,6 +173,36 @@ class SearchViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_live_blogs.assert_not_called()
+
+    def test_search_blogs_with_query_excludes_unpublished_live_rows(self) -> None:
+        author = UserModel.objects.create_user(
+            username="blog-author",
+            email="blog-author@example.com",
+            password="LivePass!12345",
+        )
+        Blog.objects.create(
+            author=author,
+            slug="public-search-blog",
+            title="Public search blog",
+            excerpt="Visible excerpt",
+            body="Visible body",
+            is_published=True,
+        )
+        Blog.objects.create(
+            author=author,
+            slug="draft-search-blog",
+            title="Draft search blog",
+            excerpt="Hidden excerpt",
+            body="Hidden body",
+            is_published=False,
+        )
+
+        response = self.client.get(f"{reverse('search:search')}?q=search&type=blogs")
+
+        self.assertEqual(response.status_code, 200)
+        blog_slugs = {blog["slug"] for blog in response.context["blogs"]}
+        self.assertIn("public-search-blog", blog_slugs)
+        self.assertNotIn("draft-search-blog", blog_slugs)
 
     def test_search_verbose_query_prints_debug_lines(self) -> None:
         with patch("builtins.print") as mock_print:

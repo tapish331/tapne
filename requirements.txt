@@ -36,3 +36,7 @@ email-validator>=2.2,<3.0
 # Trips app note:
 # trips list/detail/CRUD, mine tabs, and bootstrap_trips command rely on Django core
 # plus existing account/feed models. No extra third-party package is required.
+
+# Blogs app note:
+# blogs list/detail/CRUD and bootstrap_blogs command rely on Django core
+# plus existing account/feed models. No extra third-party package is required.

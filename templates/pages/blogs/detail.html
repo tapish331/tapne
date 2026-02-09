@@ -6,6 +6,11 @@
 <article class="detail-shell">
     <p class="eyebrow">Blog details</p>
     <h1>{{ blog.title|default:"Blog title" }}</h1>
+
+    {% if blog_detail_reason %}
+    <p class="detail-meta">{{ blog_detail_reason }} ({{ blog_detail_mode|default:"unknown" }} / {{ blog_detail_source|default:"unknown" }})</p>
+    {% endif %}
+
     <p class="detail-meta">
         {% if blog.author_username %}
         By <a href="/u/{{ blog.author_username }}/">@{{ blog.author_username }}</a>
@@ -13,12 +18,23 @@
         By @author
         {% endif %}
     </p>
+
+    {% if blog.excerpt %}
+    <p>{{ blog.excerpt }}</p>
+    {% endif %}
+
     <div class="prose">
         {{ blog.body|default:"Blog content appears here once posts are created."|linebreaks }}
     </div>
 
     <div class="inline-actions">
-        {% if user.is_authenticated %}
+        {% if can_manage_blog %}
+        <a class="btn btn-secondary" href="/blogs/{{ blog.slug }}/edit/">Edit blog</a>
+        <form method="post" action="/blogs/{{ blog.slug }}/delete/" class="inline-form">
+            {% csrf_token %}
+            <button class="btn btn-ghost" type="submit">Delete blog</button>
+        </form>
+        {% elif user.is_authenticated %}
         <button class="btn btn-primary" type="button">Comment</button>
         <button class="btn btn-secondary" type="button">Review</button>
         <button class="btn btn-ghost" type="button">Bookmark</button>

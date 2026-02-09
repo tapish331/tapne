@@ -506,6 +506,11 @@ def _live_blogs_for_query(query: str) -> list[BlogData]:
     live_blogs: list[BlogData] = []
     queryset = blog_model.objects.all().order_by("-pk")
     for blog in queryset:
+        # Search results should not leak unpublished drafts.
+        is_published_value = getattr(blog, "is_published", True)
+        if isinstance(is_published_value, bool) and not is_published_value:
+            continue
+
         blog_id = int(getattr(blog, "pk", 0))
         if blog_id <= 0:
             continue

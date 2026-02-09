@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | {{ page_title|default:"Blog form" }}{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">Blogs</p>
+    <h1>{{ page_title|default:"Blog form" }}</h1>
+    <p>These fields are stored in PostgreSQL and flow into blog list/detail and search results.</p>
+</section>
+
+<section class="section-grid">
+    <form method="post" class="form-stack" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="flash flash-error">
+            {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% for field in form %}
+        <div class="form-field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+            <p class="detail-meta">{{ field.help_text }}</p>
+            {% endif %}
+            {% if field.errors %}
+            <div class="flash flash-error">
+                {% for error in field.errors %}
+                <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <div class="inline-actions">
+            <button class="btn btn-primary" type="submit">{{ submit_label|default:"Save" }}</button>
+            {% if form_mode == "edit" and blog %}
+            <a class="btn btn-secondary" href="/blogs/{{ blog.slug }}/">Cancel</a>
+            {% else %}
+            <a class="btn btn-secondary" href="/blogs/">Cancel</a>
+            {% endif %}
+        </div>
+    </form>
+</section>
+{% endblock %}
