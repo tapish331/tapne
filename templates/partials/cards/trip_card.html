@@ -33,7 +33,17 @@
     <div class="card-actions">
         <a class="btn btn-secondary" href="{{ trip.url|default:'#' }}">View details</a>
         {% if user.is_authenticated %}
-        <button class="btn btn-primary" type="button">Request to join</button>
+        {% if trip.host_username and user.username|lower == trip.host_username|lower %}
+        <a class="btn btn-primary" href="{% url 'enrollment:hosting-inbox' %}">Hosting inbox</a>
+        {% elif trip.id %}
+        <form method="post" action="{% url 'enrollment:trip-request' trip_id=trip.id %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="btn btn-primary" type="submit">Request to join</button>
+        </form>
+        {% else %}
+        <button class="btn btn-primary" type="button" disabled>Request to join</button>
+        {% endif %}
         {% if trip.id %}
         <form method="post" action="{% url 'social:bookmark' %}" class="inline-form">
             {% csrf_token %}

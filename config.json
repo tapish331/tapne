@@ -13,7 +13,8 @@
       "python manage.py bootstrap_search --verbose",
       "python manage.py bootstrap_trips --verbose --create-missing-hosts",
       "python manage.py bootstrap_blogs --verbose --create-missing-authors",
-      "python manage.py bootstrap_social --verbose --create-missing-members"
+      "python manage.py bootstrap_social --verbose --create-missing-members",
+      "python manage.py bootstrap_enrollment --verbose --create-missing-members"
     ]
   },
   "local_stack": {
@@ -65,6 +66,7 @@
       "templates/pages/activity/index.html",
       "templates/pages/settings/index.html",
       "templates/pages/social/bookmarks.html",
+      "templates/pages/enrollment/hosting_inbox.html",
       "templates/pages/accounts/me.html",
       "templates/pages/accounts/me_edit.html"
     ],
@@ -222,6 +224,32 @@
         "trip",
         "user",
         "blog"
+      ]
+    },
+    "enrollment": {
+      "required_files": [
+        "enrollment/apps.py",
+        "enrollment/models.py",
+        "enrollment/views.py",
+        "enrollment/urls.py",
+        "enrollment/admin.py",
+        "enrollment/tests.py",
+        "enrollment/management/__init__.py",
+        "enrollment/management/commands/__init__.py",
+        "enrollment/management/commands/bootstrap_enrollment.py",
+        "enrollment/migrations/__init__.py",
+        "enrollment/migrations/0001_initial.py"
+      ],
+      "member_routes": [
+        "/enroll/trips/<trip_id>/request/",
+        "/enroll/hosting/inbox/",
+        "/enroll/requests/<request_id>/approve/",
+        "/enroll/requests/<request_id>/deny/"
+      ],
+      "request_statuses": [
+        "pending",
+        "approved",
+        "denied"
       ]
     }
   },

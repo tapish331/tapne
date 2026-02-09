@@ -50,6 +50,7 @@ Members can browse **and** do actions.
 ### Member can do
 
 * request to join trips
+* approve/deny join requests on trips they host
 * follow users
 * bookmark trips/users/blogs
 * comment/reply (on trips/blogs)
@@ -101,6 +102,8 @@ These are shared assets:
         index.html
       settings/
         index.html
+      enrollment/
+        hosting_inbox.html
       accounts/
         me.html
         me_edit.html
@@ -601,9 +604,11 @@ python manage.py bootstrap_accounts --verbose
 python manage.py bootstrap_trips --verbose --create-missing-hosts
 python manage.py bootstrap_blogs --verbose --create-missing-authors
 python manage.py bootstrap_social --verbose --create-missing-members
+python manage.py bootstrap_enrollment --verbose --create-missing-members
 ```
 
 If trip/blog catalog rows are missing, `bootstrap_social` still seeds follow and user-bookmark rows and logs skipped trip/blog bookmark seeds in verbose mode.
+If trip rows are missing, `bootstrap_enrollment` skips those enrollment seeds and logs each skip in verbose mode.
 
 ---
 
@@ -613,6 +618,94 @@ If trip/blog catalog rows are missing, `bootstrap_social` still seeds follow and
 * `GET /enroll/hosting/inbox/` (host sees requests)
 * `POST /enroll/requests/<request_id>/approve/`
 * `POST /enroll/requests/<request_id>/deny/`
+
+### Current `enrollment` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/enroll/` to `enrollment/urls.py`
+  * `enrollment/urls.py` maps:
+    * `path("trips/<int:trip_id>/request/", views.trip_request_view, name="trip-request")`
+    * `path("hosting/inbox/", views.hosting_inbox_view, name="hosting-inbox")`
+    * `path("requests/<int:request_id>/approve/", views.approve_request_view, name="approve")`
+    * `path("requests/<int:request_id>/deny/", views.deny_request_view, name="deny")`
+* views and auth behavior:
+  * join request endpoint is `POST` and enforces `@login_required`
+  * hosting inbox endpoint is `GET` and enforces `@login_required`
+  * host review endpoints (approve/deny) are `POST` and owner-scoped by `trip__host=request.user`
+  * redirects use safe same-origin `next` resolution (posted `next`, then safe referer, then fallback)
+  * helper contract:
+    * `submit_join_request(...)` manages idempotent create/reopen behavior
+    * `apply_enrollment_decision(...)` applies host decisions with reviewer metadata
+  * join request creation blocks:
+    * missing trips
+    * unpublished trips
+    * host self-requests
+  * join request flow is idempotent by `(trip, requester)`:
+    * first request creates `pending`
+    * repeated pending request does not duplicate rows
+    * approved request remains approved
+    * denied request is reopened back to pending on re-submit
+  * hosting inbox filter contract:
+    * `GET /enroll/hosting/inbox/?status=pending|approved|denied|all`
+    * unsupported status values safely normalize to `pending`
+* persistence:
+  * `enrollment.models.EnrollmentRequest`
+    * one row per `(trip, requester)` (`UniqueConstraint`)
+    * statuses: `pending`, `approved`, `denied`
+    * lifecycle: `pending -> approved|denied` (host decision)
+    * optional requester note: `message` (`max_length=500`)
+    * review metadata: `reviewed_by`, `reviewed_at`
+    * indexed for host inbox and requester status queries
+* payload and inbox behavior:
+  * `build_hosting_inbox_payload_for_member(...)` powers host inbox rendering
+  * supported inbox filters: `pending`, `approved`, `denied`, `all`
+  * payload includes per-status counts and newest-first request rows
+  * host inbox template context keys:
+    * `hosting_requests`, `hosting_counts`, `hosting_inbox_mode`, `hosting_inbox_reason`, `active_status`
+* template integration:
+  * member trip actions post to enrollment endpoint from:
+    * `templates/partials/cards/trip_card.html`
+    * `templates/pages/trips/detail.html`
+  * host entrypoints link to inbox from:
+    * `templates/base.html` member nav
+    * `templates/pages/trips/mine.html`
+    * host branch in `templates/pages/trips/detail.html`
+    * host branch in `templates/partials/cards/trip_card.html` (shows `Hosting inbox` instead of self-request action)
+  * host inbox page template: `templates/pages/enrollment/hosting_inbox.html`
+* admin:
+  * `enrollment/admin.py` registers `EnrollmentRequest` with filters/search/autocomplete/read-only timestamps
+* tests:
+  * `enrollment/tests.py` covers auth gating, idempotent join-request behavior, host ownership for decisions, inbox filtering, verbose logging, and bootstrap command behavior
+
+### Enrollment UI behavior
+
+* guest behavior:
+  * join actions remain blocked by shared guest action flow (`.js-guest-action`) and open the shared auth modal
+* member behavior:
+  * request-to-join submits a real `POST` to enrollment routes from trip cards/detail pages
+* host behavior:
+  * hosts do not submit self-requests; they navigate to hosting inbox and review pending rows
+  * review actions are owner-scoped and use `POST` (approve/deny)
+
+### Enrollment verbose behavior
+
+`enrollment` prints server-side debug lines prefixed with `[enrollment][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Enrollment seed/bootstrap command
+
+`enrollment` includes `bootstrap_enrollment` for seeding host inbox rows with pending/approved/denied request states.
+
+```powershell
+# Seed enrollment requests with verbose logs (requires member seed users to exist)
+python manage.py bootstrap_enrollment --verbose
+
+# Also create missing demo requester members first
+python manage.py bootstrap_enrollment --verbose --create-missing-members
+```
 
 ---
 

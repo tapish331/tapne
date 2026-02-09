@@ -29,12 +29,17 @@
     <div class="inline-actions">
         {% if can_manage_trip %}
         <a class="btn btn-secondary" href="/trips/{{ trip.id }}/edit/">Edit trip</a>
+        <a class="btn btn-primary" href="{% url 'enrollment:hosting-inbox' %}">Hosting inbox</a>
         <form method="post" action="/trips/{{ trip.id }}/delete/" class="inline-form">
             {% csrf_token %}
             <button class="btn btn-ghost" type="submit">Delete trip</button>
         </form>
         {% elif user.is_authenticated %}
-        <button class="btn btn-primary" type="button">Request to join</button>
+        <form method="post" action="{% url 'enrollment:trip-request' trip_id=trip.id %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="btn btn-primary" type="submit">Request to join</button>
+        </form>
         <form method="post" action="{% url 'social:bookmark' %}" class="inline-form">
             {% csrf_token %}
             <input type="hidden" name="type" value="trip">

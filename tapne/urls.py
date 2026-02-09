@@ -28,6 +28,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("trips/", include("trips.urls")),
     path("blogs/", include("blogs.urls")),
     path("social/", include("social.urls")),
+    path("enroll/", include("enrollment.urls")),
     path("u/<slug:username>/", accounts_views.public_profile_view, name="public-profile"),
     path("activity/", activity_page, name="activity"),
     path("settings/", settings_page, name="settings"),

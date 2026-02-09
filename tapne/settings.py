@@ -45,7 +45,8 @@ INSTALLED_APPS = [
     "search",
     "trips",
     "blogs",
-    "social"
+    "social",
+    "enrollment",
 ]
 
 MIDDLEWARE = [

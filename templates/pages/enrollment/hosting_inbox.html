@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Hosting Inbox{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">Enrollment</p>
+    <h1>Review join requests for your hosted trips.</h1>
+    <p>{{ hosting_inbox_reason|default:"Approve or deny member join requests from your hosted trip catalog." }}</p>
+    <p class="detail-meta">{{ hosting_inbox_mode|default:"member-hosting-inbox" }} / active filter: {{ active_status|default:"pending" }}</p>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Status filters</h2>
+    </header>
+    <div class="inline-actions">
+        <a class="btn {% if active_status == 'pending' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'enrollment:hosting-inbox' %}?status=pending">Pending ({{ hosting_counts.pending|default:0 }})</a>
+        <a class="btn {% if active_status == 'approved' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'enrollment:hosting-inbox' %}?status=approved">Approved ({{ hosting_counts.approved|default:0 }})</a>
+        <a class="btn {% if active_status == 'denied' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'enrollment:hosting-inbox' %}?status=denied">Denied ({{ hosting_counts.denied|default:0 }})</a>
+        <a class="btn {% if active_status == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'enrollment:hosting-inbox' %}?status=all">All ({{ hosting_counts.all|default:0 }})</a>
+    </div>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Requests</h2>
+    </header>
+    <div class="card-grid">
+        {% for item in hosting_requests %}
+        <article class="card">
+            <header class="card-header">
+                <p class="card-kicker">Join request</p>
+                <h3 class="card-title">{{ item.trip_title|default:"Trip" }}</h3>
+                <p class="card-subtitle">
+                    from
+                    <a href="/u/{{ item.requester_username }}/">@{{ item.requester_username }}</a>
+                    for
+                    <a href="{{ item.trip_url|default:'#' }}">trip #{{ item.trip_id }}</a>
+                </p>
+            </header>
+
+            {% if item.trip_destination %}
+            <p class="card-description">Destination: {{ item.trip_destination }}</p>
+            {% endif %}
+
+            {% if item.message %}
+            <p class="card-description">{{ item.message }}</p>
+            {% else %}
+            <p class="card-description">No note was provided with this request.</p>
+            {% endif %}
+
+            <p class="detail-meta">
+                Status: {{ item.status|title }}
+                {% if item.reviewed_by_username %}
+                • reviewed by @{{ item.reviewed_by_username }}
+                {% endif %}
+            </p>
+
+            <div class="card-actions">
+                {% if item.status == 'pending' %}
+                <form method="post" action="{% url 'enrollment:approve' request_id=item.id %}" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn-primary" type="submit">Approve</button>
+                </form>
+                <form method="post" action="{% url 'enrollment:deny' request_id=item.id %}" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn-ghost" type="submit">Deny</button>
+                </form>
+                {% else %}
+                <a class="btn btn-secondary" href="{{ item.trip_url|default:'#' }}">Open trip</a>
+                {% endif %}
+            </div>
+        </article>
+        {% empty %}
+        <div class="empty-state">
+            No requests for this filter yet. Run <code>python manage.py bootstrap_enrollment --verbose --create-missing-members</code> to seed sample rows.
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

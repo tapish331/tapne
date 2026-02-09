@@ -45,3 +45,8 @@ email-validator>=2.2,<3.0
 # follow/bookmark routes, bookmarks page payloads, and bootstrap_social command
 # rely on Django core plus existing account/feed/trip/blog models.
 # No additional third-party package is required.
+
+# Enrollment app note:
+# join-request routes, host inbox review flows, and bootstrap_enrollment command
+# rely on Django core plus existing trip/account models.
+# No additional third-party package is required.

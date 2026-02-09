@@ -18,6 +18,7 @@
         <a class="btn {% if active_tab == 'hosting' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=hosting">Hosting ({{ tab_counts.hosting|default:0 }})</a>
         <a class="btn {% if active_tab == 'past' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=past">Past ({{ tab_counts.past|default:0 }})</a>
         <a class="btn {% if active_tab == 'saved' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=saved">Saved ({{ tab_counts.saved|default:0 }})</a>
+        <a class="btn btn-secondary" href="{% url 'enrollment:hosting-inbox' %}">Hosting inbox</a>
         <a class="btn btn-ghost" href="/trips/create/">Create trip</a>
     </div>
 </section>
