@@ -18,7 +18,8 @@
       "python manage.py bootstrap_interactions --verbose --create-missing-members",
       "python manage.py bootstrap_reviews --verbose --create-missing-members",
       "python manage.py bootstrap_activity --verbose --create-missing-members",
-      "python manage.py bootstrap_settings --verbose --create-missing-members"
+      "python manage.py bootstrap_settings --verbose --create-missing-members",
+      "python manage.py bootstrap_media --verbose"
     ]
   },
   "local_stack": {
@@ -360,6 +361,30 @@
         "dm_privacy",
         "search_visibility",
         "digest_enabled"
+      ]
+    },
+    "media": {
+      "required_files": [
+        "media/apps.py",
+        "media/models.py",
+        "media/views.py",
+        "media/urls.py",
+        "media/admin.py",
+        "media/tests.py",
+        "media/management/__init__.py",
+        "media/management/commands/__init__.py",
+        "media/management/commands/bootstrap_media.py",
+        "media/migrations/__init__.py",
+        "media/migrations/0001_initial.py"
+      ],
+      "member_routes": [
+        "/uploads/upload/",
+        "/uploads/delete/<attachment_id>/"
+      ],
+      "attachment_targets": [
+        "trip",
+        "blog",
+        "review"
       ]
     }
   },

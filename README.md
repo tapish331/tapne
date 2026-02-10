@@ -150,6 +150,7 @@ These are feature modules:
 * `reviews` (reviews)
 * `activity` (member activity page)
 * `settings_app` (member settings)
+* `media` (image/video uploads + storage abstraction, attachment wiring for trips/blogs/reviews, plus upload validation/permission checks)
 
 ---
 
@@ -1126,6 +1127,121 @@ curl -I http://localhost:8000/settings/
 
 ---
 
+## Media uploads (media app) (member-only upload actions)
+
+**Actions**
+
+* `POST /uploads/upload/`
+  * upload image/video and attach to `trip|blog|review` targets
+* `POST /uploads/delete/<attachment_id>/`
+  * remove an attachment (owner-only)
+
+### Current `media` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/uploads/` to `media/urls.py`
+  * `media/urls.py` maps:
+    * `path("upload/", views.media_upload_view, name="upload")`
+    * `path("delete/<int:attachment_id>/", views.media_delete_view, name="delete")`
+* storage behavior:
+  * upload persistence uses Django `STORAGES["default"]` abstraction
+  * local faithful stack: MinIO-backed S3 storage
+  * production: GCS-backed storage
+  * filesystem fallback stays available for tests/dev overrides
+  * local endpoint split is intentional:
+    * app/storage I/O inside Docker uses `AWS_S3_ENDPOINT_URL=http://minio:9000`
+    * browser-facing media links use `MEDIA_PUBLIC_ENDPOINT` (default `http://localhost:9000`)
+    * `minio` is a Docker-network hostname; your browser cannot resolve it directly
+    * if rendered links contain `http://minio:9000/...`, local storage URL settings are misconfigured
+  * local media URL shape:
+    * `http://localhost:9000/<bucket>/uploads/<yyyy>/<mm>/<dd>/<file>`
+  * local bucket policy is seeded as download-readable by `minio-init` so direct browser opens work
+* attachment model:
+  * `media.models.MediaAsset`: canonical uploaded file row
+  * `media.models.MediaAttachment`: maps one asset to normalized target tuples (`target_type`, `target_key`)
+  * allowed targets: `trip`, `blog`, `review`
+* validation:
+  * image/video-only uploads (mime + extension checks)
+  * image content is verified with Pillow
+  * size limits are env-configurable:
+    * `TAPNE_MEDIA_IMAGE_MAX_MB` (default: `12`)
+    * `TAPNE_MEDIA_VIDEO_MAX_MB` (default: `100`)
+  * allowed types are env-configurable:
+    * `TAPNE_MEDIA_ALLOWED_IMAGE_MIME_TYPES`
+    * `TAPNE_MEDIA_ALLOWED_VIDEO_MIME_TYPES`
+    * `TAPNE_MEDIA_ALLOWED_IMAGE_EXTENSIONS`
+    * `TAPNE_MEDIA_ALLOWED_VIDEO_EXTENSIONS`
+* permission checks:
+  * trip uploads: only trip host
+  * blog uploads: only blog author
+  * review uploads: only review author
+  * delete: only media owner
+* wiring:
+  * trip detail, blog detail, and reviews list pages render target media attachments
+  * review rows support direct review-level media attachments
+* tests:
+  * `media/tests.py` covers upload/delete auth + ownership, invalid upload rejection, review attachment wiring, verbose logging path, and bootstrap command behavior
+* local access mode:
+  * default local docs path uses non-signed links (`AWS_QUERYSTRING_AUTH=false`)
+  * keep `AWS_S3_CUSTOM_DOMAIN` unset locally unless intentionally overriding URL generation
+  * if you set `AWS_S3_CUSTOM_DOMAIN`, ensure it points to browser-reachable host form (`localhost:<MINIO_PORT>/<bucket>`)
+  * for private-bucket-style local testing, switch to signed URLs by setting:
+    * `AWS_QUERYSTRING_AUTH=true`
+    * and update view/template behavior to use short-lived signed links where needed
+
+### Media verbose behavior
+
+`media` prints server-side debug lines prefixed with `[media][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Media seed/bootstrap command
+
+`media` includes `bootstrap_media` for seeding demo image/video attachments across trip/blog/review targets.
+
+```powershell
+# Seed media rows using existing targets
+python manage.py bootstrap_media --verbose
+
+# Create missing demo members and missing trip/blog/review targets first
+python manage.py bootstrap_media --verbose --create-missing-members --create-missing-targets
+```
+
+Quick verification flow:
+
+```powershell
+python manage.py migrate
+python manage.py bootstrap_media --verbose --create-missing-members --create-missing-targets
+python manage.py test media
+```
+
+### Local media endpoint sanity check
+
+Use this when uploaded links open `http://minio:9000/...` instead of `http://localhost:9000/...`.
+
+```powershell
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml exec web `
+  python manage.py shell -c "from django.conf import settings; o=settings.STORAGES['default'].get('OPTIONS',{}); print('endpoint_url=',o.get('endpoint_url')); print('custom_domain=',o.get('custom_domain')); print('querystring_auth=',o.get('querystring_auth'))"
+```
+
+Expected local values:
+* `endpoint_url` should be `http://minio:9000` (container-internal storage SDK path)
+* `custom_domain` should start with `localhost:<MINIO_PORT>/<bucket>` (browser-visible path)
+* `querystring_auth` is usually `False` for local direct-open links
+
+If these are wrong:
+* set `MEDIA_PUBLIC_ENDPOINT=http://localhost:<MINIO_PORT>`
+* remove any bad `AWS_S3_CUSTOM_DOMAIN` override that points to `minio`
+* rebuild `web` so settings reload:
+
+```powershell
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml up -d --build web
+```
+
+---
+
 # 4) The single rule that makes everything work
 
 * **GET routes** are mostly browseable by guests (sometimes “limited” rendering).
@@ -1329,10 +1445,17 @@ Production:
 * Your app computes:
 
   * `STORAGE_ENDPOINT = http://localhost:<MINIO_PORT>`
+* Your app uses two MinIO endpoint contexts:
+  * internal container endpoint for storage SDK calls:
+    * `AWS_S3_ENDPOINT_URL=http://minio:9000`
+  * browser-facing endpoint for rendered media links:
+    * `MEDIA_PUBLIC_ENDPOINT=http://localhost:<MINIO_PORT>`
 
 Local:
 
 * uploads go to MinIO (object storage), not local disk
+* local init flow creates bucket and applies download-readable policy so direct media links open in browser:
+  * `mc anonymous set download local/<MINIO_BUCKET>`
 
 Production:
 
@@ -1398,6 +1521,17 @@ Must never rely on local filesystem:
 
 * Local: MinIO bucket
 * Prod: GCS bucket
+* local browser open check:
+  * uploaded object links should resolve to `http://localhost:9000/<bucket>/...`, not `http://minio:9000/...`
+  * `http://minio:9000/...` fails in host browsers because `minio` is only resolvable inside Docker's network
+  * if links point to `minio` host in browser, set `MEDIA_PUBLIC_ENDPOINT=http://localhost:<MINIO_PORT>` and rebuild `web`
+  * leave `AWS_S3_CUSTOM_DOMAIN` unset unless you must override URL generation
+* local policy check:
+  * if object URLs return `403`, re-run MinIO init policy:
+
+```powershell
+docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml run --rm minio-init
+```
 
 ---
 
@@ -1450,8 +1584,18 @@ DB_PASSWORD=tapne_password
 # Storage (local)
 STORAGE_BACKEND=minio
 MINIO_BUCKET=tapne-local
-MINIO_ACCESS_KEY=...
-MINIO_SECRET_KEY=...
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=...
+MINIO_ENDPOINT=http://minio:9000
+MEDIA_PUBLIC_ENDPOINT=http://localhost:9000
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=...
+AWS_S3_ENDPOINT_URL=http://minio:9000
+AWS_STORAGE_BUCKET_NAME=tapne-local
+# Leave unset locally unless intentionally overriding media URL generation.
+# If set incorrectly to `minio:...`, browser links will break.
+# AWS_S3_CUSTOM_DOMAIN=localhost:9000/tapne-local
+AWS_QUERYSTRING_AUTH=false
 
 # Redis (cache/queue)
 REDIS_ENABLED=true
@@ -1465,6 +1609,7 @@ SECRET_KEY=dev-only
 * `BASE_URL = f"{SCHEME}://{HOST}:{APP_PORT}"`
 * `DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{HOST}:{DB_HOST_PORT}/{DB_NAME}"`
 * `STORAGE_ENDPOINT = f"{SCHEME}://{HOST}:{MINIO_PORT}"`
+* `MEDIA_PUBLIC_ENDPOINT = f"{SCHEME}://{HOST}:{MINIO_PORT}"`
 * `REDIS_URL = f"redis://{HOST}:{REDIS_PORT}/0"`
 
 So you never repeat ports in multiple places.

@@ -11,6 +11,8 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
+from media.models import build_media_attachment_map_for_targets, build_media_payload_for_target
+
 from .models import Review, build_reviews_payload_for_target, submit_review
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
@@ -123,6 +125,21 @@ def review_target_list_view(request: HttpRequest, target_type: str, target_id: s
         target_id=target_id,
         viewer=request.user,
     )
+    review_items = [dict(item) for item in payload["reviews"]]
+    review_key_map = build_media_attachment_map_for_targets(
+        target_type="review",
+        target_ids=[item.get("id") for item in review_items],
+        viewer=request.user,
+        limit_per_target=4,
+    )
+    for review_item in review_items:
+        review_item["media_attachments"] = review_key_map.get(str(review_item.get("id") or ""), [])
+
+    target_media_payload = build_media_payload_for_target(
+        target_type=payload["target_type"],
+        target_id=payload["target_key"],
+        viewer=request.user,
+    )
     _vprint(
         request,
         (
@@ -134,9 +151,19 @@ def review_target_list_view(request: HttpRequest, target_type: str, target_id: s
             )
         ),
     )
+    _vprint(
+        request,
+        (
+            "Target media mode={mode}; count={count}; can_upload={can_upload}".format(
+                mode=target_media_payload["mode"],
+                count=len(target_media_payload["attachments"]),
+                can_upload=target_media_payload["can_upload"],
+            )
+        ),
+    )
 
     context: dict[str, object] = {
-        "review_items": payload["reviews"],
+        "review_items": review_items,
         "review_rating_buckets": payload["rating_buckets"],
         "review_mode": payload["mode"],
         "review_reason": payload["reason"],
@@ -148,5 +175,9 @@ def review_target_list_view(request: HttpRequest, target_type: str, target_id: s
         "review_average_rating": payload["average_rating"],
         "review_can_review": payload["can_review"],
         "review_viewer_row": payload["viewer_review"],
+        "target_media_items": target_media_payload["attachments"],
+        "target_media_mode": target_media_payload["mode"],
+        "target_media_reason": target_media_payload["reason"],
+        "target_media_can_upload": target_media_payload["can_upload"],
     }
     return render(request, "pages/reviews/list.html", context)

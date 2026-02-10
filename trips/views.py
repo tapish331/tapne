@@ -12,6 +12,11 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from interactions.models import build_comment_threads_payload_for_target
+from media.models import (
+    MediaTargetPayload,
+    build_media_attachment_map_for_targets,
+    build_media_payload_for_target,
+)
 from reviews.models import build_reviews_payload_for_target
 
 from .forms import TripForm
@@ -80,6 +85,34 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         target_id=trip_id,
         viewer=request.user,
     )
+    review_items = [dict(item) for item in reviews_payload["reviews"]]
+    review_key_map = build_media_attachment_map_for_targets(
+        target_type="review",
+        target_ids=[item.get("id") for item in review_items],
+        viewer=request.user,
+        limit_per_target=4,
+    )
+    for review_item in review_items:
+        review_item["media_attachments"] = review_key_map.get(str(review_item.get("id") or ""), [])
+
+    trip_media_payload: MediaTargetPayload
+    if payload["source"] == "live-db":
+        trip_media_payload = build_media_payload_for_target(
+            target_type="trip",
+            target_id=trip_id,
+            viewer=request.user,
+        )
+    else:
+        trip_media_payload = {
+            "attachments": [],
+            "mode": "unavailable-target",
+            "reason": "Media attachments are available for live trip records only.",
+            "target_type": "trip",
+            "target_key": str(trip_id),
+            "target_label": str(payload["trip"].get("title", f"Trip #{trip_id}")),
+            "target_url": str(payload["trip"].get("url", f"/trips/{trip_id}/")),
+            "can_upload": False,
+        }
     _vprint(
         request,
         (
@@ -112,6 +145,17 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
             )
         ),
     )
+    _vprint(
+        request,
+        (
+            "Trip media target={target}; mode={mode}; count={count}; can_upload={can_upload}".format(
+                target=f"{trip_media_payload['target_type']}:{trip_media_payload['target_key']}",
+                mode=trip_media_payload["mode"],
+                count=len(trip_media_payload["attachments"]),
+                can_upload=trip_media_payload["can_upload"],
+            )
+        ),
+    )
 
     context: dict[str, object] = {
         "trip": payload["trip"],
@@ -122,7 +166,7 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         "interaction_comments": comments_payload["comments"],
         "interaction_comment_mode": comments_payload["mode"],
         "interaction_comment_reason": comments_payload["reason"],
-        "review_items": reviews_payload["reviews"],
+        "review_items": review_items,
         "review_rating_buckets": reviews_payload["rating_buckets"],
         "review_mode": reviews_payload["mode"],
         "review_reason": reviews_payload["reason"],
@@ -130,6 +174,10 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         "review_average_rating": reviews_payload["average_rating"],
         "review_can_review": reviews_payload["can_review"],
         "review_viewer_row": reviews_payload["viewer_review"],
+        "trip_media_items": trip_media_payload["attachments"],
+        "trip_media_mode": trip_media_payload["mode"],
+        "trip_media_reason": trip_media_payload["reason"],
+        "trip_media_can_upload": trip_media_payload["can_upload"],
     }
     return render(request, "pages/trips/detail.html", context)
 

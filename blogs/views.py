@@ -10,6 +10,11 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from interactions.models import build_comment_threads_payload_for_target
+from media.models import (
+    MediaTargetPayload,
+    build_media_attachment_map_for_targets,
+    build_media_payload_for_target,
+)
 from reviews.models import build_reviews_payload_for_target
 
 from .forms import BlogForm
@@ -72,6 +77,34 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         target_id=slug,
         viewer=request.user,
     )
+    review_items = [dict(item) for item in reviews_payload["reviews"]]
+    review_key_map = build_media_attachment_map_for_targets(
+        target_type="review",
+        target_ids=[item.get("id") for item in review_items],
+        viewer=request.user,
+        limit_per_target=4,
+    )
+    for review_item in review_items:
+        review_item["media_attachments"] = review_key_map.get(str(review_item.get("id") or ""), [])
+
+    blog_media_payload: MediaTargetPayload
+    if payload["source"] == "live-db":
+        blog_media_payload = build_media_payload_for_target(
+            target_type="blog",
+            target_id=slug,
+            viewer=request.user,
+        )
+    else:
+        blog_media_payload = {
+            "attachments": [],
+            "mode": "unavailable-target",
+            "reason": "Media attachments are available for live blog records only.",
+            "target_type": "blog",
+            "target_key": str(slug),
+            "target_label": str(payload["blog"].get("title", slug.replace("-", " ").title())),
+            "target_url": str(payload["blog"].get("url", f"/blogs/{slug}/")),
+            "can_upload": False,
+        }
     _vprint(
         request,
         (
@@ -104,6 +137,17 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
             )
         ),
     )
+    _vprint(
+        request,
+        (
+            "Blog media target={target}; mode={mode}; count={count}; can_upload={can_upload}".format(
+                target=f"{blog_media_payload['target_type']}:{blog_media_payload['target_key']}",
+                mode=blog_media_payload["mode"],
+                count=len(blog_media_payload["attachments"]),
+                can_upload=blog_media_payload["can_upload"],
+            )
+        ),
+    )
 
     context: dict[str, object] = {
         "blog": payload["blog"],
@@ -114,7 +158,7 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         "interaction_comments": comments_payload["comments"],
         "interaction_comment_mode": comments_payload["mode"],
         "interaction_comment_reason": comments_payload["reason"],
-        "review_items": reviews_payload["reviews"],
+        "review_items": review_items,
         "review_rating_buckets": reviews_payload["rating_buckets"],
         "review_mode": reviews_payload["mode"],
         "review_reason": reviews_payload["reason"],
@@ -122,6 +166,10 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         "review_average_rating": reviews_payload["average_rating"],
         "review_can_review": reviews_payload["can_review"],
         "review_viewer_row": reviews_payload["viewer_review"],
+        "blog_media_items": blog_media_payload["attachments"],
+        "blog_media_mode": blog_media_payload["mode"],
+        "blog_media_reason": blog_media_payload["reason"],
+        "blog_media_can_upload": blog_media_payload["can_upload"],
     }
     return render(request, "pages/blogs/detail.html", context)
 

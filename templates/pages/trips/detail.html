@@ -58,6 +58,67 @@
     </div>
 </article>
 
+<section id="media" class="detail-shell stack-gap-top">
+    <p class="eyebrow">Trip media</p>
+    <h2>Photos and videos</h2>
+    <p class="detail-meta">{{ trip_media_reason }} ({{ trip_media_mode|default:"unknown" }})</p>
+
+    {% if trip_media_can_upload %}
+    <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="search-form">
+        {% csrf_token %}
+        <input type="hidden" name="target_type" value="trip">
+        <input type="hidden" name="target_id" value="{{ trip.id }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}#media">
+
+        <label for="trip-media-file">Upload media</label>
+        <input id="trip-media-file" class="form-input" type="file" name="file" accept="image/*,video/*" required>
+
+        <label for="trip-media-caption">Caption (optional)</label>
+        <input id="trip-media-caption" class="form-input" type="text" name="caption" maxlength="280" placeholder="Add context for this media item.">
+
+        <button class="btn btn-primary" type="submit">Upload</button>
+    </form>
+    {% elif user.is_authenticated %}
+    <p class="muted-inline">Only the host can upload media for this trip.</p>
+    {% else %}
+    <button class="btn btn-primary js-guest-action" type="button" data-action-label="upload trip media">Log in to upload media</button>
+    {% endif %}
+
+    {% if trip_media_items %}
+    <div class="media-grid">
+        {% for item in trip_media_items %}
+        <article class="card media-card">
+            {% if item.kind == "image" %}
+            <img class="media-preview-image" src="{{ item.file_url }}" alt="{{ item.caption|default:item.filename }}">
+            {% else %}
+            <video class="media-preview-video" controls preload="metadata">
+                <source src="{{ item.file_url }}" type="{{ item.content_type }}">
+            </video>
+            {% endif %}
+
+            {% if item.caption %}
+            <p class="card-description">{{ item.caption }}</p>
+            {% endif %}
+            <p class="card-subtitle">{{ item.size_label }} · {{ item.content_type|default:item.kind }}</p>
+
+            <div class="inline-actions">
+                <a class="btn btn-secondary" href="{{ item.file_url }}" target="_blank" rel="noopener">Open</a>
+                {% if item.can_manage %}
+                <form method="post" action="{% url 'media:delete' attachment_id=item.id %}" class="inline-form media-delete-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}#media">
+                    <button class="btn btn-ghost" type="submit">Delete</button>
+                </form>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No media uploaded for this trip yet.</p>
+    {% endif %}
+</section>
+
 <section id="comments" class="detail-shell stack-gap-top">
     <p class="eyebrow">Trip comments</p>
     <h2>Conversation</h2>
@@ -180,6 +241,38 @@
             <p><strong>{{ item.headline }}</strong></p>
             {% endif %}
             <p class="card-description">{{ item.body }}</p>
+
+            {% if item.media_attachments %}
+            <div class="media-inline-list">
+                {% for media_item in item.media_attachments %}
+                <div class="media-inline-item">
+                    <span class="media-pill">{{ media_item.kind|title }}</span>
+                    <a href="{{ media_item.file_url }}" target="_blank" rel="noopener">{{ media_item.filename }}</a>
+                    <span class="muted-inline">{{ media_item.size_label }}</span>
+                    {% if media_item.can_manage %}
+                    <form method="post" action="{% url 'media:delete' attachment_id=media_item.id %}" class="inline-form media-delete-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}#reviews">
+                        <button class="btn btn-ghost" type="submit">Delete</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if user.is_authenticated and item.is_mine %}
+            <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="media-form-inline">
+                {% csrf_token %}
+                <input type="hidden" name="target_type" value="review">
+                <input type="hidden" name="target_id" value="{{ item.id }}">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}#reviews">
+                <label for="review-media-trip-{{ item.id }}">Attach media to this review</label>
+                <input id="review-media-trip-{{ item.id }}" class="form-input" type="file" name="file" accept="image/*,video/*" required>
+                <input class="form-input" type="text" name="caption" maxlength="280" placeholder="Optional caption">
+                <button class="btn btn-ghost" type="submit">Attach media</button>
+            </form>
+            {% endif %}
         </article>
         {% endfor %}
     </div>

@@ -17,7 +17,7 @@ redis>=5.0,<6.0
 django-redis>=5.4,<6.0
 celery>=5.4,<6.0
 
-# Content and media safety (blogs + image uploads)
+# Content and media safety (blogs + uploads)
 Pillow>=10.4,<12.0
 Markdown>=3.6,<4.0
 bleach>=6.1,<7.0
@@ -69,3 +69,8 @@ email-validator>=2.2,<3.0
 # Settings app note:
 # member settings model/form/views and bootstrap_settings command rely on Django core
 # plus existing auth/account models. No additional third-party package is required.
+
+# Media app note:
+# media upload/attachment flows, validation, and bootstrap_media command rely on
+# Django core plus existing Pillow + storage dependencies above.
+# No additional third-party package is required.

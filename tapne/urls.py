@@ -14,6 +14,7 @@ def health(_request: HttpRequest) -> JsonResponse:
 urlpatterns: list[URLPattern | URLResolver] = [
     path("", include("feed.urls")),
     path("health/", health, name="health"),
+    path("uploads/", include("media.urls")),
     path("search/", include("search.urls")),
     path("accounts/", include("accounts.urls")),
     path("trips/", include("trips.urls")),

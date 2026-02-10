@@ -514,6 +514,60 @@ a:hover {
     background: rgba(15, 158, 141, 0.06);
 }
 
+.media-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.media-card {
+    gap: 0.55rem;
+}
+
+.media-preview-image,
+.media-preview-video {
+    background: var(--ink-50);
+    border: 1px solid var(--line);
+    border-radius: 0.7rem;
+    max-height: 220px;
+    object-fit: cover;
+    width: 100%;
+}
+
+.media-inline-list {
+    display: grid;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.media-inline-item {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.media-pill {
+    background: var(--ink-100);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--ink-800);
+    font-family: var(--font-ui);
+    font-size: 0.73rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.28rem 0.55rem;
+}
+
+.media-form-inline {
+    display: grid;
+    gap: 0.4rem;
+}
+
+.media-delete-form {
+    margin: 0;
+}
+
 /* Modal used for guest-only action prompts. */
 .modal {
     inset: 0;

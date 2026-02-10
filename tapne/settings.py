@@ -23,6 +23,31 @@ def env_bool(key: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_int(key: str, default: int) -> int:
+    raw_value = os.getenv(key, str(default))
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    return parsed
+
+
+def env_csv(key: str, default: str) -> tuple[str, ...]:
+    raw_value = os.getenv(key, default)
+    values = [item.strip().lower() for item in raw_value.split(",") if item.strip()]
+    return tuple(values)
+
+
+def strip_url_scheme(url: str) -> str:
+    normalized = url.strip()
+    lowered = normalized.lower()
+    if lowered.startswith("http://"):
+        return normalized[7:]
+    if lowered.startswith("https://"):
+        return normalized[8:]
+    return normalized
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-placeholder-secret")
@@ -50,7 +75,8 @@ INSTALLED_APPS = [
     "interactions",
     "reviews",
     "activity",
-    "settings_app"
+    "settings_app",
+    "media"
 ]
 
 MIDDLEWARE = [
@@ -112,7 +138,8 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Include project-level shared assets (templates/static scaffold).
 STATICFILES_DIRS = [BASE_DIR / "static"]
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# Keep fallback filesystem uploads out of the `media/` Django app package.
+MEDIA_ROOT = BASE_DIR / "mediafiles"
 
 STORAGES: dict[str, dict[str, Any]] = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
@@ -129,18 +156,36 @@ STORAGES: dict[str, dict[str, Any]] = {
 
 storage_backend = os.getenv("STORAGE_BACKEND", "filesystem").strip().lower()
 if storage_backend == "minio":
+    minio_bucket_name = os.getenv("AWS_STORAGE_BUCKET_NAME", os.getenv("MINIO_BUCKET", "tapne-local"))
+    minio_internal_endpoint = os.getenv(
+        "AWS_S3_ENDPOINT_URL",
+        os.getenv("MINIO_ENDPOINT", "http://minio:9000"),
+    )
+    minio_public_endpoint = os.getenv(
+        "MEDIA_PUBLIC_ENDPOINT",
+        f"http://localhost:{os.getenv('MINIO_PORT', '9000')}",
+    ).rstrip("/")
+    default_custom_domain = f"{strip_url_scheme(minio_public_endpoint)}/{minio_bucket_name}"
+    custom_domain = os.getenv("AWS_S3_CUSTOM_DOMAIN", default_custom_domain).strip().strip("/")
+    if not custom_domain:
+        custom_domain = default_custom_domain
+
+    default_url_protocol = "https:" if minio_public_endpoint.lower().startswith("https://") else "http:"
+
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3.S3Storage",
         "OPTIONS": {
             "access_key": os.getenv("AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "minioadmin")),
             "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY", os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")),
-            "bucket_name": os.getenv("AWS_STORAGE_BUCKET_NAME", os.getenv("MINIO_BUCKET", "tapne-local")),
-            "endpoint_url": os.getenv("AWS_S3_ENDPOINT_URL", os.getenv("MINIO_ENDPOINT", "http://minio:9000")),
+            "bucket_name": minio_bucket_name,
+            "endpoint_url": minio_internal_endpoint,
             "region_name": os.getenv("AWS_S3_REGION_NAME", "us-east-1"),
             "default_acl": None,
-            "querystring_auth": False,
+            "querystring_auth": env_bool("AWS_QUERYSTRING_AUTH", False),
             "addressing_style": os.getenv("AWS_S3_ADDRESSING_STYLE", "path"),
             "signature_version": os.getenv("AWS_S3_SIGNATURE_VERSION", "s3v4"),
+            "custom_domain": custom_domain,
+            "url_protocol": os.getenv("AWS_S3_URL_PROTOCOL", default_url_protocol),
         },
     }
 
@@ -176,6 +221,26 @@ if env_bool("USE_X_FORWARDED_PROTO", False):
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
+
+# Media upload validation defaults (used by media app, env-overridable).
+TAPNE_MEDIA_IMAGE_MAX_MB = max(1, env_int("TAPNE_MEDIA_IMAGE_MAX_MB", 12))
+TAPNE_MEDIA_VIDEO_MAX_MB = max(1, env_int("TAPNE_MEDIA_VIDEO_MAX_MB", 100))
+TAPNE_MEDIA_ALLOWED_IMAGE_MIME_TYPES = env_csv(
+    "TAPNE_MEDIA_ALLOWED_IMAGE_MIME_TYPES",
+    "image/jpeg,image/png,image/webp,image/gif",
+)
+TAPNE_MEDIA_ALLOWED_VIDEO_MIME_TYPES = env_csv(
+    "TAPNE_MEDIA_ALLOWED_VIDEO_MIME_TYPES",
+    "video/mp4,video/quicktime,video/webm,video/x-m4v",
+)
+TAPNE_MEDIA_ALLOWED_IMAGE_EXTENSIONS = env_csv(
+    "TAPNE_MEDIA_ALLOWED_IMAGE_EXTENSIONS",
+    ".jpg,.jpeg,.png,.webp,.gif",
+)
+TAPNE_MEDIA_ALLOWED_VIDEO_EXTENSIONS = env_csv(
+    "TAPNE_MEDIA_ALLOWED_VIDEO_EXTENSIONS",
+    ".mp4,.mov,.webm,.m4v",
+)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
