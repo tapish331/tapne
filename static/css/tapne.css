@@ -470,6 +470,50 @@ a:hover {
     padding: 1rem;
 }
 
+.stack-gap-top {
+    margin-top: 1rem;
+}
+
+.comments-stack {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.comment-item {
+    gap: 0.6rem;
+}
+
+.reply-stack {
+    border-top: 1px dashed var(--line);
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+    padding-top: 0.6rem;
+}
+
+.thread-list {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.thread-card {
+    gap: 0.55rem;
+}
+
+.message-list {
+    display: grid;
+    gap: 0.7rem;
+}
+
+.message-item {
+    border-left: 4px solid var(--line);
+}
+
+.message-item.is-mine {
+    border-left-color: var(--accent-strong);
+    background: rgba(15, 158, 141, 0.06);
+}
+
 /* Modal used for guest-only action prompts. */
 .modal {
     inset: 0;

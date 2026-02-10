@@ -9,6 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
+from interactions.models import build_comment_threads_payload_for_target
+
 from .forms import BlogForm
 from .models import Blog, build_blog_detail_payload_for_user, build_blog_list_payload_for_user
 
@@ -60,6 +62,10 @@ def blog_list_view(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET"])
 def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
     payload = build_blog_detail_payload_for_user(request.user, slug)
+    comments_payload = build_comment_threads_payload_for_target(
+        target_type="blog",
+        target_id=slug,
+    )
     _vprint(
         request,
         (
@@ -71,6 +77,16 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
             )
         ),
     )
+    _vprint(
+        request,
+        (
+            "Blog comments target={target}; mode={mode}; count={count}".format(
+                target=f"{comments_payload['target_type']}:{comments_payload['target_key']}",
+                mode=comments_payload["mode"],
+                count=len(comments_payload["comments"]),
+            )
+        ),
+    )
 
     context: dict[str, object] = {
         "blog": payload["blog"],
@@ -78,6 +94,9 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         "blog_detail_reason": payload["reason"],
         "blog_detail_source": payload["source"],
         "can_manage_blog": payload["can_manage_blog"],
+        "interaction_comments": comments_payload["comments"],
+        "interaction_comment_mode": comments_payload["mode"],
+        "interaction_comment_reason": comments_payload["reason"],
     }
     return render(request, "pages/blogs/detail.html", context)
 

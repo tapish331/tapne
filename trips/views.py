@@ -11,6 +11,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
+from interactions.models import build_comment_threads_payload_for_target
+
 from .forms import TripForm
 from .models import (
     Trip,
@@ -68,6 +70,10 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET"])
 def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
     payload = build_trip_detail_payload_for_user(request.user, trip_id)
+    comments_payload = build_comment_threads_payload_for_target(
+        target_type="trip",
+        target_id=trip_id,
+    )
     _vprint(
         request,
         (
@@ -79,6 +85,16 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
             )
         ),
     )
+    _vprint(
+        request,
+        (
+            "Trip comments target={target}; mode={mode}; count={count}".format(
+                target=f"{comments_payload['target_type']}:{comments_payload['target_key']}",
+                mode=comments_payload["mode"],
+                count=len(comments_payload["comments"]),
+            )
+        ),
+    )
 
     context: dict[str, object] = {
         "trip": payload["trip"],
@@ -86,6 +102,9 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         "trip_detail_reason": payload["reason"],
         "trip_detail_source": payload["source"],
         "can_manage_trip": payload["can_manage_trip"],
+        "interaction_comments": comments_payload["comments"],
+        "interaction_comment_mode": comments_payload["mode"],
+        "interaction_comment_reason": comments_payload["reason"],
     }
     return render(request, "pages/trips/detail.html", context)
 

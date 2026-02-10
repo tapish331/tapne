@@ -32,7 +32,7 @@
     <div class="card-actions">
         <a class="btn btn-secondary" href="{{ blog.url|default:'#' }}">Read blog</a>
         {% if user.is_authenticated %}
-        <button class="btn btn-primary" type="button">Comment</button>
+        <a class="btn btn-primary" href="{{ blog.url|default:'#' }}#comments">Comment</a>
         {% if blog.slug %}
         <form method="post" action="{% url 'social:bookmark' %}" class="inline-form">
             {% csrf_token %}

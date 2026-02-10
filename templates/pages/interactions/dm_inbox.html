@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Messages{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">Direct messages</p>
+    <h1>Message inbox</h1>
+    <p>{{ dm_reason }} ({{ dm_mode|default:"unknown" }})</p>
+</section>
+
+<form method="get" action="{% url 'interactions:dm-inbox' %}" class="search-form">
+    <label for="dm-with">Start or open a thread</label>
+    <input id="dm-with" type="text" name="with" placeholder="username (without @)" autocomplete="off">
+    <button class="btn btn-primary" type="submit">Open thread</button>
+</form>
+
+{% if dm_threads %}
+<div class="thread-list">
+    {% for thread in dm_threads %}
+    <article class="card thread-card">
+        <header class="card-header">
+            <p class="card-kicker">Conversation</p>
+            <h3 class="card-title"><a href="{% url 'interactions:dm-thread' thread_id=thread.id %}">@{{ thread.peer_username }}</a></h3>
+            <p class="card-subtitle">
+                {% if thread.last_message_at %}
+                Last activity {{ thread.last_message_at|date:"M j, Y H:i" }}
+                {% else %}
+                No messages yet
+                {% endif %}
+            </p>
+        </header>
+        {% if thread.last_message_preview %}
+        <p class="card-description">{{ thread.last_message_preview }}</p>
+        {% else %}
+        <p class="card-description">No messages yet. Send the first message.</p>
+        {% endif %}
+        <div class="card-actions">
+            <a class="btn btn-secondary" href="{% url 'interactions:dm-thread' thread_id=thread.id %}">Open thread</a>
+            <a class="btn btn-ghost" href="{{ thread.peer_url }}">View profile</a>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">No direct message threads yet. Open a thread from a profile or use the form above.</p>
+{% endif %}
+{% endblock %}

@@ -35,7 +35,7 @@
             <button class="btn btn-ghost" type="submit">Delete blog</button>
         </form>
         {% elif user.is_authenticated %}
-        <button class="btn btn-primary" type="button">Comment</button>
+        <a class="btn btn-primary" href="#comments">Comment</a>
         <button class="btn btn-secondary" type="button">Review</button>
         <form method="post" action="{% url 'social:bookmark' %}" class="inline-form">
             {% csrf_token %}
@@ -51,4 +51,61 @@
         {% endif %}
     </div>
 </article>
+
+<section id="comments" class="detail-shell stack-gap-top">
+    <p class="eyebrow">Blog comments</p>
+    <h2>Conversation</h2>
+    <p class="detail-meta">{{ interaction_comment_reason }} ({{ interaction_comment_mode|default:"unknown" }})</p>
+
+    {% if user.is_authenticated %}
+    <form method="post" action="{% url 'interactions:comment' %}" class="search-form">
+        {% csrf_token %}
+        <input type="hidden" name="target_type" value="blog">
+        <input type="hidden" name="target_id" value="{{ blog.slug }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}#comments">
+        <label for="blog-comment-text">Add a comment</label>
+        <input id="blog-comment-text" class="form-input" type="text" name="text" maxlength="2000" placeholder="Share your reaction to this blog.">
+        <button class="btn btn-primary" type="submit">Post comment</button>
+    </form>
+    {% else %}
+    <button class="btn btn-primary js-guest-action" type="button" data-action-label="comment on this blog">Log in to comment</button>
+    {% endif %}
+
+    {% if interaction_comments %}
+    <div class="comments-stack">
+        {% for item in interaction_comments %}
+        <article class="card comment-item">
+            <p class="card-subtitle">@{{ item.author_username }} · {{ item.created_at|date:"M j, Y H:i" }}</p>
+            <p class="card-description">{{ item.text }}</p>
+
+            {% if item.replies %}
+            <div class="reply-stack">
+                {% for reply in item.replies %}
+                <div class="card">
+                    <p class="card-subtitle">@{{ reply.author_username }} · {{ reply.created_at|date:"M j, Y H:i" }}</p>
+                    <p class="card-description">{{ reply.text }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if user.is_authenticated %}
+            <form method="post" action="{% url 'interactions:reply' %}" class="search-form">
+                {% csrf_token %}
+                <input type="hidden" name="comment_id" value="{{ item.id }}">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}#comments">
+                <label for="reply-blog-{{ item.id }}">Reply to @{{ item.author_username }}</label>
+                <input id="reply-blog-{{ item.id }}" class="form-input" type="text" name="text" maxlength="2000" placeholder="Write a reply.">
+                <button class="btn btn-ghost" type="submit">Reply</button>
+            </form>
+            {% else %}
+            <button class="btn btn-ghost js-guest-action" type="button" data-action-label="reply to this comment">Reply</button>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No comments yet. Be the first to leave a note.</p>
+    {% endif %}
+</section>
 {% endblock %}

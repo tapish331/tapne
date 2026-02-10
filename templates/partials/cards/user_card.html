@@ -38,11 +38,16 @@
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
             <button class="btn btn-ghost" type="submit">Bookmark profile</button>
         </form>
+        {% if user.username|lower != profile.username|lower %}
+        <a class="btn btn-ghost" href="{% url 'interactions:dm-inbox' %}?with={{ profile.username }}">Message</a>
+        {% else %}
+        <button class="btn btn-ghost" type="button" disabled>Message</button>
+        {% endif %}
         {% else %}
         <button class="btn btn-primary" type="button" disabled>Follow</button>
         <button class="btn btn-ghost" type="button" disabled>Bookmark profile</button>
+        <button class="btn btn-ghost" type="button" disabled>Message</button>
         {% endif %}
-        <button class="btn btn-ghost" type="button">Message</button>
         {% else %}
         <button class="btn btn-primary js-guest-action" type="button" data-action-label="follow this user">Follow</button>
         <button class="btn btn-ghost js-guest-action" type="button" data-action-label="message this user">Message</button>

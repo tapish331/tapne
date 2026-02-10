@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "blogs",
     "social",
     "enrollment",
+    "interactions",
 ]
 
 MIDDLEWARE = [

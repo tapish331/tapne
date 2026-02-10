@@ -604,10 +604,12 @@ python manage.py bootstrap_accounts --verbose
 python manage.py bootstrap_trips --verbose --create-missing-hosts
 python manage.py bootstrap_blogs --verbose --create-missing-authors
 python manage.py bootstrap_social --verbose --create-missing-members
+python manage.py bootstrap_interactions --verbose --create-missing-members
 python manage.py bootstrap_enrollment --verbose --create-missing-members
 ```
 
 If trip/blog catalog rows are missing, `bootstrap_social` still seeds follow and user-bookmark rows and logs skipped trip/blog bookmark seeds in verbose mode.
+If trip/blog catalog rows are missing, `bootstrap_interactions` skips those comment seeds and still seeds any resolvable DM rows, with verbose skip logs.
 If trip rows are missing, `bootstrap_enrollment` skips those enrollment seeds and logs each skip in verbose mode.
 
 ---
@@ -721,6 +723,104 @@ python manage.py bootstrap_enrollment --verbose --create-missing-members
 * `GET /interactions/dm/` (inbox)
 * `GET /interactions/dm/<thread_id>/`
 * `POST /interactions/dm/<thread_id>/send/`
+
+### Current `interactions` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/interactions/` to `interactions/urls.py`
+  * `interactions/urls.py` maps:
+    * `path("comment/", views.comment_view, name="comment")`
+    * `path("reply/", views.reply_view, name="reply")`
+    * `path("dm/", views.dm_inbox_view, name="dm-inbox")`
+    * `path("dm/<int:thread_id>/", views.dm_thread_view, name="dm-thread")`
+    * `path("dm/<int:thread_id>/send/", views.dm_send_view, name="dm-send")`
+* auth and method behavior:
+  * all interactions endpoints are member-only (`@login_required`)
+  * comment/reply/send actions are `POST`
+  * DM inbox/thread pages are `GET`
+  * post-action redirects use safe same-origin `next` resolution (posted `next`, then safe referer, then fallback)
+* comments/replies behavior:
+  * `submit_comment(...)` accepts `target_type=trip|blog`, `target_id`, `text`
+  * target resolution supports:
+    * live `trips.Trip` and `blogs.Blog` rows
+    * fallback to seeded demo trip/blog catalog from `feed.models`
+  * comments are normalized to single-space text and enforce max length (`2000`)
+  * `submit_reply(...)` only allows replies to top-level comments (one-level reply depth)
+  * reply rows inherit target metadata (`target_type`, `target_key`, `target_label`, `target_url`) from parent comment
+* DM behavior:
+  * `GET /interactions/dm/?with=<username>` can open or create a one-to-one thread, then redirects to thread view
+  * self-thread creation is blocked
+  * thread view is participant-scoped; non-participants receive `404`
+  * send action validates participant membership and enforces message max length (`4000`)
+* payload builders used by views/templates:
+  * `build_comment_threads_payload_for_target(...)` returns top-level comments (newest first) and replies (oldest first)
+  * `build_dm_inbox_payload_for_member(...)` returns threads ordered by latest activity (`updated_at desc`)
+  * `build_dm_thread_payload_for_member(...)` returns messages ordered oldest-to-newest
+* persistence:
+  * `interactions.models.Comment`
+    * fields: `author`, `target_type`, `target_key`, `target_label`, `target_url`, `text`, `parent`, timestamps
+    * target types: `trip`, `blog`
+    * integrity rule: self-parent blocked; reply target must match parent target
+    * indexes for target/thread and author activity queries
+  * `interactions.models.DirectMessageThread`
+    * canonical 1:1 pair: `member_one`, `member_two`
+    * constraints:
+      * unique pair
+      * no self-thread
+      * canonical ordering (`member_one_id < member_two_id`) for idempotent lookups
+    * indexed by both participants + `updated_at`
+  * `interactions.models.DirectMessage`
+    * fields: `thread`, `sender`, `body`, timestamps
+    * sender must be a participant in the thread
+    * indexed by thread timeline and sender timeline
+* template integration:
+  * trip/blog detail pages now render real comments and reply forms:
+    * `templates/pages/trips/detail.html`
+    * `templates/pages/blogs/detail.html`
+  * member message entry points route to DM flows:
+    * `templates/pages/users/profile.html`
+    * `templates/partials/cards/user_card.html`
+  * member nav includes `/interactions/dm/` in `templates/base.html`
+  * DM pages:
+    * `templates/pages/interactions/dm_inbox.html`
+    * `templates/pages/interactions/dm_thread.html`
+* admin:
+  * `interactions/admin.py` registers:
+    * `Comment`
+    * `DirectMessageThread`
+    * `DirectMessage`
+* tests:
+  * `interactions/tests.py` covers:
+    * auth gating
+    * comment/reply validation and persistence behavior
+    * DM thread creation/access/send behavior
+    * verbose logging path
+    * bootstrap command behavior
+
+### Interactions verbose behavior
+
+`interactions` prints server-side debug lines prefixed with `[interactions][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Interactions seed/bootstrap command
+
+`interactions` includes `bootstrap_interactions` for seeding demo comment threads and direct-message threads.
+
+```powershell
+# Seed comments/replies + DM rows with verbose logs
+python manage.py bootstrap_interactions --verbose
+
+# Also create missing demo members first
+python manage.py bootstrap_interactions --verbose --create-missing-members
+```
+
+`bootstrap_interactions` seeds:
+* top-level comments on trip/blog targets
+* one-level replies to selected comments
+* two-member DM threads with initial message history
 
 ---
 

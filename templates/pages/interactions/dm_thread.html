@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Chat with @{{ dm_thread.peer_username }}{% endblock %}
+
+{% block content %}
+<article class="detail-shell">
+    <p class="eyebrow">Direct messages</p>
+    <h1>Chat with <a href="{{ dm_thread.peer_url }}">@{{ dm_thread.peer_username }}</a></h1>
+    <p class="detail-meta">{{ dm_reason }} ({{ dm_mode|default:"unknown" }})</p>
+    <div class="inline-actions">
+        <a class="btn btn-secondary" href="{% url 'interactions:dm-inbox' %}">Back to inbox</a>
+        <a class="btn btn-ghost" href="{{ dm_thread.peer_url }}">View profile</a>
+    </div>
+</article>
+
+<section class="detail-shell stack-gap-top">
+    <div class="message-list">
+        {% if dm_messages %}
+        {% for item in dm_messages %}
+        <article class="card message-item{% if item.is_mine %} is-mine{% endif %}">
+            <p class="card-subtitle">
+                {% if item.is_mine %}
+                You
+                {% else %}
+                @{{ item.sender_username }}
+                {% endif %}
+                · {{ item.created_at|date:"M j, Y H:i" }}
+            </p>
+            <p class="card-description">{{ item.body }}</p>
+        </article>
+        {% endfor %}
+        {% else %}
+        <p class="empty-state">No messages yet. Send the first message below.</p>
+        {% endif %}
+    </div>
+
+    <form method="post" action="{% url 'interactions:dm-send' thread_id=dm_thread.id %}" class="search-form">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <label for="dm-text">Send message</label>
+        <input id="dm-text" class="form-input" type="text" name="text" maxlength="4000" placeholder="Write a message to @{{ dm_thread.peer_username }}">
+        <button class="btn btn-primary" type="submit">Send</button>
+    </form>
+</section>
+{% endblock %}
