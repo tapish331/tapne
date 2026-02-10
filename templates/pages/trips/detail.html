@@ -48,7 +48,7 @@
             <button class="btn btn-ghost" type="submit">Bookmark</button>
         </form>
         <a class="btn btn-secondary" href="#comments">Comment</a>
-        <button class="btn btn-secondary" type="button">Review</button>
+        <a class="btn btn-secondary" href="#reviews">Review</a>
         {% else %}
         <button class="btn btn-primary js-guest-action" type="button" data-action-label="join this trip">Request to join</button>
         <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this trip">Bookmark</button>
@@ -112,6 +112,79 @@
     </div>
     {% else %}
     <p class="empty-state">No comments yet. Be the first to leave a note.</p>
+    {% endif %}
+</section>
+
+<section id="reviews" class="detail-shell stack-gap-top">
+    <p class="eyebrow">Trip reviews</p>
+    <h2>Ratings</h2>
+    <p class="detail-meta">{{ review_reason }} ({{ review_mode|default:"unknown" }})</p>
+    <p class="detail-meta">Average rating: {{ review_average_rating|floatformat:1 }}/5 from {{ review_count }} review{{ review_count|pluralize }}</p>
+
+    {% if review_rating_buckets %}
+    <dl class="card-meta-grid">
+        {% for bucket in review_rating_buckets %}
+        <div>
+            <dt>{{ bucket.rating }}/5</dt>
+            <dd>{{ bucket.count }}</dd>
+        </div>
+        {% endfor %}
+    </dl>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    <form method="post" action="{% url 'reviews:create' %}" class="search-form">
+        {% csrf_token %}
+        <input type="hidden" name="target_type" value="trip">
+        <input type="hidden" name="target_id" value="{{ trip.id }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}#reviews">
+
+        <label for="trip-review-rating">Rating</label>
+        <select id="trip-review-rating" class="form-input" name="rating">
+            <option value="5">5 - Excellent</option>
+            <option value="4">4 - Strong</option>
+            <option value="3">3 - Solid</option>
+            <option value="2">2 - Needs work</option>
+            <option value="1">1 - Poor</option>
+        </select>
+
+        <label for="trip-review-headline">Headline (optional)</label>
+        <input id="trip-review-headline" class="form-input" type="text" name="headline" maxlength="160" placeholder="Summarize your experience in one line.">
+
+        <label for="trip-review-body">Your review</label>
+        <input id="trip-review-body" class="form-input" type="text" name="body" maxlength="4000" placeholder="What worked well, what should improve?">
+
+        <div class="inline-actions">
+            <button class="btn btn-primary" type="submit">
+                {% if review_viewer_row %}Update review{% else %}Post review{% endif %}
+            </button>
+            <a class="btn btn-ghost" href="{% url 'reviews:target-list' target_type='trip' target_id=trip.id %}">Open full reviews page</a>
+        </div>
+    </form>
+    {% else %}
+    <div class="inline-actions">
+        <button class="btn btn-primary js-guest-action" type="button" data-action-label="review this trip">Log in to review</button>
+        <a class="btn btn-secondary" href="{% url 'reviews:target-list' target_type='trip' target_id=trip.id %}">Browse all reviews</a>
+    </div>
+    {% endif %}
+
+    {% if review_items %}
+    <div class="comments-stack">
+        {% for item in review_items %}
+        <article class="card comment-item">
+            <p class="card-subtitle">
+                @{{ item.author_username }} · {{ item.created_at|date:"M j, Y H:i" }} · {{ item.rating }}/5
+                {% if item.is_mine %} · Your review{% endif %}
+            </p>
+            {% if item.headline %}
+            <p><strong>{{ item.headline }}</strong></p>
+            {% endif %}
+            <p class="card-description">{{ item.body }}</p>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No reviews yet. Be the first to share your experience.</p>
     {% endif %}
 </section>
 {% endblock %}

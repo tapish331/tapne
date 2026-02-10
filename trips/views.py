@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from interactions.models import build_comment_threads_payload_for_target
+from reviews.models import build_reviews_payload_for_target
 
 from .forms import TripForm
 from .models import (
@@ -74,6 +75,11 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         target_type="trip",
         target_id=trip_id,
     )
+    reviews_payload = build_reviews_payload_for_target(
+        target_type="trip",
+        target_id=trip_id,
+        viewer=request.user,
+    )
     _vprint(
         request,
         (
@@ -95,6 +101,17 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
             )
         ),
     )
+    _vprint(
+        request,
+        (
+            "Trip reviews target={target}; mode={mode}; count={count}; average={average}".format(
+                target=f"{reviews_payload['target_type']}:{reviews_payload['target_key']}",
+                mode=reviews_payload["mode"],
+                count=reviews_payload["review_count"],
+                average=reviews_payload["average_rating"],
+            )
+        ),
+    )
 
     context: dict[str, object] = {
         "trip": payload["trip"],
@@ -105,6 +122,14 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         "interaction_comments": comments_payload["comments"],
         "interaction_comment_mode": comments_payload["mode"],
         "interaction_comment_reason": comments_payload["reason"],
+        "review_items": reviews_payload["reviews"],
+        "review_rating_buckets": reviews_payload["rating_buckets"],
+        "review_mode": reviews_payload["mode"],
+        "review_reason": reviews_payload["reason"],
+        "review_count": reviews_payload["review_count"],
+        "review_average_rating": reviews_payload["average_rating"],
+        "review_can_review": reviews_payload["can_review"],
+        "review_viewer_row": reviews_payload["viewer_review"],
     }
     return render(request, "pages/trips/detail.html", context)
 

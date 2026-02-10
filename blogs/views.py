@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from interactions.models import build_comment_threads_payload_for_target
+from reviews.models import build_reviews_payload_for_target
 
 from .forms import BlogForm
 from .models import Blog, build_blog_detail_payload_for_user, build_blog_list_payload_for_user
@@ -66,6 +67,11 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         target_type="blog",
         target_id=slug,
     )
+    reviews_payload = build_reviews_payload_for_target(
+        target_type="blog",
+        target_id=slug,
+        viewer=request.user,
+    )
     _vprint(
         request,
         (
@@ -87,6 +93,17 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
             )
         ),
     )
+    _vprint(
+        request,
+        (
+            "Blog reviews target={target}; mode={mode}; count={count}; average={average}".format(
+                target=f"{reviews_payload['target_type']}:{reviews_payload['target_key']}",
+                mode=reviews_payload["mode"],
+                count=reviews_payload["review_count"],
+                average=reviews_payload["average_rating"],
+            )
+        ),
+    )
 
     context: dict[str, object] = {
         "blog": payload["blog"],
@@ -97,6 +114,14 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         "interaction_comments": comments_payload["comments"],
         "interaction_comment_mode": comments_payload["mode"],
         "interaction_comment_reason": comments_payload["reason"],
+        "review_items": reviews_payload["reviews"],
+        "review_rating_buckets": reviews_payload["rating_buckets"],
+        "review_mode": reviews_payload["mode"],
+        "review_reason": reviews_payload["reason"],
+        "review_count": reviews_payload["review_count"],
+        "review_average_rating": reviews_payload["average_rating"],
+        "review_can_review": reviews_payload["can_review"],
+        "review_viewer_row": reviews_payload["viewer_review"],
     }
     return render(request, "pages/blogs/detail.html", context)
 

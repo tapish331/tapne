@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}tapne | Reviews{% endblock %}
+
+{% block content %}
+<section class="hero hero-compact">
+    <p class="eyebrow">Reviews</p>
+    <h1>{{ review_target_label|default:"Target reviews" }}</h1>
+    <p class="detail-meta">
+        {{ review_reason }}
+        ({{ review_mode|default:"unknown" }}, target={{ review_target_type|default:"unknown" }}:{{ review_target_key|default:"unknown" }})
+    </p>
+    <p class="detail-meta">Average rating: {{ review_average_rating|floatformat:1 }}/5 from {{ review_count }} review{{ review_count|pluralize }}</p>
+
+    <div class="inline-actions">
+        <a class="btn btn-secondary" href="{{ review_target_url|default:'/' }}">Back to target</a>
+    </div>
+</section>
+
+<section class="detail-shell">
+    <h2>Distribution</h2>
+    <dl class="card-meta-grid">
+        {% for bucket in review_rating_buckets %}
+        <div>
+            <dt>{{ bucket.rating }}/5</dt>
+            <dd>{{ bucket.count }}</dd>
+        </div>
+        {% endfor %}
+    </dl>
+</section>
+
+<section id="write-review" class="detail-shell stack-gap-top">
+    <h2>Write a review</h2>
+    {% if user.is_authenticated and review_can_review %}
+    <form method="post" action="{% url 'reviews:create' %}" class="search-form">
+        {% csrf_token %}
+        <input type="hidden" name="target_type" value="{{ review_target_type }}">
+        <input type="hidden" name="target_id" value="{{ review_target_key }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+        <label for="review-rating">Rating</label>
+        <select id="review-rating" class="form-input" name="rating">
+            <option value="5">5 - Excellent</option>
+            <option value="4">4 - Strong</option>
+            <option value="3">3 - Solid</option>
+            <option value="2">2 - Needs work</option>
+            <option value="1">1 - Poor</option>
+        </select>
+
+        <label for="review-headline">Headline (optional)</label>
+        <input id="review-headline" class="form-input" type="text" name="headline" maxlength="160" placeholder="Summarize your experience in one line.">
+
+        <label for="review-body">Your review</label>
+        <input id="review-body" class="form-input" type="text" name="body" maxlength="4000" placeholder="What stood out? What should improve?">
+
+        <button class="btn btn-primary" type="submit">
+            {% if review_viewer_row %}Update review{% else %}Post review{% endif %}
+        </button>
+    </form>
+    {% else %}
+    <button class="btn btn-primary js-guest-action" type="button" data-action-label="write a review">Log in to review</button>
+    {% endif %}
+</section>
+
+<section class="detail-shell stack-gap-top">
+    <h2>Recent reviews</h2>
+    {% if review_items %}
+    <div class="comments-stack">
+        {% for item in review_items %}
+        <article class="card comment-item">
+            <p class="card-subtitle">
+                @{{ item.author_username }} · {{ item.created_at|date:"M j, Y H:i" }} · {{ item.rating }}/5
+                {% if item.is_mine %} · Your review{% endif %}
+            </p>
+            {% if item.headline %}
+            <p><strong>{{ item.headline }}</strong></p>
+            {% endif %}
+            <p class="card-description">{{ item.body }}</p>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No reviews yet. Members can add the first review.</p>
+    {% endif %}
+</section>
+{% endblock %}

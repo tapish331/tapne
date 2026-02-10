@@ -15,7 +15,8 @@
       "python manage.py bootstrap_blogs --verbose --create-missing-authors",
       "python manage.py bootstrap_social --verbose --create-missing-members",
       "python manage.py bootstrap_enrollment --verbose --create-missing-members",
-      "python manage.py bootstrap_interactions --verbose --create-missing-members"
+      "python manage.py bootstrap_interactions --verbose --create-missing-members",
+      "python manage.py bootstrap_reviews --verbose --create-missing-members"
     ]
   },
   "local_stack": {
@@ -70,6 +71,7 @@
       "templates/pages/enrollment/hosting_inbox.html",
       "templates/pages/interactions/dm_inbox.html",
       "templates/pages/interactions/dm_thread.html",
+      "templates/pages/reviews/list.html",
       "templates/pages/accounts/me.html",
       "templates/pages/accounts/me_edit.html"
     ],
@@ -277,6 +279,31 @@
         "/interactions/dm/<thread_id>/send/"
       ],
       "comment_targets": [
+        "trip",
+        "blog"
+      ]
+    },
+    "reviews": {
+      "required_files": [
+        "reviews/apps.py",
+        "reviews/models.py",
+        "reviews/views.py",
+        "reviews/urls.py",
+        "reviews/admin.py",
+        "reviews/tests.py",
+        "reviews/management/__init__.py",
+        "reviews/management/commands/__init__.py",
+        "reviews/management/commands/bootstrap_reviews.py",
+        "reviews/migrations/__init__.py",
+        "reviews/migrations/0001_initial.py"
+      ],
+      "member_routes": [
+        "/reviews/create/"
+      ],
+      "browse_routes": [
+        "/reviews/<target_type>/<target_id>/"
+      ],
+      "review_targets": [
         "trip",
         "blog"
       ]

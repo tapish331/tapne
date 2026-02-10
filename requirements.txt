@@ -55,3 +55,8 @@ email-validator>=2.2,<3.0
 # comment/reply routes, DM inbox/thread/send flows, and bootstrap_interactions command
 # rely on Django core plus existing trip/blog/account/feed models.
 # No additional third-party package is required.
+
+# Reviews app note:
+# review create/list routes, target payload aggregation, and bootstrap_reviews command
+# rely on Django core plus existing trip/blog/account/feed models.
+# No additional third-party package is required.

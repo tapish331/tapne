@@ -605,11 +605,13 @@ python manage.py bootstrap_trips --verbose --create-missing-hosts
 python manage.py bootstrap_blogs --verbose --create-missing-authors
 python manage.py bootstrap_social --verbose --create-missing-members
 python manage.py bootstrap_interactions --verbose --create-missing-members
+python manage.py bootstrap_reviews --verbose --create-missing-members
 python manage.py bootstrap_enrollment --verbose --create-missing-members
 ```
 
 If trip/blog catalog rows are missing, `bootstrap_social` still seeds follow and user-bookmark rows and logs skipped trip/blog bookmark seeds in verbose mode.
 If trip/blog catalog rows are missing, `bootstrap_interactions` skips those comment seeds and still seeds any resolvable DM rows, with verbose skip logs.
+If trip/blog catalog rows are missing, `bootstrap_reviews` still seeds reviews that can be resolved via demo fallback targets and logs any unresolved seeds in verbose mode.
 If trip rows are missing, `bootstrap_enrollment` skips those enrollment seeds and logs each skip in verbose mode.
 
 ---
@@ -827,7 +829,96 @@ python manage.py bootstrap_interactions --verbose --create-missing-members
 ## Reviews (reviews app)
 
 * `POST /reviews/create/` (member-only)
-* `GET /reviews/<target_type>/<target_id>/` (readable by all, if you want)
+* `GET /reviews/<target_type>/<target_id>/` (readable by guests and members)
+
+### Current `reviews` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/reviews/` to `reviews/urls.py`
+  * `reviews/urls.py` maps:
+    * `path("create/", views.review_create_view, name="create")`
+    * `path("<slug:target_type>/<str:target_id>/", views.review_target_list_view, name="target-list")`
+* auth and method behavior:
+  * create endpoint is `POST` and enforces `@login_required`
+  * target reviews page is `GET` and readable by guests/members
+  * create redirects use safe same-origin `next` resolution (posted `next`, then safe referer, then fallback)
+* target resolution and payload behavior:
+  * supported review targets: `trip`, `blog`
+  * target resolution supports:
+    * live `trips.Trip` and `blogs.Blog` rows
+    * fallback to demo trip/blog catalog from `feed.models`
+  * canonical target key strategy:
+    * `trip`: numeric trip id as string
+    * `blog`: lowercase slug
+  * `build_reviews_payload_for_target(...)` returns:
+    * newest-first review rows
+    * total review count + average rating
+    * 5-to-1 rating distribution buckets
+    * `viewer_review` marker for the logged-in member’s own row (if present)
+* persistence (`reviews.models.Review`):
+  * one row per `(author, target_type, target_key)` (`UniqueConstraint`)
+  * fields: `author`, `target_type`, `target_key`, `target_label`, `target_url`, `rating`, `headline`, `body`, timestamps
+  * validation:
+    * rating range is constrained to `1..5`
+    * headline/body are whitespace-normalized before persistence
+    * body must be non-empty and max length is `4000`
+  * create route is idempotent per member/target:
+    * first submit creates review row
+    * repeated submit updates the existing row instead of creating duplicates
+* blog integration:
+  * review writes automatically sync live `blogs.Blog.reviews_count` for the reviewed blog target so blog list/detail counters stay consistent with review records
+* template integration:
+  * trip and blog detail pages now render review summary, rating distribution, and member review form:
+    * `templates/pages/trips/detail.html`
+    * `templates/pages/blogs/detail.html`
+  * dedicated review list page:
+    * `templates/pages/reviews/list.html`
+* admin:
+  * `reviews/admin.py` registers `Review` with filters/search/autocomplete/read-only timestamps
+* tests:
+  * `reviews/tests.py` covers auth gating, create/update semantics, guest-readable review listing, blog counter sync, verbose logging path, and bootstrap command behavior
+
+### Reviews UI behavior
+
+* guest behavior:
+  * guests can browse aggregated review pages (`GET /reviews/<target_type>/<target_id>/`)
+  * trip/blog detail pages show review summaries, but write actions trigger the shared auth modal (`.js-guest-action`)
+* member behavior:
+  * members can post or update one review per target (trip/blog)
+  * trip/blog detail pages include in-place review forms (`#reviews` anchor sections)
+  * members can open the dedicated target review page for full review history and rating distribution
+
+### Reviews verbose behavior
+
+`reviews` prints server-side debug lines prefixed with `[reviews][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Reviews seed/bootstrap command
+
+`reviews` includes `bootstrap_reviews` for creating/updating demo review rows against trip/blog targets.
+
+```powershell
+# Seed demo reviews with verbose logs
+python manage.py bootstrap_reviews --verbose
+
+# Also create missing demo members first
+python manage.py bootstrap_reviews --verbose --create-missing-members
+```
+
+`bootstrap_reviews` behavior:
+* idempotent for seeded rows (existing member-target reviews are updated, not duplicated)
+* unresolved targets or missing members are skipped with verbose diagnostics
+
+Quick verification flow:
+
+```powershell
+python manage.py migrate
+python manage.py bootstrap_reviews --verbose --create-missing-members
+python manage.py test reviews
+```
 
 ---
 
