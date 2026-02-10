@@ -16,7 +16,8 @@
       "python manage.py bootstrap_social --verbose --create-missing-members",
       "python manage.py bootstrap_enrollment --verbose --create-missing-members",
       "python manage.py bootstrap_interactions --verbose --create-missing-members",
-      "python manage.py bootstrap_reviews --verbose --create-missing-members"
+      "python manage.py bootstrap_reviews --verbose --create-missing-members",
+      "python manage.py bootstrap_activity --verbose --create-missing-members"
     ]
   },
   "local_stack": {
@@ -306,6 +307,32 @@
       "review_targets": [
         "trip",
         "blog"
+      ]
+    },
+    "activity": {
+      "required_files": [
+        "activity/apps.py",
+        "activity/models.py",
+        "activity/views.py",
+        "activity/urls.py",
+        "activity/admin.py",
+        "activity/tests.py",
+        "activity/management/__init__.py",
+        "activity/management/commands/__init__.py",
+        "activity/management/commands/bootstrap_activity.py",
+        "activity/migrations/__init__.py"
+      ],
+      "member_routes": [
+        "/activity/"
+      ],
+      "activity_filters": [
+        "all",
+        "follows",
+        "enrollment",
+        "comments",
+        "replies",
+        "bookmarks",
+        "reviews"
       ]
     }
   },

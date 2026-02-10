@@ -926,6 +926,103 @@ python manage.py test reviews
 
 * `GET /activity/`
 
+### Current `activity` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/activity/` to `activity/urls.py`
+  * `activity/urls.py` maps `path("", views.activity_index_view, name="index")`
+* auth and method behavior:
+  * activity page is member-only (`@login_required`)
+  * route is `GET` only (`@require_http_methods(["GET"])`)
+* request query contract:
+  * `type` filter supports: `all|follows|enrollment|comments|replies|bookmarks|reviews`
+  * unsupported `type` values are normalized and fall back to `all`
+  * optional `limit` query controls timeline length (default `80`, clamped to `5..250`)
+* view and context:
+  * `activity/views.py::activity_index_view` builds context via `build_activity_payload_for_member(...)`
+  * context keys used by template:
+    * `activity_items`
+    * `activity_counts`
+    * `activity_mode`
+    * `activity_reason`
+    * `activity_filter`
+* payload and filtering (`activity/models.py`):
+  * normalized filters: `all|follows|enrollment|comments|replies|bookmarks|reviews`
+  * stream mode: `member-activity`
+  * stream ordering: newest first by event timestamp
+  * actor self-noise suppression:
+    * incoming activity rows exclude self-authored/self-acted events where applicable
+  * activity counts include:
+    * follows (`social.FollowRelation`)
+    * enrollment decisions (`enrollment.EnrollmentRequest`)
+    * comments/replies (`interactions.Comment`)
+    * bookmarks (`social.Bookmark`)
+    * reviews (`reviews.Review`)
+  * target ownership rules:
+    * comments/bookmarks/reviews are scoped to member-owned trip/blog targets where applicable
+    * reply activity is scoped to replies on the member’s own comments
+  * enrollment activity scope:
+    * includes approved/denied decisions for the member’s own join requests
+    * uses reviewer/host attribution and reviewed timestamp when available
+  * fallback behavior:
+    * guest/invalid-member payloads are explicit and safe (`guest-not-allowed` / empty payload)
+    * missing/unknown target metadata falls back to safe labels/URLs instead of hard failures
+* template behavior:
+  * `templates/pages/activity/index.html` renders:
+    * member activity summary metadata (`activity_reason`, `activity_mode`)
+    * filter tabs with counts
+    * timeline cards with actor, action, target, timestamp, and preview text
+    * empty-state guidance including bootstrap command hint
+* tests:
+  * `activity/tests.py` covers:
+    * auth gating
+    * unified activity payload rendering
+    * filter behavior
+    * verbose logging path
+    * bootstrap command behavior
+
+### Activity UI behavior
+
+* guest behavior:
+  * direct access to `/activity/` redirects to modal login entry route (`/accounts/login/?next=/activity/`)
+* member behavior:
+  * timeline defaults to `type=all`
+  * filter tabs expose category-specific streams with per-category counts
+  * empty categories render deterministic empty states (no server error/no blank UI)
+
+### Activity verbose behavior
+
+`activity` prints server-side debug lines prefixed with `[activity][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Activity seed/bootstrap command
+
+`activity` includes `bootstrap_activity` for seeding activity-source rows across follows, enrollment decisions, comments/replies, bookmarks, and reviews.
+
+```powershell
+# Seed demo activity rows with verbose logs
+python manage.py bootstrap_activity --verbose
+
+# Also create missing demo members first
+python manage.py bootstrap_activity --verbose --create-missing-members
+```
+
+`bootstrap_activity` behavior:
+* idempotent for seeded rows (existing rows are reused/updated where appropriate)
+* can create missing demo members (`mei`, `arun`, `sahar`, `nora`) when `--create-missing-members` is enabled
+* unresolved targets (for example missing trip/blog seeds) are skipped with verbose diagnostics
+
+Quick verification flow:
+
+```powershell
+python manage.py migrate
+python manage.py bootstrap_activity --verbose --create-missing-members
+python manage.py test activity
+```
+
 ---
 
 ## Settings (settings_app) (member-only)

@@ -12,10 +12,6 @@ def health(_request: HttpRequest) -> JsonResponse:
     return JsonResponse({"status": "ok", "service": "tapne-placeholder"})
 
 
-def activity_page(request: HttpRequest) -> HttpResponse:
-    return render(request, "pages/activity/index.html")
-
-
 def settings_page(request: HttpRequest) -> HttpResponse:
     return render(request, "pages/settings/index.html")
 
@@ -31,8 +27,8 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("enroll/", include("enrollment.urls")),
     path("interactions/", include("interactions.urls")),
     path("reviews/", include("reviews.urls")),
+    path("activity/", include("activity.urls")),
     path("u/<slug:username>/", accounts_views.public_profile_view, name="public-profile"),
-    path("activity/", activity_page, name="activity"),
     path("settings/", settings_page, name="settings"),
     path("admin/", admin.site.urls),
 ]

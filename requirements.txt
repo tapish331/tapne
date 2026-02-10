@@ -60,3 +60,8 @@ email-validator>=2.2,<3.0
 # review create/list routes, target payload aggregation, and bootstrap_reviews command
 # rely on Django core plus existing trip/blog/account/feed models.
 # No additional third-party package is required.
+
+# Activity app note:
+# activity timeline aggregation and bootstrap_activity command rely on Django core
+# plus existing social/enrollment/interactions/reviews/trip/blog/account models.
+# No additional third-party package is required.

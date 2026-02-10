@@ -3,15 +3,57 @@
 {% block title %}tapne | Activity{% endblock %}
 
 {% block content %}
-<section class="detail-shell">
+<section class="hero hero-compact">
     <p class="eyebrow">Member activity</p>
     <h1>Recent activity</h1>
-    <p>This page is member-only in production and should aggregate follows, join requests, comments, and reviews.</p>
-    <ul class="simple-list">
-        <li>New follower notifications</li>
-        <li>Trip request approvals and denials</li>
-        <li>Comment and reply interactions</li>
-        <li>Bookmark and review updates</li>
-    </ul>
+    <p>{{ activity_reason|default:"Recent notifications across follow, enrollment, comments, bookmarks, and reviews." }}</p>
+    <p class="detail-meta">{{ activity_mode|default:"member-activity" }} / active filter: {{ activity_filter|default:"all" }}</p>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Filters</h2>
+    </header>
+    <div class="inline-actions">
+        <a class="btn {% if activity_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=all">All ({{ activity_counts.all|default:0 }})</a>
+        <a class="btn {% if activity_filter == 'follows' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=follows">Follows ({{ activity_counts.follows|default:0 }})</a>
+        <a class="btn {% if activity_filter == 'enrollment' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=enrollment">Enrollment ({{ activity_counts.enrollment|default:0 }})</a>
+        <a class="btn {% if activity_filter == 'comments' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=comments">Comments ({{ activity_counts.comments|default:0 }})</a>
+        <a class="btn {% if activity_filter == 'replies' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=replies">Replies ({{ activity_counts.replies|default:0 }})</a>
+        <a class="btn {% if activity_filter == 'bookmarks' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=bookmarks">Bookmarks ({{ activity_counts.bookmarks|default:0 }})</a>
+        <a class="btn {% if activity_filter == 'reviews' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=reviews">Reviews ({{ activity_counts.reviews|default:0 }})</a>
+    </div>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
+        <h2>Timeline</h2>
+    </header>
+    <div class="card-grid">
+        {% for item in activity_items %}
+        <article class="card">
+            <header class="card-header">
+                <p class="card-kicker">{{ item.group|title }}</p>
+                <h3 class="card-title">
+                    <a href="{{ item.actor_url }}">@{{ item.actor_username }}</a>
+                    {{ item.action }}
+                    <a href="{{ item.target_url|default:'#' }}">{{ item.target_label|default:"target" }}</a>
+                </h3>
+                <p class="card-subtitle">{{ item.occurred_at|date:"M j, Y H:i" }}</p>
+            </header>
+            {% if item.preview %}
+            <p class="card-description">{{ item.preview }}</p>
+            {% endif %}
+            <div class="card-actions">
+                <a class="btn btn-secondary" href="{{ item.target_url|default:'#' }}">Open target</a>
+                <a class="btn btn-ghost" href="{{ item.actor_url|default:'#' }}">View profile</a>
+            </div>
+        </article>
+        {% empty %}
+        <div class="empty-state">
+            No activity for this filter yet. Run <code>python manage.py bootstrap_activity --verbose --create-missing-members</code> to seed sample rows.
+        </div>
+        {% endfor %}
+    </div>
 </section>
 {% endblock %}
