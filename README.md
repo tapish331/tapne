@@ -607,6 +607,8 @@ python manage.py bootstrap_social --verbose --create-missing-members
 python manage.py bootstrap_interactions --verbose --create-missing-members
 python manage.py bootstrap_reviews --verbose --create-missing-members
 python manage.py bootstrap_enrollment --verbose --create-missing-members
+python manage.py bootstrap_activity --verbose --create-missing-members
+python manage.py bootstrap_settings --verbose --create-missing-members
 ```
 
 If trip/blog catalog rows are missing, `bootstrap_social` still seeds follow and user-bookmark rows and logs skipped trip/blog bookmark seeds in verbose mode.
@@ -1029,6 +1031,98 @@ python manage.py test activity
 
 * `GET /settings/`
 * `POST /settings/`
+
+### Current `settings_app` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/settings/` to `settings_app/urls.py`
+  * `settings_app/urls.py` maps `path("", views.settings_index_view, name="index")`
+* auth and method behavior:
+  * settings page is member-only (`@login_required`)
+  * route supports `GET` (render form) and `POST` (save preferences)
+  * post-action redirects resolve safe same-origin `next` targets (posted `next`, then safe referer, then fallback)
+* view and context:
+  * `settings_app/views.py::settings_index_view` builds page context via `build_settings_payload_for_member(...)`
+  * context keys used by template:
+    * `settings_form`
+    * `settings_record`
+    * `settings_mode`
+    * `settings_reason`
+* template integration:
+  * `templates/pages/settings/index.html` renders the bound Django form and field-level errors
+  * form posts to `{% url 'settings_app:index' %}` and includes a safe `next` hidden field
+* persistence (`settings_app.models.MemberSettings`):
+  * one settings row per member (`OneToOneField` to `AUTH_USER_MODEL`)
+  * fields:
+    * `email_updates` (`all|important|none`)
+    * `profile_visibility` (`public|members`)
+    * `dm_privacy` (`everyone|following|none`)
+    * `search_visibility` (boolean)
+    * `digest_enabled` (boolean)
+    * timestamps (`created_at`, `updated_at`)
+  * settings rows are initialized from environment-driven defaults (same code, different configuration):
+    * `TAPNE_SETTINGS_DEFAULT_EMAIL_UPDATES`
+    * `TAPNE_SETTINGS_DEFAULT_PROFILE_VISIBILITY`
+    * `TAPNE_SETTINGS_DEFAULT_DM_PRIVACY`
+    * `TAPNE_SETTINGS_DEFAULT_SEARCH_VISIBILITY`
+    * `TAPNE_SETTINGS_DEFAULT_DIGEST_ENABLED`
+  * update semantics are explicit:
+    * first write creates the row
+    * subsequent writes update only changed fields
+    * unchanged submits remain idempotent (`unchanged` outcome)
+* form behavior (`settings_app.forms.MemberSettingsForm`):
+  * validates choice fields against allowed enum values
+  * normalizes persisted choice values to lowercase
+  * boolean checkboxes map to deterministic true/false values on save
+* admin:
+  * `settings_app/admin.py` registers `MemberSettings` with filters/search/autocomplete/read-only timestamps
+* tests:
+  * `settings_app/tests.py` covers auth gating, GET/POST behavior, verbose logging path, and bootstrap command behavior
+
+### Settings UI behavior
+
+* guest behavior:
+  * direct access to `/settings/` redirects to modal login entry route (`/accounts/login/?next=/settings/`)
+* member behavior:
+  * settings page shows current persisted values and mode/reason metadata for runtime visibility
+  * posting valid form data updates member settings and surfaces success feedback via Django messages
+  * posting unchanged values is idempotent and returns informational feedback
+
+### Settings verbose behavior
+
+`settings_app` prints server-side debug lines prefixed with `[settings][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Settings seed/bootstrap command
+
+`settings_app` includes `bootstrap_settings` for creating/updating demo member settings rows.
+
+```powershell
+# Seed demo member settings with verbose logs
+python manage.py bootstrap_settings --verbose
+
+# Also create missing demo members first
+python manage.py bootstrap_settings --verbose --create-missing-members
+```
+
+`bootstrap_settings` behavior:
+* idempotent for seeded rows (existing rows are updated only when values differ)
+* can create missing demo members (`mei`, `arun`, `sahar`, `nora`) when `--create-missing-members` is enabled
+* prints per-row diagnostics with final created/updated/unchanged/skip counts when `--verbose` is used
+
+Quick verification flow:
+
+```powershell
+python manage.py migrate
+python manage.py bootstrap_settings --verbose --create-missing-members
+python manage.py test settings_app
+
+# Guest route check (expected redirect to login)
+curl -I http://localhost:8000/settings/
+```
 
 ---
 

@@ -49,7 +49,8 @@ INSTALLED_APPS = [
     "enrollment",
     "interactions",
     "reviews",
-    "activity"
+    "activity",
+    "settings_app"
 ]
 
 MIDDLEWARE = [

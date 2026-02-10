@@ -65,3 +65,7 @@ email-validator>=2.2,<3.0
 # activity timeline aggregation and bootstrap_activity command rely on Django core
 # plus existing social/enrollment/interactions/reviews/trip/blog/account models.
 # No additional third-party package is required.
+
+# Settings app note:
+# member settings model/form/views and bootstrap_settings command rely on Django core
+# plus existing auth/account models. No additional third-party package is required.

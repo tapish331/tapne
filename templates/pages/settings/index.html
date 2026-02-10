@@ -3,27 +3,72 @@
 {% block title %}tapne | Settings{% endblock %}
 
 {% block content %}
-<section class="detail-shell">
+<section class="hero hero-compact">
     <p class="eyebrow">Member settings</p>
     <h1>Account settings</h1>
-    <p>This starter page mirrors the URL contract in README and can be replaced by form-driven settings UI.</p>
+    <p>{{ settings_reason|default:"Tune account and privacy preferences for your member profile." }}</p>
+    <p class="detail-meta">
+        {{ settings_mode|default:"member-settings" }}
+        {% if settings_record %}
+        / email: {{ settings_record.email_updates }}
+        / visibility: {{ settings_record.profile_visibility }}
+        / dm: {{ settings_record.dm_privacy }}
+        {% endif %}
+    </p>
+</section>
 
-    <form method="post" action="/settings/" class="settings-form">
+<section class="detail-shell">
+    <form method="post" action="{% url 'settings_app:index' %}" class="settings-form">
         {% csrf_token %}
-        <label for="email_updates">Email updates</label>
-        <select id="email_updates" name="email_updates">
-            <option value="all">All activity</option>
-            <option value="important">Only important updates</option>
-            <option value="none">No email updates</option>
-        </select>
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
 
-        <label for="profile_visibility">Profile visibility</label>
-        <select id="profile_visibility" name="profile_visibility">
-            <option value="public">Public</option>
-            <option value="members">Members only</option>
-        </select>
+        {% if settings_form.non_field_errors %}
+        <div class="form-error">
+            {% for error in settings_form.non_field_errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
 
-        <button class="btn btn-primary" type="submit">Save settings</button>
+        <label for="{{ settings_form.email_updates.id_for_label }}">Email updates</label>
+        {{ settings_form.email_updates }}
+        <p class="form-help">{{ settings_form.email_updates.help_text }}</p>
+        {% for error in settings_form.email_updates.errors %}
+        <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <label for="{{ settings_form.profile_visibility.id_for_label }}">Profile visibility</label>
+        {{ settings_form.profile_visibility }}
+        <p class="form-help">{{ settings_form.profile_visibility.help_text }}</p>
+        {% for error in settings_form.profile_visibility.errors %}
+        <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <label for="{{ settings_form.dm_privacy.id_for_label }}">Direct message privacy</label>
+        {{ settings_form.dm_privacy }}
+        <p class="form-help">{{ settings_form.dm_privacy.help_text }}</p>
+        {% for error in settings_form.dm_privacy.errors %}
+        <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <label for="{{ settings_form.search_visibility.id_for_label }}">Search visibility</label>
+        {{ settings_form.search_visibility }}
+        <p class="form-help">{{ settings_form.search_visibility.help_text }}</p>
+        {% for error in settings_form.search_visibility.errors %}
+        <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <label for="{{ settings_form.digest_enabled.id_for_label }}">Activity digest</label>
+        {{ settings_form.digest_enabled }}
+        <p class="form-help">{{ settings_form.digest_enabled.help_text }}</p>
+        {% for error in settings_form.digest_enabled.errors %}
+        <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <div class="inline-actions">
+            <button class="btn btn-primary" type="submit">Save settings</button>
+            <a class="btn btn-secondary" href="/accounts/me/">Back to profile</a>
+        </div>
     </form>
 </section>
 {% endblock %}

@@ -3,17 +3,12 @@ from __future__ import annotations
 
 from accounts import views as accounts_views
 from django.contrib import admin
-from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.http import HttpRequest, JsonResponse
 from django.urls import URLPattern, URLResolver, include, path
 
 
 def health(_request: HttpRequest) -> JsonResponse:
     return JsonResponse({"status": "ok", "service": "tapne-placeholder"})
-
-
-def settings_page(request: HttpRequest) -> HttpResponse:
-    return render(request, "pages/settings/index.html")
 
 
 urlpatterns: list[URLPattern | URLResolver] = [
@@ -28,7 +23,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("interactions/", include("interactions.urls")),
     path("reviews/", include("reviews.urls")),
     path("activity/", include("activity.urls")),
+    path("settings/", include("settings_app.urls")),
     path("u/<slug:username>/", accounts_views.public_profile_view, name="public-profile"),
-    path("settings/", settings_page, name="settings"),
     path("admin/", admin.site.urls),
 ]
