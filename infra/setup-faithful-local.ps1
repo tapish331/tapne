@@ -798,6 +798,8 @@ else {
 if ($InfraOnly) {
     $upArgs += @("db", "minio", "minio-init", "redis")
 }
+# Bound compose startup wait so `up` cannot appear to hang indefinitely.
+$upArgs += @("--wait", "--wait-timeout", $HealthTimeoutSeconds)
 Invoke-Compose -ComposeArgs $upArgs
 
 Write-Step "Waiting for service health"

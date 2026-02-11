@@ -76,7 +76,8 @@ INSTALLED_APPS = [
     "reviews",
     "activity",
     "settings_app",
-    "media"
+    "media",
+    "runtime"
 ]
 
 MIDDLEWARE = [

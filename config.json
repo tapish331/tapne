@@ -19,7 +19,8 @@
       "python manage.py bootstrap_reviews --verbose --create-missing-members",
       "python manage.py bootstrap_activity --verbose --create-missing-members",
       "python manage.py bootstrap_settings --verbose --create-missing-members",
-      "python manage.py bootstrap_media --verbose"
+      "python manage.py bootstrap_media --verbose",
+      "python manage.py bootstrap_runtime --verbose --create-missing-members"
     ]
   },
   "local_stack": {
@@ -385,6 +386,33 @@
         "trip",
         "blog",
         "review"
+      ]
+    },
+    "runtime": {
+      "required_files": [
+        "runtime/apps.py",
+        "runtime/models.py",
+        "runtime/views.py",
+        "runtime/urls.py",
+        "runtime/admin.py",
+        "runtime/tests.py",
+        "runtime/management/__init__.py",
+        "runtime/management/commands/__init__.py",
+        "runtime/management/commands/bootstrap_runtime.py",
+        "runtime/migrations/__init__.py",
+        "runtime/migrations/0001_initial.py"
+      ],
+      "read_routes": [
+        "/runtime/health/",
+        "/runtime/cache-preview/"
+      ],
+      "runtime_capabilities": [
+        "feed-cache-shelves",
+        "search-cache-shelves",
+        "rate-limiting",
+        "idempotency-guards",
+        "runtime-counters",
+        "background-task-broker-shelf"
       ]
     }
   },

@@ -151,6 +151,7 @@ These are feature modules:
 * `activity` (member activity page)
 * `settings_app` (member settings)
 * `media` (image/video uploads + storage abstraction, attachment wiring for trips/blogs/reviews, plus upload validation/permission checks)
+* `runtime` (Redis: cache shelves, per-user feed/search caches, rate limiting, idempotency guards, counters, background task broker utilities)
 
 ---
 
@@ -1239,6 +1240,171 @@ If these are wrong:
 ```powershell
 docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose.yml up -d --build web
 ```
+
+---
+
+## Runtime infrastructure (runtime app) (cache/queue/rate/idempotency utilities)
+
+### Runtime purpose
+
+`runtime` is the shared infrastructure app for request-path runtime controls:
+
+* cache shelves for feed/search payloads
+* action rate limiting
+* idempotency guards for POST flows
+* runtime counters + persistent snapshots
+* queue/broker utility envelopes for background work
+
+It follows the same strategy as the rest of the project:
+**same code, different env configuration** (local Redis vs production Memorystore/broker settings).
+
+### Read routes
+
+* `GET /runtime/health/`
+  * returns runtime health snapshot (cache probe, broker mode, buffered queue depth, idempotency/counter row counts)
+* `GET /runtime/cache-preview/` (member-only)
+  * returns member-scoped feed/search cache key preview and hit/miss diagnostics
+
+### Current `runtime` implementation contract
+
+* project routing:
+  * `tapne/urls.py` delegates `/runtime/` to `runtime/urls.py`
+  * `runtime/urls.py` maps:
+    * `path("health/", views.runtime_health_view, name="health")`
+    * `path("cache-preview/", views.runtime_cache_preview_view, name="cache-preview")`
+* persistence:
+  * `runtime.models.RuntimeIdempotencyRecord`
+    * unique key scope: `(scope, idempotency_key)`
+    * stores request fingerprint, status code, cached response payload, and expiry
+    * enables deterministic duplicate replay semantics and TTL-based key reuse
+  * `runtime.models.RuntimeCounter`
+    * stores durable snapshots of fast in-cache counters for operational visibility
+* cache shelves:
+  * key prefix shape is deterministic: `tapne:runtime:...`
+  * feed shelf helpers:
+    * `feed_cache_key_for_user(...)`
+    * `warm_feed_cache_for_user(...)`
+  * search shelf helpers:
+    * `search_cache_key_for_user(...)`
+    * `warm_search_cache_for_user(...)`
+  * generic payload helpers:
+    * `get_cached_payload(...)`
+    * `set_cached_payload(...)`
+* rate limiting:
+  * `check_rate_limit(...)` uses add/incr cache semantics with safe fallback behavior
+  * returned decision payload includes:
+    * `allowed` / `outcome`
+    * `current_count`
+    * `remaining`
+    * `retry_after_seconds`
+* idempotency guards:
+  * reserve/verify key:
+    * `reserve_idempotency_key(...)`
+  * finalize outcome payload:
+    * `finalize_idempotency_key(...)`
+  * purge expired rows:
+    * `purge_expired_idempotency_records(...)`
+* counters:
+  * in-cache counters:
+    * `increment_runtime_counter(...)`
+    * `read_runtime_counter(...)`
+  * persisted snapshots:
+    * `snapshot_runtime_counter(...)`
+* broker/task shelf utilities:
+  * `queue_runtime_task(...)` writes normalized task envelopes to a cache shelf
+  * `get_buffered_runtime_tasks(...)` previews shelf contents for diagnostics
+  * broker mode is env-driven:
+    * `CELERY_BROKER_URL` present -> `broker-configured`
+    * no broker URL -> `buffered-local` (local shelf mode)
+* health and diagnostics:
+  * `build_runtime_health_snapshot(...)` powers `/runtime/health/`
+  * includes cache backend details and live runtime counters/ledger counts
+* admin:
+  * `runtime/admin.py` registers:
+    * `RuntimeIdempotencyRecord`
+    * `RuntimeCounter`
+* tests:
+  * `runtime/tests.py` covers cache shelves, rate limiting, idempotency duplicate/expiry behavior, counters, queue shelf, runtime routes, verbose path, and bootstrap command behavior
+
+### Runtime environment configuration
+
+Runtime reads these env-driven settings (defaults shown):
+
+* `TAPNE_RUNTIME_FEED_CACHE_TTL_SECONDS` (`180`)
+* `TAPNE_RUNTIME_SEARCH_CACHE_TTL_SECONDS` (`120`)
+* `TAPNE_RUNTIME_RATE_LIMIT_REQUESTS` (`40`)
+* `TAPNE_RUNTIME_RATE_LIMIT_WINDOW_SECONDS` (`60`)
+* `TAPNE_RUNTIME_IDEMPOTENCY_TTL_SECONDS` (`900`)
+* `TAPNE_RUNTIME_COUNTER_TTL_SECONDS` (`86400`)
+* `TAPNE_RUNTIME_BROKER_SHELF_TTL_SECONDS` (`3600`)
+* `TAPNE_RUNTIME_BROKER_SHELF_MAX_ITEMS` (`200`)
+* `REDIS_URL` (cache backend when `django-redis` is enabled in settings)
+* `CELERY_BROKER_URL` (optional broker mode switch)
+* `CELERY_RESULT_BACKEND` (optional result backend)
+
+### Integration guidance (where runtime should be used)
+
+* feed/search GET flows:
+  * compute per-user cache key
+  * serve cache hit when available
+  * on miss, build payload and warm shelf with TTL
+* high-value POST actions (join/follow/bookmark/comment/review/upload):
+  * enforce `check_rate_limit(...)` per scope + member identifier
+  * reserve idempotency key before mutating state
+  * finalize idempotency payload after successful write
+* periodic/background operations:
+  * queue envelopes with `queue_runtime_task(...)`
+  * use `snapshot_runtime_counter(...)` for persistent metrics
+
+### Runtime verbose behavior
+
+`runtime` prints server-side debug lines prefixed with `[runtime][verbose]` when verbose mode is enabled by any of:
+
+* `?verbose=1` on request URL
+* `verbose=1` in POST body
+* `X-Tapne-Verbose: 1` request header
+
+### Runtime seed/bootstrap command
+
+`runtime` includes `bootstrap_runtime` for warming shelves and seeding guard/counter/task artifacts.
+
+```powershell
+# Warm guest + member runtime shelves and seed idempotency/counter/task rows
+python manage.py bootstrap_runtime --verbose --create-missing-members
+
+# Override search shelf warmup query and type
+python manage.py bootstrap_runtime --verbose --search-query "tapne" --search-type users
+```
+
+`bootstrap_runtime` behavior:
+* warms guest/member feed + search shelves
+* reserves/finalizes sample idempotency rows
+* enqueues runtime task envelopes in `runtime-maintenance`
+* increments + snapshots `runtime.bootstrap.invocations`
+* prints per-seed diagnostics + final aggregate counts in verbose mode
+
+### Quick verification flow
+
+```powershell
+python manage.py migrate
+python manage.py bootstrap_runtime --verbose --create-missing-members
+python manage.py test runtime
+curl http://localhost:8000/runtime/health/
+curl http://localhost:8000/runtime/cache-preview/ -I
+```
+
+### Runtime troubleshooting
+
+* `/runtime/health/` shows `cache_ok=false`:
+  * verify `REDIS_URL` value and Redis container health
+  * confirm Django cache backend is `django_redis.cache.RedisCache`
+* `/runtime/cache-preview/` always cache miss:
+  * confirm payload warmers are called in feed/search flows
+  * verify TTL env values are non-zero and keys are stable
+* broker mode remains `buffered-local` unexpectedly:
+  * set `CELERY_BROKER_URL` in env and restart `web`
+* idempotency records grow without cleanup:
+  * run periodic purge using `purge_expired_idempotency_records(...)` in scheduled maintenance jobs
 
 ---
 
