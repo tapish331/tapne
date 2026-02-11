@@ -1,5 +1,3 @@
----
-
 ## The tapne platform in one sentence
 
 **tapne ([www.tapne.com](http://www.tapne.com))** is a social marketplace where people **host trips, write blogs, and build audiences**, and others **discover, follow, join, bookmark, and interact**, with different access for **guests** vs **members**.
