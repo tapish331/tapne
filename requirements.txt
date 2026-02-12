@@ -80,3 +80,4 @@ email-validator>=2.2,<3.0
 # runtime counters, and background task broker shelf utilities rely on
 # Django core plus existing redis/django-redis/celery dependencies above.
 # No additional third-party package is required.
+google-cloud-storage>=2.18,<3.0

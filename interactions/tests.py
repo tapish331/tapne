@@ -152,9 +152,37 @@ class InteractionViewsTests(TestCase):
         expected_redirect = f"{reverse('accounts:login')}?next={reverse('interactions:dm-inbox')}"
         self.assertRedirects(response, expected_redirect, fetch_redirect_response=False)
 
-    def test_dm_inbox_with_with_query_creates_thread_and_redirects(self) -> None:
+    def test_dm_open_requires_login(self) -> None:
+        response = self.client.post(
+            reverse("interactions:dm-open"),
+            {
+                "with": self.target.username,
+            },
+        )
+        expected_redirect = f"{reverse('accounts:login')}?next={reverse('interactions:dm-open')}"
+        self.assertRedirects(response, expected_redirect, fetch_redirect_response=False)
+
+    def test_dm_inbox_get_with_query_does_not_create_thread(self) -> None:
         self.client.login(username=self.member.username, password=self.password)
         response = self.client.get(f"{reverse('interactions:dm-inbox')}?with={self.target.username}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            DirectMessageThread.objects.filter(
+                Q(member_one=self.member, member_two=self.target)
+                | Q(member_one=self.target, member_two=self.member)
+            ).exists()
+        )
+
+    def test_dm_open_post_creates_thread_and_redirects(self) -> None:
+        self.client.login(username=self.member.username, password=self.password)
+        response = self.client.post(
+            reverse("interactions:dm-open"),
+            {
+                "with": self.target.username,
+                "next": reverse("interactions:dm-inbox"),
+            },
+        )
 
         thread = self._thread_between(self.member, self.target)
         self.assertRedirects(

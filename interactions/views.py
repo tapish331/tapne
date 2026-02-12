@@ -155,42 +155,55 @@ def reply_view(request: HttpRequest) -> HttpResponse:
 
 
 @login_required(login_url="accounts:login")
+@require_POST
+def dm_open_view(request: HttpRequest) -> HttpResponse:
+    fallback_next = reverse("interactions:dm-inbox")
+    next_url = _safe_next_url(request, fallback=fallback_next)
+    open_with_username = str(request.POST.get("with") or request.GET.get("with") or "").strip().lstrip("@")
+    if not open_with_username:
+        messages.info(request, "Enter a username to open a direct message thread.")
+        return redirect(next_url)
+
+    target_member = UserModel.objects.filter(username__iexact=open_with_username).first()
+    if target_member is None:
+        messages.error(request, f"Could not open chat. User '@{open_with_username}' was not found.")
+        _vprint(
+            request,
+            f"DM open-with failed; user '@{open_with_username}' does not exist.",
+        )
+        return redirect(next_url)
+
+    if int(target_member.pk) == int(getattr(request.user, "pk", 0) or 0):
+        messages.info(request, "You cannot create a direct message thread with yourself.")
+        _vprint(request, f"DM open-with blocked self-thread for @{request.user.username}")
+        return redirect(next_url)
+
+    thread, created, outcome = get_or_create_dm_thread_for_members(
+        member=request.user,
+        other_member=target_member,
+    )
+    if thread is not None:
+        if created:
+            messages.success(request, f"Started a conversation with @{target_member.username}.")
+        return redirect(reverse("interactions:dm-thread", kwargs={"thread_id": thread.pk}))
+
+    messages.error(request, "Could not open direct message thread.")
+    _vprint(
+        request,
+        (
+            "DM open-with failed; member=@{member}; target=@{target}; outcome={outcome}".format(
+                member=request.user.username,
+                target=target_member.username,
+                outcome=outcome,
+            )
+        ),
+    )
+    return redirect(next_url)
+
+
+@login_required(login_url="accounts:login")
 @require_http_methods(["GET"])
 def dm_inbox_view(request: HttpRequest) -> HttpResponse:
-    open_with_username = str(request.GET.get("with", "") or "").strip().lstrip("@")
-    if open_with_username:
-        target_member = UserModel.objects.filter(username__iexact=open_with_username).first()
-        if target_member is None:
-            messages.error(request, f"Could not open chat. User '@{open_with_username}' was not found.")
-            _vprint(
-                request,
-                f"DM open-with failed; user '@{open_with_username}' does not exist.",
-            )
-        elif int(target_member.pk) == int(getattr(request.user, "pk", 0) or 0):
-            messages.info(request, "You cannot create a direct message thread with yourself.")
-            _vprint(request, f"DM open-with blocked self-thread for @{request.user.username}")
-        else:
-            thread, created, outcome = get_or_create_dm_thread_for_members(
-                member=request.user,
-                other_member=target_member,
-            )
-            if thread is not None:
-                if created:
-                    messages.success(request, f"Started a conversation with @{target_member.username}.")
-                return redirect(reverse("interactions:dm-thread", kwargs={"thread_id": thread.pk}))
-
-            messages.error(request, "Could not open direct message thread.")
-            _vprint(
-                request,
-                (
-                    "DM open-with failed; member=@{member}; target=@{target}; outcome={outcome}".format(
-                        member=request.user.username,
-                        target=target_member.username,
-                        outcome=outcome,
-                    )
-                ),
-            )
-
     payload = build_dm_inbox_payload_for_member(request.user)
     _vprint(
         request,

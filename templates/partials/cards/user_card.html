@@ -39,7 +39,12 @@
             <button class="btn btn-ghost" type="submit">Bookmark profile</button>
         </form>
         {% if user.username|lower != profile.username|lower %}
-        <a class="btn btn-ghost" href="{% url 'interactions:dm-inbox' %}?with={{ profile.username }}">Message</a>
+        <form method="post" action="{% url 'interactions:dm-open' %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="with" value="{{ profile.username }}">
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="btn btn-ghost" type="submit">Message</button>
+        </form>
         {% else %}
         <button class="btn btn-ghost" type="button" disabled>Message</button>
         {% endif %}

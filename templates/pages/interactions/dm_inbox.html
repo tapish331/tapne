@@ -9,7 +9,9 @@
     <p>{{ dm_reason }} ({{ dm_mode|default:"unknown" }})</p>
 </section>
 
-<form method="get" action="{% url 'interactions:dm-inbox' %}" class="search-form">
+<form method="post" action="{% url 'interactions:dm-open' %}" class="search-form">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
     <label for="dm-with">Start or open a thread</label>
     <input id="dm-with" type="text" name="with" placeholder="username (without @)" autocomplete="off">
     <button class="btn btn-primary" type="submit">Open thread</button>
