@@ -33,12 +33,12 @@ services:
       - /bin/sh
       - -c
       - >
-        python manage.py migrate --noinput &&
-        python manage.py collectstatic --noinput &&
+        if [ "$${RUN_MIGRATIONS:-false}" = "true" ]; then python manage.py migrate --noinput; fi &&
+        if [ "$${COLLECTSTATIC_ON_BOOT:-true}" = "true" ]; then python manage.py collectstatic --noinput; fi &&
         gunicorn tapne.wsgi:application
-        --bind 0.0.0.0:${APP_PORT}
-        --workers ${WEB_CONCURRENCY}
-        --timeout ${GUNICORN_TIMEOUT}
+        --bind 0.0.0.0:$${PORT}
+        --workers $${WEB_CONCURRENCY:-2}
+        --timeout $${GUNICORN_TIMEOUT:-120}
         --access-logfile -
         --error-logfile -
     healthcheck:

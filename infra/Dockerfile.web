@@ -23,3 +23,5 @@ RUN useradd --create-home --uid 10001 appuser \
 USER appuser
 
 EXPOSE 8000
+
+CMD ["sh", "-c", "if [ \"${COLLECTSTATIC_ON_BOOT:-true}\" = \"true\" ]; then python manage.py collectstatic --noinput; fi && exec gunicorn tapne.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --timeout ${GUNICORN_TIMEOUT:-120} --access-logfile - --error-logfile -"]

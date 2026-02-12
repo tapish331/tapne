@@ -12,6 +12,7 @@ This file is intentionally minimal but production-aware:
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 from typing import Any, cast
 
@@ -50,8 +51,18 @@ def strip_url_scheme(url: str) -> str:
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-placeholder-secret")
 DEBUG = env_bool("DEBUG", True)
+_configured_secret_key = os.getenv("SECRET_KEY", "").strip()
+if _configured_secret_key:
+    _secret_key_value = _configured_secret_key
+elif DEBUG:
+    # Ephemeral key for local/dev-only usage when no SECRET_KEY is provided.
+    _secret_key_value = f"dev-{secrets.token_urlsafe(32)}"
+else:
+    raise RuntimeError("SECRET_KEY must be set when DEBUG is false.")
+
+SECRET_KEY = _secret_key_value
+
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
@@ -115,7 +126,7 @@ default_database_url: str = (
     os.getenv("DATABASE_URL")
     or "postgresql://{user}:{password}@{host}:{port}/{name}".format(
         user=os.getenv("DB_USER", "tapne"),
-        password=os.getenv("DB_PASSWORD", "tapne_password"),
+        password=os.getenv("DB_PASSWORD", ""),
         host=os.getenv("DB_HOST", "db"),
         port=os.getenv("DB_PORT", "5432"),
         name=os.getenv("DB_NAME", "tapne_db"),
@@ -176,8 +187,8 @@ if storage_backend == "minio":
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3.S3Storage",
         "OPTIONS": {
-            "access_key": os.getenv("AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "minioadmin")),
-            "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY", os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")),
+            "access_key": os.getenv("AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "")),
+            "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY", os.getenv("MINIO_ROOT_PASSWORD", "")),
             "bucket_name": minio_bucket_name,
             "endpoint_url": minio_internal_endpoint,
             "region_name": os.getenv("AWS_S3_REGION_NAME", "us-east-1"),
@@ -189,6 +200,30 @@ if storage_backend == "minio":
             "url_protocol": os.getenv("AWS_S3_URL_PROTOCOL", default_url_protocol),
         },
     }
+elif storage_backend == "gcs":
+    gcs_bucket_name = (
+        os.getenv("GCS_BUCKET_NAME")
+        or os.getenv("GS_BUCKET_NAME")
+        or os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET")
+        or ""
+    ).strip()
+    if gcs_bucket_name:
+        gcs_options: dict[str, Any] = {
+            "bucket_name": gcs_bucket_name,
+            "project_id": os.getenv("GOOGLE_CLOUD_PROJECT", "").strip() or None,
+            "default_acl": os.getenv("GCS_DEFAULT_ACL", "").strip() or None,
+            "querystring_auth": env_bool("GCS_QUERYSTRING_AUTH", False),
+            "file_overwrite": env_bool("GCS_FILE_OVERWRITE", False),
+        }
+        gcs_custom_domain = os.getenv("GCS_CUSTOM_DOMAIN", "").strip().strip("/")
+        if gcs_custom_domain:
+            gcs_options["custom_endpoint"] = gcs_custom_domain
+            gcs_options["url_protocol"] = "https:"
+
+        STORAGES["default"] = {
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+            "OPTIONS": gcs_options,
+        }
 
 redis_url = os.getenv("REDIS_URL", "").strip()
 cache_backend: dict[str, Any]
