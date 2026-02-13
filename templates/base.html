@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="tapne: host trips, write blogs, and grow audiences.">
     <title>{% block title %}tapne{% endblock %}</title>
+    {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
     <link rel="stylesheet" href="{% static 'css/tapne.css' %}">
     <script>
         // Frontend runtime flags shared with static JS helpers.

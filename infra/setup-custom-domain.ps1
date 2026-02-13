@@ -946,6 +946,7 @@ foreach ($line in @(
     ("  -CloudRunIngress ""{0}""" -f $CloudRunIngress),
     ("  -DjangoAllowedHosts ""{0}""" -f ($allowedHostList -join ",")),
     ("  -CsrfTrustedOrigins ""{0}""" -f ($csrfOriginList -join ",")),
+    ("  -CanonicalHost ""{0}""" -f $Domain),
     ("  -SmokeBaseUrl ""https://{0}""" -f $Domain),
     ("  -UptimeCheckHost ""{0}""" -f $Domain)
 )) {

@@ -5,6 +5,9 @@ from accounts import views as accounts_views
 from django.contrib import admin
 from django.http import HttpRequest, JsonResponse
 from django.urls import URLPattern, URLResolver, include, path
+from django.views.generic import TemplateView
+
+from . import seo
 
 
 def health(_request: HttpRequest) -> JsonResponse:
@@ -12,6 +15,16 @@ def health(_request: HttpRequest) -> JsonResponse:
 
 
 urlpatterns: list[URLPattern | URLResolver] = [
+    path(
+        "google7c0adbf9fe517d15.html",
+        TemplateView.as_view(
+            template_name="google7c0adbf9fe517d15.html",
+            content_type="text/html",
+        ),
+        name="google-site-verification",
+    ),
+    path("robots.txt", seo.robots_txt_view, name="robots-txt"),
+    path("sitemap.xml", seo.sitemap_xml_view, name="sitemap-xml"),
     path("", include("feed.urls")),
     path("health/", health, name="health"),
     path("runtime/", include("runtime.urls")),

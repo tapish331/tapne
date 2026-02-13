@@ -122,6 +122,7 @@ param(
 
     [string[]]$DjangoAllowedHosts = @(),
     [string[]]$CsrfTrustedOrigins = @(),
+    [string]$CanonicalHost = "",
 
     [string]$SmokeBaseUrl = "",
     [string]$SmokeHealthPath = "/runtime/health/",
@@ -1493,8 +1494,8 @@ if ($null -ne $gcloudCmdCandidate) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; SkipMigrations={6}; RunBootstrapRuntime={7}; SkipSmokeTest={8}; PrivateCloudSqlIp={9}; CloudRunConcurrency={10}; CloudRunIngress={11}; GcsSignedUrls={12}; ConfigureMonitoring={13}; DjangoAllowedHosts={14}; CsrfTrustedOrigins={15}; SmokeBaseUrl={16}; UptimeCheckHost={17}; UptimeCheckPath={18}" -f
-    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
+    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; SkipMigrations={6}; RunBootstrapRuntime={7}; SkipSmokeTest={8}; PrivateCloudSqlIp={9}; CloudRunConcurrency={10}; CloudRunIngress={11}; GcsSignedUrls={12}; ConfigureMonitoring={13}; DjangoAllowedHosts={14}; CsrfTrustedOrigins={15}; CanonicalHost={16}; SmokeBaseUrl={17}; UptimeCheckHost={18}; UptimeCheckPath={19}" -f
+    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $CanonicalHost, $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
 )
 
 Write-Step "Preflight checks"
@@ -1964,6 +1965,10 @@ Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNam
 $requestedAllowedHosts = @(Split-CommaList -Values $DjangoAllowedHosts)
 $requestedCsrfTrustedOrigins = @(Split-CommaList -Values $CsrfTrustedOrigins)
 $existingServiceEnv = Get-CloudRunServiceEnvMap -GcloudCli $gcloudCli -Project $ProjectId -Region $Region -ServiceName $ServiceName
+$requestedCanonicalHost = ""
+if (-not [string]::IsNullOrWhiteSpace($CanonicalHost)) {
+    $requestedCanonicalHost = (Resolve-HostName -Candidate $CanonicalHost -FallbackHost $CanonicalHost -ParameterName "CanonicalHost").ToLowerInvariant()
+}
 
 $inferredLoadBalancerDomains = @()
 $preferredInferredDomain = ""
@@ -1989,12 +1994,16 @@ if ($shouldInferCustomDomain) {
 
 $existingAllowedHosts = ""
 $existingCsrfTrustedOrigins = ""
+$existingCanonicalHost = ""
 if ($null -ne $existingServiceEnv) {
     if ($existingServiceEnv.ContainsKey("DJANGO_ALLOWED_HOSTS")) {
         $existingAllowedHosts = [string]$existingServiceEnv["DJANGO_ALLOWED_HOSTS"]
     }
     if ($existingServiceEnv.ContainsKey("CSRF_TRUSTED_ORIGINS")) {
         $existingCsrfTrustedOrigins = [string]$existingServiceEnv["CSRF_TRUSTED_ORIGINS"]
+    }
+    if ($existingServiceEnv.ContainsKey("CANONICAL_HOST")) {
+        $existingCanonicalHost = [string]$existingServiceEnv["CANONICAL_HOST"]
     }
 }
 
@@ -2047,6 +2056,23 @@ if ($requestedCsrfTrustedOrigins.Count -eq 0 -and $inferredLoadBalancerDomains.C
     }
 }
 
+$resolvedCanonicalHost = ""
+if (-not [string]::IsNullOrWhiteSpace($requestedCanonicalHost)) {
+    $resolvedCanonicalHost = $requestedCanonicalHost
+}
+elseif (-not [string]::IsNullOrWhiteSpace($preferredInferredDomain)) {
+    $resolvedCanonicalHost = $preferredInferredDomain.ToLowerInvariant()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingCanonicalHost)) {
+    $resolvedCanonicalHost = (Resolve-HostName -Candidate $existingCanonicalHost -FallbackHost $existingCanonicalHost -ParameterName "ExistingCanonicalHost").ToLowerInvariant()
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedCanonicalHost)) {
+    Write-Info ("Using canonical host redirect target: {0}" -f $resolvedCanonicalHost)
+}
+else {
+    Write-Info "Canonical host redirect is not configured for this deploy run."
+}
+
 $bootstrapHostCsrfFromServiceUrl = [string]::IsNullOrWhiteSpace($resolvedAllowedHosts) -and [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)
 if ($requestedAllowedHosts.Count -gt 0 -or $requestedCsrfTrustedOrigins.Count -gt 0) {
     Write-Info "Applying DJANGO_ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS from script parameters."
@@ -2071,6 +2097,7 @@ $baseEnv = @(
     ("GCS_QUERYSTRING_AUTH={0}" -f (ConvertTo-BoolString -Value $EnableGcsSignedUrls)),
     ("GOOGLE_CLOUD_PROJECT={0}" -f $ProjectId),
     "USE_X_FORWARDED_PROTO=true",
+    "CANONICAL_SCHEME=https",
     "SECURE_SSL_REDIRECT=true",
     "SESSION_COOKIE_SECURE=true",
     "CSRF_COOKIE_SECURE=true"
@@ -2080,6 +2107,13 @@ if (-not [string]::IsNullOrWhiteSpace($resolvedAllowedHosts)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)) {
     $baseEnv += ("CSRF_TRUSTED_ORIGINS={0}" -f $resolvedCsrfTrustedOrigins)
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedCanonicalHost)) {
+    $baseEnv += ("CANONICAL_HOST={0}" -f $resolvedCanonicalHost)
+    $baseEnv += "CANONICAL_HOST_REDIRECT_ENABLED=true"
+}
+else {
+    $baseEnv += "CANONICAL_HOST_REDIRECT_ENABLED=false"
 }
 $webEnv = @($baseEnv + @("COLLECTSTATIC_ON_BOOT=true"))
 $jobEnv = @($baseEnv + @("COLLECTSTATIC_ON_BOOT=false"))
@@ -2328,6 +2362,7 @@ Write-Host ("  Bucket:         {0}" -f $bucketRef)
 Write-Host ("  VPC Connector:  {0}" -f $VpcConnector)
 Write-Host ("  Allowed Hosts:  {0}" -f $effectiveAllowedHosts)
 Write-Host ("  CSRF Origins:   {0}" -f $effectiveCsrfTrustedOrigins)
+Write-Host ("  Canonical Host: {0}" -f $resolvedCanonicalHost)
 Write-Host ("  Smoke Base URL: {0}" -f $smokeBaseUrlResolved)
 Write-Host ("  Uptime Target:  https://{0}{1}" -f $uptimeCheckHostResolved, $uptimeCheckPathResolved)
 Write-Host ("  Concurrency:    {0}" -f $CloudRunConcurrency)

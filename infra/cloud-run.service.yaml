@@ -23,6 +23,12 @@ spec:
               value: "false"
             - name: COLLECTSTATIC_ON_BOOT
               value: "false"
+            - name: CANONICAL_SCHEME
+              value: "https"
+            - name: CANONICAL_HOST
+              value: "REPLACE_WITH_CANONICAL_HOST"
+            - name: CANONICAL_HOST_REDIRECT_ENABLED
+              value: "true"
           startupProbe:
             httpGet:
               path: /runtime/health/

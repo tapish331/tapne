@@ -93,6 +93,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "tapne.middleware.CanonicalHostRedirectMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -114,6 +115,7 @@ TEMPLATES: list[dict[str, Any]] = [
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
+                "tapne.context_processors.canonical_meta",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "accounts.context_processors.auth_modal_forms",
@@ -257,6 +259,10 @@ if env_bool("USE_X_FORWARDED_PROTO", False):
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
+CANONICAL_HOST = os.getenv("CANONICAL_HOST", "").strip().lower()
+_canonical_scheme = os.getenv("CANONICAL_SCHEME", "https").strip().lower()
+CANONICAL_SCHEME = _canonical_scheme if _canonical_scheme in {"http", "https"} else "https"
+CANONICAL_HOST_REDIRECT_ENABLED = env_bool("CANONICAL_HOST_REDIRECT_ENABLED", not DEBUG)
 
 # Media upload validation defaults (used by media app, env-overridable).
 TAPNE_MEDIA_IMAGE_MAX_MB = max(1, env_int("TAPNE_MEDIA_IMAGE_MAX_MB", 12))
