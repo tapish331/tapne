@@ -87,6 +87,23 @@ class SearchViewTests(TestCase):
         self.assertEqual(response.context["trips"], [])
         self.assertEqual(response.context["blogs"], [])
 
+    def test_search_users_with_period_username_renders_for_member(self) -> None:
+        period_user = UserModel.objects.create_user(
+            username="tapne.user",
+            email="tapne-user@example.com",
+            password="LivePass!12345",
+        )
+        self.client.login(username=self.member.username, password=self.password)
+
+        response = self.client.get(f"{reverse('search:search')}?q=tapne.user&type=users")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "@tapne.user")
+        self.assertContains(
+            response,
+            reverse("social:follow", kwargs={"username": period_user.username}),
+        )
+
     def test_search_all_with_query_includes_live_accounts_in_profile_results(self) -> None:
         UserModel.objects.create_user(
             username="tapne",

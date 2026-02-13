@@ -92,6 +92,30 @@ class SocialViewsTests(TestCase):
         preference = MemberFeedPreference.objects.get(user=self.member)
         self.assertEqual(preference.followed_usernames, [self.target.username.lower()])
 
+    def test_follow_post_supports_period_username(self) -> None:
+        period_target = UserModel.objects.create_user(
+            username="target.social",
+            email="target-social-dot@example.com",
+            password=self.password,
+        )
+        self.client.login(username=self.member.username, password=self.password)
+
+        response = self.client.post(
+            reverse("social:follow", kwargs={"username": period_target.username}),
+            {"next": reverse("public-profile", kwargs={"username": period_target.username})},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("public-profile", kwargs={"username": period_target.username}),
+        )
+        self.assertTrue(
+            FollowRelation.objects.filter(
+                follower=self.member,
+                following=period_target,
+            ).exists()
+        )
+
     def test_follow_self_is_blocked(self) -> None:
         self.client.login(username=self.member.username, password=self.password)
 

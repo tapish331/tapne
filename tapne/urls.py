@@ -39,6 +39,6 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("reviews/", include("reviews.urls")),
     path("activity/", include("activity.urls")),
     path("settings/", include("settings_app.urls")),
-    path("u/<slug:username>/", accounts_views.public_profile_view, name="public-profile"),
+    path("u/<str:username>/", accounts_views.public_profile_view, name="public-profile"),
     path("admin/", admin.site.urls),
 ]

@@ -148,6 +148,23 @@ class AccountsViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "@owner")
 
+    def test_my_profile_view_works_for_period_username(self) -> None:
+        period_user = UserModel.objects.create_user(
+            username="owner.name",
+            email="owner-name@example.com",
+            password=self.password,
+        )
+        ensure_profile(period_user)
+
+        self.client.login(username=period_user.username, password=self.password)
+        response = self.client.get(reverse("accounts:me"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            reverse("public-profile", kwargs={"username": period_user.username}),
+        )
+
     def test_my_profile_edit_updates_profile_and_user_fields(self) -> None:
         self.client.login(username=self.user.username, password=self.password)
         response = self.client.post(
@@ -173,6 +190,18 @@ class AccountsViewsTests(TestCase):
         response = self.client.get(reverse("public-profile", kwargs={"username": "owner"}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "@owner")
+
+    def test_public_profile_for_period_username(self) -> None:
+        period_user = UserModel.objects.create_user(
+            username="owner.name",
+            email="owner-name@example.com",
+            password=self.password,
+        )
+        ensure_profile(period_user)
+
+        response = self.client.get(reverse("public-profile", kwargs={"username": period_user.username}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "@owner.name")
 
     def test_public_profile_for_demo_user_fallback(self) -> None:
         response = self.client.get(reverse("public-profile", kwargs={"username": "mei"}))
