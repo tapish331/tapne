@@ -153,10 +153,51 @@ function Test-CommandExists {
 function Invoke-External {
     param(
         [string]$FilePath,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [int]$TimeoutSeconds = 0
     )
 
     Write-Verbose ("Running: {0} {1}" -f $FilePath, ($Arguments -join " "))
+
+    if ($TimeoutSeconds -gt 0) {
+        $job = Start-Job -ScriptBlock {
+            param(
+                [string]$InnerFilePath,
+                [string[]]$InnerArguments
+            )
+            $ErrorActionPreference = "SilentlyContinue"
+            $jobOutput = & $InnerFilePath @InnerArguments 2>&1 | ForEach-Object { $_.ToString() }
+            return [PSCustomObject]@{
+                ExitCode = $LASTEXITCODE
+                Output   = @($jobOutput)
+            }
+        } -ArgumentList $FilePath, @($Arguments)
+
+        $completed = Wait-Job -Job $job -Timeout $TimeoutSeconds
+        if ($null -eq $completed) {
+            Stop-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+            Remove-Job -Job $job -ErrorAction SilentlyContinue
+            return [PSCustomObject]@{
+                ExitCode = 124
+                Output   = @("Command timed out after {0} second(s)." -f $TimeoutSeconds)
+            }
+        }
+
+        $jobResult = Receive-Job -Job $job -ErrorAction SilentlyContinue
+        Remove-Job -Job $job -ErrorAction SilentlyContinue
+        if ($null -eq $jobResult) {
+            return [PSCustomObject]@{
+                ExitCode = 1
+                Output   = @("Command returned no output/result.")
+            }
+        }
+
+        return [PSCustomObject]@{
+            ExitCode = [int]$jobResult.ExitCode
+            Output   = @($jobResult.Output)
+        }
+    }
+
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
     try {
@@ -178,10 +219,11 @@ function Invoke-Required {
         [string]$FilePath,
         [string[]]$Arguments,
         [string]$FailureMessage,
+        [int]$TimeoutSeconds = 0,
         [switch]$PassThru
     )
 
-    $result = Invoke-External -FilePath $FilePath -Arguments $Arguments
+    $result = Invoke-External -FilePath $FilePath -Arguments $Arguments -TimeoutSeconds $TimeoutSeconds
     if ($result.ExitCode -ne 0) {
         $details = ($result.Output -join [Environment]::NewLine).Trim()
         if ([string]::IsNullOrWhiteSpace($details)) {
@@ -215,8 +257,8 @@ if (-not (Test-CommandExists -CommandName "docker")) {
     throw "Docker CLI is not available on PATH."
 }
 
-Invoke-Required -FilePath $gcloudCli -Arguments @("--version") -FailureMessage "gcloud is installed but not functioning."
-Invoke-Required -FilePath "docker" -Arguments @("version", "--format", "{{.Server.Version}}") -FailureMessage "Docker daemon is not reachable. Start Docker Desktop and retry."
+Invoke-Required -FilePath $gcloudCli -Arguments @("--version") -TimeoutSeconds 30 -FailureMessage "gcloud is installed but not functioning."
+Invoke-Required -FilePath "docker" -Arguments @("version", "--format", "{{.Server.Version}}") -TimeoutSeconds 45 -FailureMessage "Docker daemon check timed out or failed. Restart Docker Desktop and retry."
 Write-Ok "gcloud and docker are available."
 
 Write-Step "Ensuring gcloud authentication"

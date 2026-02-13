@@ -96,6 +96,9 @@ param(
     [ValidateRange(1, 1000)]
     [int]$CloudRunConcurrency = 10,
 
+    [ValidateSet("all", "internal", "internal-and-cloud-load-balancing")]
+    [string]$CloudRunIngress = "internal-and-cloud-load-balancing",
+
     [ValidatePattern("^\d{2}:\d{2}$")]
     [string]$CloudSqlBackupStartTime = "03:00",
 
@@ -116,6 +119,17 @@ param(
     [bool]$BuildAndPushImage = $true,
     [bool]$AutoFixGcsDependency = $true,
     [bool]$AllowUnauthenticated = $true,
+
+    [string[]]$DjangoAllowedHosts = @(),
+    [string[]]$CsrfTrustedOrigins = @(),
+
+    [string]$SmokeBaseUrl = "",
+    [string]$SmokeHealthPath = "/runtime/health/",
+    [string]$SmokeCssPath = "/static/css/tapne.css",
+    [string]$SmokeJsPath = "/static/js/tapne-ui.js",
+
+    [string]$UptimeCheckHost = "",
+    [string]$UptimeCheckPath = "/runtime/health/",
 
     [switch]$SkipMigrations,
     [switch]$RunBootstrapRuntime,
@@ -197,6 +211,191 @@ function ConvertTo-BoolString {
     return "false"
 }
 
+function Get-RedactedArguments {
+    param([string[]]$Arguments)
+
+    $source = @($Arguments)
+    $masked = New-Object System.Collections.Generic.List[string]
+    $i = 0
+    while ($i -lt $source.Count) {
+        $arg = [string]$source[$i]
+        if ($arg -eq "--password") {
+            [void]$masked.Add($arg)
+            if (($i + 1) -lt $source.Count) {
+                [void]$masked.Add("****")
+                $i += 2
+                continue
+            }
+            $i += 1
+            continue
+        }
+        if ($arg.StartsWith("--password=")) {
+            [void]$masked.Add("--password=****")
+            $i += 1
+            continue
+        }
+        [void]$masked.Add($arg)
+        $i += 1
+    }
+    return @($masked)
+}
+
+function Split-CommaList {
+    param([string[]]$Values)
+
+    $items = New-Object System.Collections.Generic.List[string]
+    foreach ($value in @($Values)) {
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            continue
+        }
+        foreach ($token in ([string]$value -split ",")) {
+            $item = $token.Trim()
+            if ([string]::IsNullOrWhiteSpace($item)) {
+                continue
+            }
+            if (-not $items.Contains($item)) {
+                [void]$items.Add($item)
+            }
+        }
+    }
+    return @($items)
+}
+
+function ConvertTo-GcloudDictArg {
+    param(
+        [string[]]$Entries,
+        [string]$Delimiter = ""
+    )
+
+    $normalizedEntries = @($Entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($normalizedEntries.Count -eq 0) {
+        return ""
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Delimiter)) {
+        # Avoid shell metacharacters that can be interpreted by gcloud.cmd/cmd.exe on Windows.
+        $candidateDelimiters = @("~", "#", "@", "!", ";", "+", "%", "_")
+        foreach ($candidate in $candidateDelimiters) {
+            $candidateUsed = $false
+            foreach ($entry in $normalizedEntries) {
+                if ($entry.Contains($candidate)) {
+                    $candidateUsed = $true
+                    break
+                }
+            }
+            if (-not $candidateUsed) {
+                $Delimiter = $candidate
+                break
+            }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($Delimiter)) {
+        throw "Unable to choose a safe gcloud dictionary delimiter for provided entries."
+    }
+
+    foreach ($entry in $normalizedEntries) {
+        if (-not $entry.Contains("=")) {
+            throw ("Invalid gcloud key/value entry: {0}" -f $entry)
+        }
+        if ($entry.Contains($Delimiter)) {
+            throw ("Entry contains unsupported delimiter '{0}': {1}" -f $Delimiter, $entry)
+        }
+    }
+
+    $caretToken = "^"
+    if ($IsWindows) {
+        # gcloud.cmd is mediated by cmd.exe; each literal caret must be escaped.
+        $caretToken = "^^^^"
+    }
+
+    return ("{0}{1}{0}{2}" -f $caretToken, $Delimiter, ($normalizedEntries -join $Delimiter))
+}
+
+function Resolve-HttpPath {
+    param(
+        [string]$PathValue,
+        [string]$DefaultPath
+    )
+
+    $resolved = $PathValue
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        $resolved = $DefaultPath
+    }
+    $resolved = $resolved.Trim()
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        throw "HTTP path value cannot be empty."
+    }
+    if (-not $resolved.StartsWith("/")) {
+        $resolved = "/" + $resolved
+    }
+    return $resolved
+}
+
+function Resolve-BaseUrl {
+    param(
+        [string]$Candidate,
+        [string]$Fallback,
+        [string]$ParameterName
+    )
+
+    $resolvedCandidate = $Candidate
+    if ([string]::IsNullOrWhiteSpace($resolvedCandidate)) {
+        $resolvedCandidate = $Fallback
+    }
+    $resolvedCandidate = $resolvedCandidate.Trim()
+
+    try {
+        $uri = [System.Uri]$resolvedCandidate
+    }
+    catch {
+        throw ("{0} must be an absolute URL. Received: {1}" -f $ParameterName, $resolvedCandidate)
+    }
+
+    if (-not $uri.IsAbsoluteUri -or [string]::IsNullOrWhiteSpace($uri.Host)) {
+        throw ("{0} must include scheme and host. Received: {1}" -f $ParameterName, $resolvedCandidate)
+    }
+
+    return $uri.GetLeftPart([System.UriPartial]::Authority).TrimEnd("/")
+}
+
+function Resolve-HostName {
+    param(
+        [string]$Candidate,
+        [string]$FallbackHost,
+        [string]$ParameterName
+    )
+
+    $resolved = $Candidate
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        $resolved = $FallbackHost
+    }
+    $resolved = $resolved.Trim()
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        throw ("{0} could not be resolved to a host value." -f $ParameterName)
+    }
+
+    if ($resolved.Contains("://")) {
+        try {
+            $uri = [System.Uri]$resolved
+        }
+        catch {
+            throw ("{0} is not a valid URL/host value: {1}" -f $ParameterName, $resolved)
+        }
+        if ([string]::IsNullOrWhiteSpace($uri.Host)) {
+            throw ("{0} is missing a host component: {1}" -f $ParameterName, $resolved)
+        }
+        return $uri.Host
+    }
+
+    if ($resolved.Contains("/")) {
+        $resolved = ($resolved -split "/")[0].Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        throw ("{0} is missing a host component." -f $ParameterName)
+    }
+    return $resolved
+}
+
 function Test-CommandExists {
     param([string]$CommandName)
     return [bool](Get-Command $CommandName -ErrorAction SilentlyContinue)
@@ -205,10 +404,52 @@ function Test-CommandExists {
 function Invoke-External {
     param(
         [string]$FilePath,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [int]$TimeoutSeconds = 0
     )
 
-    Write-Verbose ("Running: {0} {1}" -f $FilePath, ($Arguments -join " "))
+    $logArguments = Get-RedactedArguments -Arguments $Arguments
+    Write-Verbose ("Running: {0} {1}" -f $FilePath, ($logArguments -join " "))
+
+    if ($TimeoutSeconds -gt 0) {
+        $job = Start-Job -ScriptBlock {
+            param(
+                [string]$InnerFilePath,
+                [string[]]$InnerArguments
+            )
+            $ErrorActionPreference = "SilentlyContinue"
+            $jobOutput = & $InnerFilePath @InnerArguments 2>&1 | ForEach-Object { $_.ToString() }
+            return [PSCustomObject]@{
+                ExitCode = $LASTEXITCODE
+                Output   = @($jobOutput)
+            }
+        } -ArgumentList $FilePath, @($Arguments)
+
+        $completed = Wait-Job -Job $job -Timeout $TimeoutSeconds
+        if ($null -eq $completed) {
+            Stop-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+            Remove-Job -Job $job -ErrorAction SilentlyContinue
+            return [PSCustomObject]@{
+                ExitCode = 124
+                Output   = @("Command timed out after {0} second(s)." -f $TimeoutSeconds)
+            }
+        }
+
+        $jobResult = Receive-Job -Job $job -ErrorAction SilentlyContinue
+        Remove-Job -Job $job -ErrorAction SilentlyContinue
+        if ($null -eq $jobResult) {
+            return [PSCustomObject]@{
+                ExitCode = 1
+                Output   = @("Command returned no output/result.")
+            }
+        }
+
+        return [PSCustomObject]@{
+            ExitCode = [int]$jobResult.ExitCode
+            Output   = @($jobResult.Output)
+        }
+    }
+
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
     try {
@@ -230,10 +471,11 @@ function Invoke-Required {
         [string]$FilePath,
         [string[]]$Arguments,
         [string]$FailureMessage,
+        [int]$TimeoutSeconds = 0,
         [switch]$PassThru
     )
 
-    $result = Invoke-External -FilePath $FilePath -Arguments $Arguments
+    $result = Invoke-External -FilePath $FilePath -Arguments $Arguments -TimeoutSeconds $TimeoutSeconds
     if ($result.ExitCode -ne 0) {
         $details = ($result.Output -join [Environment]::NewLine).Trim()
         if ([string]::IsNullOrWhiteSpace($details)) {
@@ -251,6 +493,442 @@ function Invoke-Required {
     if ($PassThru) {
         return $result.Output
     }
+}
+
+function Get-CloudRunServiceEnvMap {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$Region,
+        [string]$ServiceName
+    )
+
+    $describe = Invoke-External -FilePath $GcloudCli -Arguments @(
+        "run", "services", "describe", $ServiceName,
+        "--project", $Project,
+        "--region", $Region,
+        "--format=json"
+    )
+    if ($describe.ExitCode -ne 0) {
+        return $null
+    }
+
+    $rawJson = ($describe.Output -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($rawJson)) {
+        return @{}
+    }
+
+    try {
+        $service = $rawJson | ConvertFrom-Json -Depth 100
+    }
+    catch {
+        Write-Warning ("Failed to parse existing Cloud Run service JSON; host/csrf env values may not be preserved automatically. Details: {0}" -f $_.Exception.Message)
+        return @{}
+    }
+
+    $envMap = @{}
+    if ($null -eq $service -or $service.PSObject.Properties.Match("spec").Count -eq 0 -or $null -eq $service.spec) {
+        return $envMap
+    }
+    if ($service.spec.PSObject.Properties.Match("template").Count -eq 0 -or $null -eq $service.spec.template) {
+        return $envMap
+    }
+    if ($service.spec.template.PSObject.Properties.Match("spec").Count -eq 0 -or $null -eq $service.spec.template.spec) {
+        return $envMap
+    }
+    if ($service.spec.template.spec.PSObject.Properties.Match("containers").Count -eq 0 -or $null -eq $service.spec.template.spec.containers) {
+        return $envMap
+    }
+
+    $containers = @($service.spec.template.spec.containers)
+    if ($containers.Count -eq 0) {
+        return $envMap
+    }
+
+    $container = $containers[0]
+    if ($null -eq $container -or $container.PSObject.Properties.Match("env").Count -eq 0 -or $null -eq $container.env) {
+        return $envMap
+    }
+
+    foreach ($entry in @($container.env)) {
+        if ($null -eq $entry) {
+            continue
+        }
+        $name = ""
+        $value = $null
+        if ($entry.PSObject.Properties.Match("name").Count -gt 0) {
+            $name = [string]$entry.name
+        }
+        if ($entry.PSObject.Properties.Match("value").Count -gt 0) {
+            $value = [string]$entry.value
+        }
+        if (-not [string]::IsNullOrWhiteSpace($name) -and $null -ne $value) {
+            $envMap[$name] = $value
+        }
+    }
+
+    return $envMap
+}
+
+function Get-ResourceLeafName {
+    param([string]$Reference)
+
+    if ([string]::IsNullOrWhiteSpace($Reference)) {
+        return ""
+    }
+
+    $trimmed = $Reference.Trim()
+    if (-not $trimmed.Contains("/")) {
+        return $trimmed
+    }
+
+    $segments = @($trimmed -split "/")
+    for ($idx = $segments.Count - 1; $idx -ge 0; $idx--) {
+        $segment = [string]$segments[$idx]
+        if (-not [string]::IsNullOrWhiteSpace($segment)) {
+            return $segment.Trim()
+        }
+    }
+
+    return ""
+}
+
+function Get-CloudRunLoadBalancerDomains {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$Region,
+        [string]$ServiceName
+    )
+
+    $domains = New-Object System.Collections.Generic.List[string]
+
+    $negList = Invoke-External -FilePath $GcloudCli -Arguments @(
+        "compute", "network-endpoint-groups", "list",
+        "--project", $Project,
+        "--regions", $Region,
+        "--format=json"
+    )
+    if ($negList.ExitCode -ne 0) {
+        Write-Warning "Failed listing network endpoint groups for custom domain inference."
+        return @()
+    }
+
+    $negJson = ($negList.Output -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($negJson)) {
+        return @()
+    }
+
+    try {
+        $negs = @($negJson | ConvertFrom-Json -Depth 100)
+    }
+    catch {
+        Write-Warning ("Failed parsing NEG list JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
+        return @()
+    }
+
+    $negNames = New-Object "System.Collections.Generic.HashSet[string]" ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($neg in $negs) {
+        if ($null -eq $neg) {
+            continue
+        }
+        $negType = ""
+        if ($neg.PSObject.Properties.Match("networkEndpointType").Count -gt 0) {
+            $negType = [string]$neg.networkEndpointType
+        }
+        if ($negType -ne "SERVERLESS") {
+            continue
+        }
+
+        $cloudRunService = ""
+        if ($neg.PSObject.Properties.Match("cloudRun").Count -gt 0 -and $null -ne $neg.cloudRun) {
+            if ($neg.cloudRun.PSObject.Properties.Match("service").Count -gt 0) {
+                $cloudRunService = [string]$neg.cloudRun.service
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($cloudRunService) -or $cloudRunService -ne $ServiceName) {
+            continue
+        }
+
+        $negName = ""
+        if ($neg.PSObject.Properties.Match("name").Count -gt 0) {
+            $negName = [string]$neg.name
+        }
+        if (-not [string]::IsNullOrWhiteSpace($negName)) {
+            [void]$negNames.Add($negName)
+        }
+    }
+
+    if ($negNames.Count -eq 0) {
+        return @()
+    }
+
+    $backendList = Invoke-External -FilePath $GcloudCli -Arguments @(
+        "compute", "backend-services", "list",
+        "--project", $Project,
+        "--global",
+        "--format=json"
+    )
+    if ($backendList.ExitCode -ne 0) {
+        Write-Warning "Failed listing backend services for custom domain inference."
+        return @()
+    }
+
+    $backendJson = ($backendList.Output -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($backendJson)) {
+        return @()
+    }
+
+    try {
+        $backendServices = @($backendJson | ConvertFrom-Json -Depth 100)
+    }
+    catch {
+        Write-Warning ("Failed parsing backend service JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
+        return @()
+    }
+
+    $backendNames = New-Object "System.Collections.Generic.HashSet[string]" ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($backendService in $backendServices) {
+        if ($null -eq $backendService -or $backendService.PSObject.Properties.Match("backends").Count -eq 0 -or $null -eq $backendService.backends) {
+            continue
+        }
+
+        $matchesNeg = $false
+        foreach ($backend in @($backendService.backends)) {
+            if ($null -eq $backend) {
+                continue
+            }
+            $groupRef = ""
+            if ($backend.PSObject.Properties.Match("group").Count -gt 0) {
+                $groupRef = [string]$backend.group
+            }
+            if ([string]::IsNullOrWhiteSpace($groupRef)) {
+                continue
+            }
+            $groupName = Get-ResourceLeafName -Reference $groupRef
+            if ($negNames.Contains($groupName)) {
+                $matchesNeg = $true
+                break
+            }
+        }
+
+        if (-not $matchesNeg) {
+            continue
+        }
+
+        $backendName = ""
+        if ($backendService.PSObject.Properties.Match("name").Count -gt 0) {
+            $backendName = [string]$backendService.name
+        }
+        if (-not [string]::IsNullOrWhiteSpace($backendName)) {
+            [void]$backendNames.Add($backendName)
+        }
+    }
+
+    if ($backendNames.Count -eq 0) {
+        return @()
+    }
+
+    $urlMapList = Invoke-External -FilePath $GcloudCli -Arguments @(
+        "compute", "url-maps", "list",
+        "--project", $Project,
+        "--global",
+        "--format=json"
+    )
+    if ($urlMapList.ExitCode -ne 0) {
+        Write-Warning "Failed listing URL maps for custom domain inference."
+        return @()
+    }
+
+    $urlMapJson = ($urlMapList.Output -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($urlMapJson)) {
+        return @()
+    }
+
+    try {
+        $urlMaps = @($urlMapJson | ConvertFrom-Json -Depth 100)
+    }
+    catch {
+        Write-Warning ("Failed parsing URL map JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
+        return @()
+    }
+
+    $urlMapNames = New-Object "System.Collections.Generic.HashSet[string]" ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($urlMap in $urlMaps) {
+        if ($null -eq $urlMap) {
+            continue
+        }
+
+        $urlMapText = ""
+        try {
+            $urlMapText = ($urlMap | ConvertTo-Json -Depth 100 -Compress)
+        }
+        catch {
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace($urlMapText)) {
+            continue
+        }
+
+        $matchesBackend = $false
+        foreach ($backendName in $backendNames) {
+            if ($urlMapText.Contains(("backendServices/{0}" -f $backendName))) {
+                $matchesBackend = $true
+                break
+            }
+        }
+        if (-not $matchesBackend) {
+            continue
+        }
+
+        $urlMapName = ""
+        if ($urlMap.PSObject.Properties.Match("name").Count -gt 0) {
+            $urlMapName = [string]$urlMap.name
+        }
+        if (-not [string]::IsNullOrWhiteSpace($urlMapName)) {
+            [void]$urlMapNames.Add($urlMapName)
+        }
+    }
+
+    if ($urlMapNames.Count -eq 0) {
+        return @()
+    }
+
+    $httpsProxyList = Invoke-External -FilePath $GcloudCli -Arguments @(
+        "compute", "target-https-proxies", "list",
+        "--project", $Project,
+        "--global",
+        "--format=json"
+    )
+    if ($httpsProxyList.ExitCode -ne 0) {
+        Write-Warning "Failed listing target HTTPS proxies for custom domain inference."
+        return @()
+    }
+
+    $httpsProxyJson = ($httpsProxyList.Output -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($httpsProxyJson)) {
+        return @()
+    }
+
+    try {
+        $httpsProxies = @($httpsProxyJson | ConvertFrom-Json -Depth 100)
+    }
+    catch {
+        Write-Warning ("Failed parsing target HTTPS proxy JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
+        return @()
+    }
+
+    $certNames = New-Object "System.Collections.Generic.HashSet[string]" ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($httpsProxy in $httpsProxies) {
+        if ($null -eq $httpsProxy) {
+            continue
+        }
+
+        $urlMapRef = ""
+        if ($httpsProxy.PSObject.Properties.Match("urlMap").Count -gt 0) {
+            $urlMapRef = [string]$httpsProxy.urlMap
+        }
+        $urlMapName = Get-ResourceLeafName -Reference $urlMapRef
+        if ([string]::IsNullOrWhiteSpace($urlMapName) -or -not $urlMapNames.Contains($urlMapName)) {
+            continue
+        }
+
+        if ($httpsProxy.PSObject.Properties.Match("sslCertificates").Count -eq 0 -or $null -eq $httpsProxy.sslCertificates) {
+            continue
+        }
+        foreach ($certificateRef in @($httpsProxy.sslCertificates)) {
+            $certificateName = Get-ResourceLeafName -Reference ([string]$certificateRef)
+            if (-not [string]::IsNullOrWhiteSpace($certificateName)) {
+                [void]$certNames.Add($certificateName)
+            }
+        }
+    }
+
+    if ($certNames.Count -eq 0) {
+        return @()
+    }
+
+    foreach ($certName in $certNames) {
+        $certificateDescribe = Invoke-External -FilePath $GcloudCli -Arguments @(
+            "compute", "ssl-certificates", "describe", $certName,
+            "--project", $Project,
+            "--format=json",
+            "--global"
+        )
+        if ($certificateDescribe.ExitCode -ne 0) {
+            continue
+        }
+
+        $certJson = ($certificateDescribe.Output -join [Environment]::NewLine).Trim()
+        if ([string]::IsNullOrWhiteSpace($certJson)) {
+            continue
+        }
+
+        try {
+            $certificate = $certJson | ConvertFrom-Json -Depth 100
+        }
+        catch {
+            continue
+        }
+
+        if ($null -eq $certificate -or $certificate.PSObject.Properties.Match("managed").Count -eq 0 -or $null -eq $certificate.managed) {
+            continue
+        }
+        if ($certificate.managed.PSObject.Properties.Match("domains").Count -eq 0 -or $null -eq $certificate.managed.domains) {
+            continue
+        }
+
+        foreach ($domain in @($certificate.managed.domains)) {
+            $candidateDomain = ([string]$domain).Trim().TrimEnd(".").ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($candidateDomain)) {
+                continue
+            }
+            if ($candidateDomain.StartsWith("*.")) {
+                continue
+            }
+            if (-not $domains.Contains($candidateDomain)) {
+                [void]$domains.Add($candidateDomain)
+            }
+        }
+    }
+
+    return @($domains)
+}
+
+function Select-PreferredCustomDomain {
+    param([string[]]$Domains)
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+    foreach ($domain in @($Domains)) {
+        $candidate = ([string]$domain).Trim().TrimEnd(".").ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+        if ($candidate.StartsWith("*.")) {
+            continue
+        }
+        if ($candidate.EndsWith(".run.app")) {
+            continue
+        }
+        if (-not $candidates.Contains($candidate)) {
+            [void]$candidates.Add($candidate)
+        }
+    }
+
+    if ($candidates.Count -eq 0) {
+        return ""
+    }
+
+    $ordered = @(
+        $candidates |
+            Sort-Object `
+                @{ Expression = { if ([string]$_ -like "www.*") { 1 } else { 0 } } }, `
+                @{ Expression = { ([string]$_ -split "\.").Count } }, `
+                @{ Expression = { ([string]$_).Length } }, `
+                @{ Expression = { [string]$_ } }
+    )
+
+    return [string]$ordered[0]
 }
 
 function Get-CloudSqlOperationId {
@@ -815,8 +1493,8 @@ if ($null -ne $gcloudCmdCandidate) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; SkipMigrations={6}; RunBootstrapRuntime={7}; SkipSmokeTest={8}; PrivateCloudSqlIp={9}; CloudRunConcurrency={10}; GcsSignedUrls={11}; ConfigureMonitoring={12}" -f
-    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $EnableGcsSignedUrls, $ConfigureMonitoring
+    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; SkipMigrations={6}; RunBootstrapRuntime={7}; SkipSmokeTest={8}; PrivateCloudSqlIp={9}; CloudRunConcurrency={10}; CloudRunIngress={11}; GcsSignedUrls={12}; ConfigureMonitoring={13}; DjangoAllowedHosts={14}; CsrfTrustedOrigins={15}; SmokeBaseUrl={16}; UptimeCheckHost={17}; UptimeCheckPath={18}" -f
+    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
 )
 
 Write-Step "Preflight checks"
@@ -827,8 +1505,8 @@ if (-not (Test-CommandExists -CommandName "docker")) {
     throw "Docker CLI is not available on PATH."
 }
 
-Invoke-Required -FilePath $gcloudCli -Arguments @("--version") -FailureMessage "gcloud is installed but not functioning."
-Invoke-Required -FilePath "docker" -Arguments @("version", "--format", "{{.Server.Version}}") -FailureMessage "Docker daemon is not reachable. Start Docker Desktop and retry."
+Invoke-Required -FilePath $gcloudCli -Arguments @("--version") -TimeoutSeconds 30 -FailureMessage "gcloud is installed but not functioning."
+Invoke-Required -FilePath "docker" -Arguments @("version", "--format", "{{.Server.Version}}") -TimeoutSeconds 45 -FailureMessage "Docker daemon check timed out or failed. Restart Docker Desktop and retry."
 
 $activeAccountResult = Invoke-External -FilePath $gcloudCli -Arguments @("auth", "list", "--filter=status:ACTIVE", "--format=value(account)")
 $activeAccount = ($activeAccountResult.Output | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
@@ -1283,6 +1961,106 @@ Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNam
 Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.CeleryBrokerUrl -SecretValue $celeryBrokerUrl
 Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.CeleryResultStore -SecretValue $celeryResultBackend
 
+$requestedAllowedHosts = @(Split-CommaList -Values $DjangoAllowedHosts)
+$requestedCsrfTrustedOrigins = @(Split-CommaList -Values $CsrfTrustedOrigins)
+$existingServiceEnv = Get-CloudRunServiceEnvMap -GcloudCli $gcloudCli -Project $ProjectId -Region $Region -ServiceName $ServiceName
+
+$inferredLoadBalancerDomains = @()
+$preferredInferredDomain = ""
+$shouldInferCustomDomain = (
+    $CloudRunIngress -eq "internal-and-cloud-load-balancing" -and
+    (
+        [string]::IsNullOrWhiteSpace($SmokeBaseUrl) -or
+        [string]::IsNullOrWhiteSpace($UptimeCheckHost) -or
+        $requestedAllowedHosts.Count -eq 0 -or
+        $requestedCsrfTrustedOrigins.Count -eq 0
+    )
+)
+if ($shouldInferCustomDomain) {
+    $inferredLoadBalancerDomains = @(Get-CloudRunLoadBalancerDomains -GcloudCli $gcloudCli -Project $ProjectId -Region $Region -ServiceName $ServiceName)
+    if ($inferredLoadBalancerDomains.Count -gt 0) {
+        Write-Info ("Auto-discovered load balancer domain(s): {0}" -f ($inferredLoadBalancerDomains -join ", "))
+    }
+    else {
+        Write-Info "Could not auto-discover a custom domain from load balancer resources; falling back to current parameter/default behavior."
+    }
+    $preferredInferredDomain = Select-PreferredCustomDomain -Domains $inferredLoadBalancerDomains
+}
+
+$existingAllowedHosts = ""
+$existingCsrfTrustedOrigins = ""
+if ($null -ne $existingServiceEnv) {
+    if ($existingServiceEnv.ContainsKey("DJANGO_ALLOWED_HOSTS")) {
+        $existingAllowedHosts = [string]$existingServiceEnv["DJANGO_ALLOWED_HOSTS"]
+    }
+    if ($existingServiceEnv.ContainsKey("CSRF_TRUSTED_ORIGINS")) {
+        $existingCsrfTrustedOrigins = [string]$existingServiceEnv["CSRF_TRUSTED_ORIGINS"]
+    }
+}
+
+$resolvedAllowedHosts = ""
+if ($requestedAllowedHosts.Count -gt 0) {
+    $resolvedAllowedHosts = ($requestedAllowedHosts -join ",")
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingAllowedHosts)) {
+    $resolvedAllowedHosts = $existingAllowedHosts
+}
+if ($requestedAllowedHosts.Count -eq 0 -and $inferredLoadBalancerDomains.Count -gt 0) {
+    $mergedAllowedHosts = New-Object System.Collections.Generic.List[string]
+    foreach ($candidateHost in @(Split-CommaList -Values @($resolvedAllowedHosts))) {
+        if (-not $mergedAllowedHosts.Contains($candidateHost)) {
+            [void]$mergedAllowedHosts.Add($candidateHost)
+        }
+    }
+    foreach ($candidateHost in @($inferredLoadBalancerDomains)) {
+        if (-not $mergedAllowedHosts.Contains($candidateHost)) {
+            [void]$mergedAllowedHosts.Add($candidateHost)
+        }
+    }
+    if ($mergedAllowedHosts.Count -gt 0) {
+        $resolvedAllowedHosts = ($mergedAllowedHosts -join ",")
+    }
+}
+
+$resolvedCsrfTrustedOrigins = ""
+if ($requestedCsrfTrustedOrigins.Count -gt 0) {
+    $resolvedCsrfTrustedOrigins = ($requestedCsrfTrustedOrigins -join ",")
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingCsrfTrustedOrigins)) {
+    $resolvedCsrfTrustedOrigins = $existingCsrfTrustedOrigins
+}
+if ($requestedCsrfTrustedOrigins.Count -eq 0 -and $inferredLoadBalancerDomains.Count -gt 0) {
+    $mergedCsrfOrigins = New-Object System.Collections.Generic.List[string]
+    foreach ($origin in @(Split-CommaList -Values @($resolvedCsrfTrustedOrigins))) {
+        if (-not $mergedCsrfOrigins.Contains($origin)) {
+            [void]$mergedCsrfOrigins.Add($origin)
+        }
+    }
+    foreach ($domain in @($inferredLoadBalancerDomains)) {
+        $origin = "https://{0}" -f $domain
+        if (-not $mergedCsrfOrigins.Contains($origin)) {
+            [void]$mergedCsrfOrigins.Add($origin)
+        }
+    }
+    if ($mergedCsrfOrigins.Count -gt 0) {
+        $resolvedCsrfTrustedOrigins = ($mergedCsrfOrigins -join ",")
+    }
+}
+
+$bootstrapHostCsrfFromServiceUrl = [string]::IsNullOrWhiteSpace($resolvedAllowedHosts) -and [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)
+if ($requestedAllowedHosts.Count -gt 0 -or $requestedCsrfTrustedOrigins.Count -gt 0) {
+    Write-Info "Applying DJANGO_ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS from script parameters."
+}
+elseif ($inferredLoadBalancerDomains.Count -gt 0) {
+    Write-Info "Auto-applying DJANGO_ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS from discovered load balancer domain(s)."
+}
+elseif (-not [string]::IsNullOrWhiteSpace($resolvedAllowedHosts) -or -not [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)) {
+    Write-Info "Preserving existing DJANGO_ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS from the current Cloud Run service."
+}
+else {
+    Write-Info "No existing host/csrf envs found. Will bootstrap to deployed service host once after deploy."
+}
+
 $baseEnv = @(
     "APP_ENV=prod",
     "DEBUG=false",
@@ -1295,12 +2073,18 @@ $baseEnv = @(
     "USE_X_FORWARDED_PROTO=true",
     "SECURE_SSL_REDIRECT=true",
     "SESSION_COOKIE_SECURE=true",
-    "CSRF_COOKIE_SECURE=true",
-    "DJANGO_ALLOWED_HOSTS=.run.app",
-    "CSRF_TRUSTED_ORIGINS=https://*.run.app"
+    "CSRF_COOKIE_SECURE=true"
 )
+if (-not [string]::IsNullOrWhiteSpace($resolvedAllowedHosts)) {
+    $baseEnv += ("DJANGO_ALLOWED_HOSTS={0}" -f $resolvedAllowedHosts)
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)) {
+    $baseEnv += ("CSRF_TRUSTED_ORIGINS={0}" -f $resolvedCsrfTrustedOrigins)
+}
 $webEnv = @($baseEnv + @("COLLECTSTATIC_ON_BOOT=true"))
 $jobEnv = @($baseEnv + @("COLLECTSTATIC_ON_BOOT=false"))
+$webEnvArg = ConvertTo-GcloudDictArg -Entries $webEnv
+$jobEnvArg = ConvertTo-GcloudDictArg -Entries $jobEnv
 $secretMap = @(
     ("SECRET_KEY={0}:latest" -f $secretNames.SecretKey),
     ("DATABASE_URL={0}:latest" -f $secretNames.DatabaseUrl),
@@ -1321,7 +2105,7 @@ if (-not $SkipMigrations) {
         "--vpc-connector", $VpcConnector,
         "--vpc-egress", "private-ranges-only",
         "--set-secrets", ($secretMap -join ","),
-        "--set-env-vars", ($jobEnv -join ","),
+        "--set-env-vars", $jobEnvArg,
         "--command", "python",
         "--args", "manage.py,migrate,--noinput",
         "--tasks", "1",
@@ -1354,6 +2138,7 @@ $deployArgs = @(
     "--cpu", $CloudRunCpu,
     "--memory", $CloudRunMemory,
     "--concurrency", $CloudRunConcurrency,
+    "--ingress", $CloudRunIngress,
     "--timeout", $CloudRunTimeoutSeconds,
     "--min-instances", $CloudRunMinInstances,
     "--max-instances", $CloudRunMaxInstances,
@@ -1361,7 +2146,7 @@ $deployArgs = @(
     "--vpc-connector", $VpcConnector,
     "--vpc-egress", "private-ranges-only",
     "--set-secrets", ($secretMap -join ","),
-    "--set-env-vars", ($webEnv -join ","),
+    "--set-env-vars", $webEnvArg,
     "--quiet"
 )
 if ($AllowUnauthenticated) {
@@ -1384,14 +2169,62 @@ if ([string]::IsNullOrWhiteSpace($serviceUrl)) {
 $serviceHost = ([System.Uri]$serviceUrl).Host
 Write-Ok ("Deployed service URL: {0}" -f $serviceUrl)
 
-Write-Step "Tightening host/csrf envs to concrete run.app host"
-Invoke-Required -FilePath $gcloudCli -Arguments @(
-    "run", "services", "update", $ServiceName,
-    "--project", $ProjectId,
-    "--region", $Region,
-    "--update-env-vars", ("DJANGO_ALLOWED_HOSTS={0},CSRF_TRUSTED_ORIGINS=https://{0}" -f $serviceHost),
-    "--quiet"
-) -FailureMessage "Failed tightening host/csrf env vars."
+$smokeBaseUrlCandidate = $SmokeBaseUrl
+if ([string]::IsNullOrWhiteSpace($smokeBaseUrlCandidate) -and -not [string]::IsNullOrWhiteSpace($preferredInferredDomain)) {
+    $smokeBaseUrlCandidate = "https://{0}" -f $preferredInferredDomain
+    Write-Info ("Auto-setting SmokeBaseUrl from discovered custom domain: {0}" -f $smokeBaseUrlCandidate)
+}
+$uptimeCheckHostCandidate = $UptimeCheckHost
+if ([string]::IsNullOrWhiteSpace($uptimeCheckHostCandidate) -and -not [string]::IsNullOrWhiteSpace($preferredInferredDomain)) {
+    $uptimeCheckHostCandidate = $preferredInferredDomain
+    Write-Info ("Auto-setting UptimeCheckHost from discovered custom domain: {0}" -f $uptimeCheckHostCandidate)
+}
+
+$smokeBaseUrlResolved = Resolve-BaseUrl -Candidate $smokeBaseUrlCandidate -Fallback $serviceUrl -ParameterName "SmokeBaseUrl"
+$smokeHealthPathResolved = Resolve-HttpPath -PathValue $SmokeHealthPath -DefaultPath "/runtime/health/"
+$smokeCssPathResolved = Resolve-HttpPath -PathValue $SmokeCssPath -DefaultPath "/static/css/tapne.css"
+$smokeJsPathResolved = Resolve-HttpPath -PathValue $SmokeJsPath -DefaultPath "/static/js/tapne-ui.js"
+$smokeBaseHostResolved = ([System.Uri]$smokeBaseUrlResolved).Host
+$uptimeCheckHostResolved = Resolve-HostName -Candidate $uptimeCheckHostCandidate -FallbackHost $smokeBaseHostResolved -ParameterName "UptimeCheckHost"
+$uptimeCheckPathResolved = Resolve-HttpPath -PathValue $UptimeCheckPath -DefaultPath "/runtime/health/"
+
+if (
+    -not $SkipSmokeTest -and
+    $CloudRunIngress -eq "internal-and-cloud-load-balancing" -and
+    $smokeBaseHostResolved -eq $serviceHost
+) {
+    throw "CloudRunIngress is internal-and-cloud-load-balancing, but SmokeBaseUrl resolves to the direct Cloud Run host. Set -SmokeBaseUrl to your load balancer/custom-domain URL (or use -SkipSmokeTest)."
+}
+
+if (
+    $ConfigureMonitoring -and
+    $CloudRunIngress -eq "internal-and-cloud-load-balancing" -and
+    $uptimeCheckHostResolved -eq $serviceHost
+) {
+    throw "CloudRunIngress is internal-and-cloud-load-balancing, but UptimeCheckHost resolves to the direct Cloud Run host. Set -UptimeCheckHost to your load balancer/custom-domain host."
+}
+
+$effectiveAllowedHosts = $resolvedAllowedHosts
+$effectiveCsrfTrustedOrigins = $resolvedCsrfTrustedOrigins
+if ($bootstrapHostCsrfFromServiceUrl) {
+    $effectiveAllowedHosts = $serviceHost
+    $effectiveCsrfTrustedOrigins = ("https://{0}" -f $serviceHost)
+    Write-Step "Bootstrapping host/csrf envs from deployed service URL"
+    $hostCsrfUpdateArg = ConvertTo-GcloudDictArg -Entries @(
+        ("DJANGO_ALLOWED_HOSTS={0}" -f $effectiveAllowedHosts),
+        ("CSRF_TRUSTED_ORIGINS={0}" -f $effectiveCsrfTrustedOrigins)
+    )
+    Invoke-Required -FilePath $gcloudCli -Arguments @(
+        "run", "services", "update", $ServiceName,
+        "--project", $ProjectId,
+        "--region", $Region,
+        "--update-env-vars", $hostCsrfUpdateArg,
+        "--quiet"
+    ) -FailureMessage "Failed bootstrapping host/csrf env vars."
+}
+else {
+    Write-Info "Keeping configured DJANGO_ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS (no forced run.app overwrite)."
+}
 
 if ($RunBootstrapRuntime) {
     Write-Step "Deploying and running optional bootstrap_runtime job"
@@ -1405,7 +2238,7 @@ if ($RunBootstrapRuntime) {
         "--vpc-connector", $VpcConnector,
         "--vpc-egress", "private-ranges-only",
         "--set-secrets", ($secretMap -join ","),
-        "--set-env-vars", ($jobEnv -join ","),
+        "--set-env-vars", $jobEnvArg,
         "--command", "python",
         "--args", "manage.py,bootstrap_runtime,--verbose",
         "--tasks", "1",
@@ -1427,9 +2260,9 @@ if ($RunBootstrapRuntime) {
 if (-not $SkipSmokeTest) {
     Write-Step "Running post-deploy smoke tests"
 
-    $healthUrl = "{0}/runtime/health/" -f $serviceUrl.TrimEnd("/")
-    $cssUrl = "{0}/static/css/tapne.css" -f $serviceUrl.TrimEnd("/")
-    $jsUrl = "{0}/static/js/tapne-ui.js" -f $serviceUrl.TrimEnd("/")
+    $healthUrl = "{0}{1}" -f $smokeBaseUrlResolved, $smokeHealthPathResolved
+    $cssUrl = "{0}{1}" -f $smokeBaseUrlResolved, $smokeCssPathResolved
+    $jsUrl = "{0}{1}" -f $smokeBaseUrlResolved, $smokeJsPathResolved
 
     $healthResponse = $null
     $attempts = 15
@@ -1459,7 +2292,7 @@ if (-not $SkipSmokeTest) {
         throw ("Static JS check failed ({0}): {1}" -f $jsResponse.StatusCode, $jsUrl)
     }
 
-    Write-Ok "Smoke tests passed: /runtime/health + static CSS/JS."
+    Write-Ok ("Smoke tests passed: {0}; {1}; {2}" -f $healthUrl, $cssUrl, $jsUrl)
 }
 else {
     Write-Info "Skipping smoke tests as requested (-SkipSmokeTest)."
@@ -1470,7 +2303,7 @@ if ($ConfigureMonitoring) {
     try {
         $monitoringToken = Get-GcloudAccessToken -GcloudCli $gcloudCli
         $uptimeDisplayName = "tapne-web uptime ({0})" -f $ServiceName
-        $uptimeConfigName = Set-UptimeCheck -Project $ProjectId -AccessToken $monitoringToken -DisplayName $uptimeDisplayName -CheckHost $serviceHost -Path "/runtime/health/"
+        $uptimeConfigName = Set-UptimeCheck -Project $ProjectId -AccessToken $monitoringToken -DisplayName $uptimeDisplayName -CheckHost $uptimeCheckHostResolved -Path $uptimeCheckPathResolved
         $alertDisplayName = "tapne-web uptime alert ({0})" -f $ServiceName
         Set-UptimeAlertPolicy -Project $ProjectId -AccessToken $monitoringToken -DisplayName $alertDisplayName -UptimeCheckName $uptimeConfigName -NotificationChannels $MonitoringNotificationChannels
     }
@@ -1493,7 +2326,12 @@ Write-Host ("  SQL Instance:   {0} ({1})" -f $CloudSqlInstance, $cloudSqlConnect
 Write-Host ("  Redis:          {0}:{1}" -f $redisHost, $redisPort)
 Write-Host ("  Bucket:         {0}" -f $bucketRef)
 Write-Host ("  VPC Connector:  {0}" -f $VpcConnector)
+Write-Host ("  Allowed Hosts:  {0}" -f $effectiveAllowedHosts)
+Write-Host ("  CSRF Origins:   {0}" -f $effectiveCsrfTrustedOrigins)
+Write-Host ("  Smoke Base URL: {0}" -f $smokeBaseUrlResolved)
+Write-Host ("  Uptime Target:  https://{0}{1}" -f $uptimeCheckHostResolved, $uptimeCheckPathResolved)
 Write-Host ("  Concurrency:    {0}" -f $CloudRunConcurrency)
+Write-Host ("  Ingress:        {0}" -f $CloudRunIngress)
 Write-Host ("  Signed URLs:    {0}" -f (ConvertTo-BoolString -Value $EnableGcsSignedUrls))
 Write-Host ("  SQL Private IP: {0}" -f (ConvertTo-BoolString -Value $UsePrivateCloudSqlIp))
 Write-Host ""
