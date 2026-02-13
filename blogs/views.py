@@ -98,7 +98,7 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         blog_media_payload = {
             "attachments": [],
             "mode": "unavailable-target",
-            "reason": "Media attachments are available for live blog records only.",
+            "reason": "No media yet for this preview post. Authors can add photos and clips once the post is published live.",
             "target_type": "blog",
             "target_key": str(slug),
             "target_label": str(payload["blog"].get("title", slug.replace("-", " ").title())),

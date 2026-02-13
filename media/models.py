@@ -716,18 +716,19 @@ def build_media_payload_for_target(
 
     reason = "Media attachments are ordered from newest to oldest."
     if not attachments:
-        reason = "No media uploads yet for this target."
+        reason = "No media yet. Add a few photos or clips to help members evaluate this page quickly."
 
-    return {
+    payload: MediaTargetPayload = {
         "attachments": attachments,
         "mode": "member-target-media" if viewer_is_member else "guest-target-media",
         "reason": reason,
-        "target_type": resolved_target.target_type,
+        "target_type": str(resolved_target.target_type),
         "target_key": resolved_target.target_key,
         "target_label": resolved_target.target_label,
         "target_url": resolved_target.target_url,
         "can_upload": viewer_id > 0 and viewer_id == resolved_target.owner_id,
     }
+    return payload
 
 
 def submit_media_upload(

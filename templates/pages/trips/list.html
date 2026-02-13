@@ -22,13 +22,71 @@
 
 <section class="section-grid">
     <header class="section-header">
+        <h2>Filters</h2>
+    </header>
+    <form class="search-form filters-grid" method="get" action="{% url 'trips:list' %}">
+        <label for="trip-filter-destination">Destination</label>
+        <input
+            id="trip-filter-destination"
+            name="destination"
+            type="text"
+            value="{{ trip_filters.destination|default:'' }}"
+            placeholder="Kyoto, Patagonia, Morocco..."
+        >
+
+        <label for="trip-filter-duration">Duration</label>
+        <select id="trip-filter-duration" name="duration">
+            {% for value, label in trip_filter_options.duration %}
+            <option value="{{ value }}" {% if trip_filters.duration == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="trip-filter-type">Trip type</label>
+        <select id="trip-filter-type" name="trip_type">
+            {% for value, label in trip_filter_options.trip_type %}
+            <option value="{{ value }}" {% if trip_filters.trip_type == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="trip-filter-budget">Budget</label>
+        <select id="trip-filter-budget" name="budget">
+            {% for value, label in trip_filter_options.budget %}
+            <option value="{{ value }}" {% if trip_filters.budget == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="trip-filter-difficulty">Difficulty</label>
+        <select id="trip-filter-difficulty" name="difficulty">
+            {% for value, label in trip_filter_options.difficulty %}
+            <option value="{{ value }}" {% if trip_filters.difficulty == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <div class="inline-actions">
+            <button class="btn btn-primary" type="submit">Apply filters</button>
+            {% if trip_has_active_filters %}
+            <a class="btn btn-ghost" href="{% url 'trips:list' %}">Clear filters</a>
+            {% endif %}
+        </div>
+    </form>
+</section>
+
+<section class="section-grid">
+    <header class="section-header">
         <h2>Available trips</h2>
+        <p class="detail-meta">Showing {{ trip_filtered_count|default:0 }} of {{ trip_total_count|default:0 }} trip{{ trip_total_count|default:0|pluralize }}</p>
     </header>
     <div class="card-grid">
         {% for trip in trips %}
         {% include "partials/cards/trip_card.html" with trip=trip %}
         {% empty %}
-        <div class="empty-state">No trips are published yet. New hosted trips will appear here.</div>
+        <div class="empty-state">
+            {% if trip_has_active_filters %}
+            No trips match the current filters yet. Try widening duration, budget, or difficulty.
+            {% else %}
+            No trips are published yet. New hosted trips will appear here.
+            {% endif %}
+        </div>
         {% endfor %}
     </div>
 </section>

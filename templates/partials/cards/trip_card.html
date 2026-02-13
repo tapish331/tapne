@@ -26,10 +26,31 @@
             <dd>{{ trip.destination|default:"TBD" }}</dd>
         </div>
         <div>
-            <dt>Traffic score</dt>
-            <dd>{{ trip.traffic_score|default:"N/A" }}</dd>
+            <dt>Dates</dt>
+            <dd>{{ trip.date_label|default:"Dates announced soon" }}</dd>
+        </div>
+        <div>
+            <dt>Duration</dt>
+            <dd>{{ trip.duration_label|default:"TBD" }}</dd>
+        </div>
+        <div>
+            <dt>Trip type</dt>
+            <dd>{{ trip.trip_type_label|default:"Adventure" }}</dd>
+        </div>
+        <div>
+            <dt>Budget</dt>
+            <dd>{{ trip.budget_label|default:"$$ Mid-range" }}</dd>
+        </div>
+        <div>
+            <dt>Difficulty</dt>
+            <dd>{{ trip.difficulty_label|default:"Moderate" }} · {{ trip.pace_label|default:"Balanced" }}</dd>
+        </div>
+        <div>
+            <dt>Group size</dt>
+            <dd>{{ trip.group_size_label|default:"6-10 travelers" }}</dd>
         </div>
     </dl>
+    <p class="card-subtitle">{{ trip.includes_label|default:"Host planning support and route guidance. Bookings are self-managed." }}</p>
     <div class="card-actions">
         <a class="btn btn-secondary" href="{{ trip.url|default:'#' }}">View details</a>
         {% if user.is_authenticated %}

@@ -20,6 +20,42 @@
     <p class="detail-meta">Destination: {{ trip.destination }}</p>
     {% endif %}
 
+    <dl class="card-meta-grid">
+        <div>
+            <dt>Dates</dt>
+            <dd>{{ trip.date_label|default:"Dates announced soon" }}</dd>
+        </div>
+        <div>
+            <dt>Season</dt>
+            <dd>{{ trip.season_label|default:"Year-round" }}</dd>
+        </div>
+        <div>
+            <dt>Duration</dt>
+            <dd>{{ trip.duration_label|default:"TBD" }}</dd>
+        </div>
+        <div>
+            <dt>Budget</dt>
+            <dd>{{ trip.budget_label|default:"$$ Mid-range" }} · {{ trip.budget_range_label|default:"Estimate shared after signup" }}</dd>
+        </div>
+        <div>
+            <dt>Trip type</dt>
+            <dd>{{ trip.trip_type_label|default:"Adventure" }}</dd>
+        </div>
+        <div>
+            <dt>Group size</dt>
+            <dd>{{ trip.group_size_label|default:"6-10 travelers" }}</dd>
+        </div>
+        <div>
+            <dt>Difficulty</dt>
+            <dd>{{ trip.difficulty_label|default:"Moderate" }}</dd>
+        </div>
+        <div>
+            <dt>Pace</dt>
+            <dd>{{ trip.pace_label|default:"Balanced" }}</dd>
+        </div>
+    </dl>
+    <p class="detail-meta">Includes: {{ trip.includes_label|default:"Host planning support and route guidance. Bookings are self-managed." }}</p>
+
     <p>{{ trip.description|default:"Trip description is not available yet." }}</p>
 
     <div class="inline-actions">
@@ -111,7 +147,7 @@
         {% endfor %}
     </div>
     {% else %}
-    <p class="empty-state">No media uploaded for this trip yet.</p>
+    <p class="empty-state">No photos yet. Hosts usually add 3-5 images of route vibe, stays, food, and key stops.</p>
     {% endif %}
 </section>
 

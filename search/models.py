@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Callable, Final, Literal, TypedDict, cast
 
 from django.apps import apps
@@ -10,6 +11,7 @@ from feed.models import (
     MemberFeedPreference,
     ProfileData,
     TripData,
+    enrich_trip_preview_fields,
     get_demo_blogs,
     get_demo_profiles,
     get_demo_trips,
@@ -216,7 +218,7 @@ def _trip_candidates(query: str) -> list[TripData]:
         # Prefer live DB rows over demo placeholders when IDs overlap.
         merged_by_id[trip_id] = live_trip
 
-    return list(merged_by_id.values())
+    return [enrich_trip_preview_fields(cast(TripData, dict(item))) for item in merged_by_id.values()]
 
 
 def _rank_profiles(
@@ -418,18 +420,26 @@ def _live_trips_for_query(query: str) -> list[TripData]:
         if not url:
             url = f"/trips/{trip_id}/"
 
-        live_trips.append(
-            {
-                "id": trip_id,
-                "title": title or f"Trip #{trip_id}",
-                "summary": summary,
-                "description": description,
-                "destination": destination,
-                "host_username": host_username,
-                "traffic_score": _int_attr(trip, "traffic_score", "search_count", "views_count"),
-                "url": url,
-            }
-        )
+        trip_payload: TripData = {
+            "id": trip_id,
+            "title": title or f"Trip #{trip_id}",
+            "summary": summary,
+            "description": description,
+            "destination": destination,
+            "host_username": host_username,
+            "traffic_score": _int_attr(trip, "traffic_score", "search_count", "views_count"),
+            "url": url,
+        }
+
+        starts_at_value = getattr(trip, "starts_at", None)
+        if isinstance(starts_at_value, (datetime, str)):
+            trip_payload["starts_at"] = starts_at_value
+
+        ends_at_value = getattr(trip, "ends_at", None)
+        if isinstance(ends_at_value, (datetime, str)):
+            trip_payload["ends_at"] = ends_at_value
+
+        live_trips.append(enrich_trip_preview_fields(trip_payload))
 
     return live_trips
 

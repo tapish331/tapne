@@ -240,6 +240,62 @@ class TripViewsTests(TestCase):
         self.assertIn("Saved trip row", saved_titles)
         self.assertEqual(response.context["tab_counts"]["saved"], 1)
 
+    def test_trip_list_filters_apply_duration_trip_type_and_destination(self) -> None:
+        short_city_trip = Trip.objects.create(
+            host=self.host_user,
+            title="City weekend route",
+            summary="Fast city highlights",
+            description="Urban walk and food stops.",
+            destination="Lisbon",
+            starts_at=timezone.now() + timedelta(days=5),
+            ends_at=timezone.now() + timedelta(days=7),
+            traffic_score=30,
+        )
+        long_desert_trip = Trip.objects.create(
+            host=self.host_user,
+            title="Desert crossing route",
+            summary="Multi-day desert camp sequence.",
+            description="Sahara transfer and overnight camp plan.",
+            destination="Merzouga",
+            starts_at=timezone.now() + timedelta(days=10),
+            ends_at=timezone.now() + timedelta(days=19),
+            traffic_score=40,
+        )
+
+        response = self.client.get(
+            f"{reverse('trips:list')}?duration=long&trip_type=desert&destination=merz"
+        )
+        self.assertEqual(response.status_code, 200)
+        trip_ids = [trip["id"] for trip in response.context["trips"]]
+        self.assertIn(long_desert_trip.pk, trip_ids)
+        self.assertNotIn(short_city_trip.pk, trip_ids)
+        self.assertEqual(response.context["trip_filters"]["duration"], "long")
+        self.assertEqual(response.context["trip_filters"]["trip_type"], "desert")
+        self.assertEqual(response.context["trip_filtered_count"], 1)
+
+    def test_guest_trip_detail_exposes_richer_preview_fields(self) -> None:
+        trip = Trip.objects.create(
+            host=self.host_user,
+            title="Budget city discovery",
+            summary="Beginner-friendly route with relaxed pacing.",
+            description="A practical first-timer city route.",
+            destination="Porto",
+            starts_at=timezone.now() + timedelta(days=6),
+            ends_at=timezone.now() + timedelta(days=9),
+            traffic_score=25,
+        )
+
+        response = self.client.get(reverse("trips:detail", kwargs={"trip_id": trip.pk}))
+        self.assertEqual(response.status_code, 200)
+        preview_trip = response.context["trip"]
+        self.assertIn("duration_label", preview_trip)
+        self.assertIn("trip_type_label", preview_trip)
+        self.assertIn("budget_label", preview_trip)
+        self.assertIn("difficulty_label", preview_trip)
+        self.assertIn("pace_label", preview_trip)
+        self.assertIn("group_size_label", preview_trip)
+        self.assertIn("includes_label", preview_trip)
+
     def test_trip_list_verbose_query_prints_debug_lines(self) -> None:
         with patch("builtins.print") as mock_print:
             response = self.client.get(f"{reverse('trips:list')}?verbose=1")

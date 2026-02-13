@@ -777,6 +777,15 @@ code {
     padding: 0.95rem;
 }
 
+.filters-grid {
+    align-items: end;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.filters-grid .inline-actions {
+    grid-column: 1 / -1;
+}
+
 .form-stack {
     gap: 0.9rem;
 }

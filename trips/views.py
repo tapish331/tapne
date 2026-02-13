@@ -25,7 +25,10 @@ from .models import (
     build_my_trips_payload_for_member,
     build_trip_detail_payload_for_user,
     build_trip_list_payload_for_user,
+    has_active_trip_filters,
     normalize_mine_tab,
+    normalize_trip_filters,
+    trip_filter_options,
 )
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
@@ -51,15 +54,24 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
     viewer_state = "member" if request.user.is_authenticated else "guest"
     _vprint(request, f"Rendering trip list for viewer_state={viewer_state}")
 
-    payload = build_trip_list_payload_for_user(request.user)
+    raw_filters: dict[str, object] = {
+        "destination": request.GET.get("destination", ""),
+        "duration": request.GET.get("duration", "all"),
+        "trip_type": request.GET.get("trip_type", "all"),
+        "budget": request.GET.get("budget", "all"),
+        "difficulty": request.GET.get("difficulty", "all"),
+    }
+    normalized_filters = normalize_trip_filters(raw_filters)
+    payload = build_trip_list_payload_for_user(request.user, filters=normalized_filters)
     _vprint(
         request,
         (
-            "Trip list mode={mode}; source={source}; reason={reason}; count={count}".format(
+            "Trip list mode={mode}; source={source}; reason={reason}; count={count}; filters={filters}".format(
                 mode=payload["mode"],
                 source=payload["source"],
                 reason=payload["reason"],
                 count=len(payload["trips"]),
+                filters=payload["filters"],
             )
         ),
     )
@@ -69,6 +81,11 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
         "trip_mode": payload["mode"],
         "trip_reason": payload["reason"],
         "trip_source": payload["source"],
+        "trip_filters": payload["filters"],
+        "trip_filter_options": trip_filter_options(),
+        "trip_total_count": payload["total_count"],
+        "trip_filtered_count": payload["filtered_count"],
+        "trip_has_active_filters": has_active_trip_filters(payload["filters"]),
     }
     return render(request, "pages/trips/list.html", context)
 
@@ -106,7 +123,7 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         trip_media_payload = {
             "attachments": [],
             "mode": "unavailable-target",
-            "reason": "Media attachments are available for live trip records only.",
+            "reason": "No media yet for this preview trip. Hosts can add photos once the trip is published live.",
             "target_type": "trip",
             "target_key": str(trip_id),
             "target_label": str(payload["trip"].get("title", f"Trip #{trip_id}")),

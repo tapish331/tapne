@@ -61,6 +61,17 @@ class SearchViewTests(TestCase):
         self.assertEqual(response.context["profiles"], [])
         self.assertEqual(response.context["blogs"], [])
 
+    def test_search_trip_results_include_preview_fields_for_guest_decisions(self) -> None:
+        response = self.client.get(f"{reverse('search:search')}?type=trips")
+
+        self.assertEqual(response.status_code, 200)
+        first_trip = response.context["trips"][0]
+        self.assertIn("duration_label", first_trip)
+        self.assertIn("budget_label", first_trip)
+        self.assertIn("difficulty_label", first_trip)
+        self.assertIn("pace_label", first_trip)
+        self.assertIn("group_size_label", first_trip)
+
     def test_invalid_search_type_falls_back_to_all(self) -> None:
         response = self.client.get(f"{reverse('search:search')}?type=unknown")
 

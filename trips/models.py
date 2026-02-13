@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Final, TypedDict, cast
 
 from django.apps import apps
@@ -8,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from feed.models import MemberFeedPreference, TripData, get_demo_trips, get_trip_by_id
+from feed.models import MemberFeedPreference, TripData, enrich_trip_preview_fields, get_demo_trips, get_trip_by_id
 
 
 class TripListPayload(TypedDict):
@@ -16,6 +17,17 @@ class TripListPayload(TypedDict):
     mode: str
     reason: str
     source: str
+    filters: "TripListFilters"
+    total_count: int
+    filtered_count: int
+
+
+class TripListFilters(TypedDict):
+    destination: str
+    duration: str
+    trip_type: str
+    budget: str
+    difficulty: str
 
 
 class TripDetailPayload(TypedDict):
@@ -77,7 +89,7 @@ class Trip(models.Model):
         return f"/trips/{self.pk}/"
 
     def to_trip_data(self) -> TripData:
-        return {
+        trip_data: TripData = {
             "id": int(self.pk or 0),
             "title": self.title,
             "summary": self.summary,
@@ -85,15 +97,109 @@ class Trip(models.Model):
             "destination": self.destination,
             "host_username": str(getattr(self.host, "username", "") or "").strip(),
             "traffic_score": int(self.traffic_score or 0),
+            "starts_at": self.starts_at,
             "url": self.get_absolute_url(),
         }
+        if self.ends_at is not None:
+            trip_data["ends_at"] = self.ends_at
+        return trip_data
 
 
 MINE_TABS: Final[tuple[str, ...]] = ("upcoming", "hosting", "past", "saved")
+TRIP_DURATION_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
+    ("all", "Any duration"),
+    ("short", "1-3 days"),
+    ("medium", "4-7 days"),
+    ("long", "8+ days"),
+)
+TRIP_TYPE_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
+    ("all", "Any trip type"),
+    ("food-culture", "Food & Culture"),
+    ("trekking", "Trekking"),
+    ("desert", "Desert Route"),
+    ("city", "City Discovery"),
+    ("coastal", "Coastal Escape"),
+    ("adventure", "Adventure"),
+)
+TRIP_BUDGET_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
+    ("all", "Any budget"),
+    ("budget", "$ Budget-friendly"),
+    ("mid", "$$ Mid-range"),
+    ("premium", "$$$ Premium"),
+)
+TRIP_DIFFICULTY_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
+    ("all", "Any difficulty"),
+    ("easy", "Easy"),
+    ("moderate", "Moderate"),
+    ("challenging", "Challenging"),
+)
+
+TRIP_DURATION_FILTER_VALUES: Final[set[str]] = {item[0] for item in TRIP_DURATION_FILTER_OPTIONS}
+TRIP_TYPE_FILTER_VALUES: Final[set[str]] = {item[0] for item in TRIP_TYPE_FILTER_OPTIONS}
+TRIP_BUDGET_FILTER_VALUES: Final[set[str]] = {item[0] for item in TRIP_BUDGET_FILTER_OPTIONS}
+TRIP_DIFFICULTY_FILTER_VALUES: Final[set[str]] = {item[0] for item in TRIP_DIFFICULTY_FILTER_OPTIONS}
 
 
 def _as_trip_data_copy(item: TripData) -> TripData:
     return cast(TripData, dict(item))
+
+
+def _default_trip_filters() -> TripListFilters:
+    return {
+        "destination": "",
+        "duration": "all",
+        "trip_type": "all",
+        "budget": "all",
+        "difficulty": "all",
+    }
+
+
+def normalize_trip_filters(raw_filters: TripListFilters | Mapping[str, object] | None) -> TripListFilters:
+    defaults = _default_trip_filters()
+    if raw_filters is None:
+        return defaults
+
+    destination = str(raw_filters.get("destination", "") or "").strip()
+    duration = str(raw_filters.get("duration", "all") or "").strip().lower()
+    trip_type = str(raw_filters.get("trip_type", "all") or "").strip().lower()
+    budget = str(raw_filters.get("budget", "all") or "").strip().lower()
+    difficulty = str(raw_filters.get("difficulty", "all") or "").strip().lower()
+
+    if duration not in TRIP_DURATION_FILTER_VALUES:
+        duration = "all"
+    if trip_type not in TRIP_TYPE_FILTER_VALUES:
+        trip_type = "all"
+    if budget not in TRIP_BUDGET_FILTER_VALUES:
+        budget = "all"
+    if difficulty not in TRIP_DIFFICULTY_FILTER_VALUES:
+        difficulty = "all"
+
+    return {
+        "destination": destination,
+        "duration": duration,
+        "trip_type": trip_type,
+        "budget": budget,
+        "difficulty": difficulty,
+    }
+
+
+def has_active_trip_filters(filters: TripListFilters) -> bool:
+    return bool(
+        filters["destination"]
+        or filters["duration"] != "all"
+        or filters["trip_type"] != "all"
+        or filters["budget"] != "all"
+        or filters["difficulty"] != "all"
+    )
+
+
+def trip_filter_options() -> dict[str, tuple[tuple[str, str], ...]]:
+    return {
+        "duration": TRIP_DURATION_FILTER_OPTIONS,
+        "trip_type": TRIP_TYPE_FILTER_OPTIONS,
+        "budget": TRIP_BUDGET_FILTER_OPTIONS,
+        "difficulty": TRIP_DIFFICULTY_FILTER_OPTIONS,
+    }
 
 
 def _traffic_score(trip: TripData) -> int:
@@ -207,6 +313,39 @@ def _guest_limited_detail(trip: TripData) -> TripData:
     return limited
 
 
+def _trip_matches_filters(trip: TripData, filters: TripListFilters) -> bool:
+    destination_filter = filters["destination"].strip().lower()
+    if destination_filter:
+        searchable_destination = " ".join(
+            str(value or "").lower()
+            for value in (
+                trip.get("destination"),
+                trip.get("title"),
+                trip.get("summary"),
+            )
+        )
+        if destination_filter not in searchable_destination:
+            return False
+
+    if filters["duration"] != "all":
+        if str(trip.get("duration_bucket", "") or "").strip().lower() != filters["duration"]:
+            return False
+
+    if filters["trip_type"] != "all":
+        if str(trip.get("trip_type", "") or "").strip().lower() != filters["trip_type"]:
+            return False
+
+    if filters["budget"] != "all":
+        if str(trip.get("budget_tier", "") or "").strip().lower() != filters["budget"]:
+            return False
+
+    if filters["difficulty"] != "all":
+        if str(trip.get("difficulty_level", "") or "").strip().lower() != filters["difficulty"]:
+            return False
+
+    return True
+
+
 def normalize_mine_tab(raw_tab: str) -> str:
     normalized = raw_tab.strip().lower()
     if normalized in MINE_TABS:
@@ -268,8 +407,14 @@ def _saved_trip_count_for_member(user: object) -> int:
     return len(_saved_trip_ids_for_member(user))
 
 
-def build_trip_list_payload_for_user(user: object, limit: int = 24) -> TripListPayload:
+def build_trip_list_payload_for_user(
+    user: object,
+    limit: int = 24,
+    *,
+    filters: TripListFilters | Mapping[str, object] | None = None,
+) -> TripListPayload:
     effective_limit = max(1, int(limit or 24))
+    normalized_filters = normalize_trip_filters(filters)
 
     live_rows = _live_trip_rows()
     source = "live-db"
@@ -279,10 +424,16 @@ def build_trip_list_payload_for_user(user: object, limit: int = 24) -> TripListP
         source = "demo-fallback"
         candidate_trips = [_as_trip_data_copy(item) for item in get_demo_trips()]
 
+    enriched_candidates = [enrich_trip_preview_fields(item) for item in candidate_trips]
+    total_count = len(enriched_candidates)
+    filtered_candidates = [trip for trip in enriched_candidates if _trip_matches_filters(trip, normalized_filters)]
+    filtered_count = len(filtered_candidates)
+    active_filters = has_active_trip_filters(normalized_filters)
+
     if bool(getattr(user, "is_authenticated", False)):
         followed_usernames, interest_keywords, has_saved_preference = _member_ranking_sets(user)
         ranked_trips = _rank_for_member(
-            candidate_trips,
+            filtered_candidates,
             followed_usernames=followed_usernames,
             interest_keywords=interest_keywords,
         )
@@ -290,6 +441,10 @@ def build_trip_list_payload_for_user(user: object, limit: int = 24) -> TripListP
         reason = "Trips ranked using followed hosts and like-minded topic boosts."
         if not has_saved_preference:
             reason = "Trips ranked with fallback member interests until preferences are saved."
+        if active_filters and filtered_count > 0:
+            reason = "Trips filtered first, then ranked using followed hosts and like-minded topic boosts."
+        elif active_filters and filtered_count == 0:
+            reason = "No trips match the selected filters yet."
 
         mode = "member-like-minded-live" if source == "live-db" else "member-like-minded-demo"
         return {
@@ -297,16 +452,27 @@ def build_trip_list_payload_for_user(user: object, limit: int = 24) -> TripListP
             "mode": mode,
             "reason": reason,
             "source": source,
+            "filters": normalized_filters,
+            "total_count": total_count,
+            "filtered_count": filtered_count,
         }
 
-    ranked_trips = _rank_for_guest(candidate_trips)
+    ranked_trips = _rank_for_guest(filtered_candidates)
     mode = "guest-trending-live" if source == "live-db" else "guest-trending-demo"
     reason = "Trips ranked by global demand signals for guests."
+    if active_filters and filtered_count > 0:
+        reason = "Trips filtered first, then ranked by global demand signals for guests."
+    elif active_filters and filtered_count == 0:
+        reason = "No trips match the selected filters yet."
+
     return {
         "trips": ranked_trips[:effective_limit],
         "mode": mode,
         "reason": reason,
         "source": source,
+        "filters": normalized_filters,
+        "total_count": total_count,
+        "filtered_count": filtered_count,
     }
 
 
@@ -342,14 +508,16 @@ def build_trip_detail_payload_for_user(user: object, trip_id: int) -> TripDetail
             }
             source = "synthetic-fallback"
 
+    enriched_trip = enrich_trip_preview_fields(trip_data)
+
     if viewer_is_member:
         mode = "member-full"
         reason = "Members see full trip details and available actions."
-        visible_trip = trip_data
+        visible_trip = enriched_trip
     else:
         mode = "guest-limited"
         reason = "Guests see a limited preview until they authenticate."
-        visible_trip = _guest_limited_detail(trip_data)
+        visible_trip = _guest_limited_detail(enriched_trip)
 
     return {
         "trip": visible_trip,
@@ -401,7 +569,7 @@ def build_my_trips_payload_for_member(
     saved_count = _saved_trip_count_for_member(typed_user)
 
     return {
-        "trips": [trip.to_trip_data() for trip in selected_rows],
+        "trips": [enrich_trip_preview_fields(trip.to_trip_data()) for trip in selected_rows],
         "active_tab": effective_tab,
         "tab_counts": {
             "upcoming": upcoming_qs.count(),
