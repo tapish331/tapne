@@ -13,6 +13,8 @@
         / email: {{ settings_record.email_updates }}
         / visibility: {{ settings_record.profile_visibility }}
         / dm: {{ settings_record.dm_privacy }}
+        / theme: {{ settings_record.theme_preference }}
+        / palette: {{ settings_record.color_scheme }}
         {% endif %}
     </p>
 </section>
@@ -48,6 +50,20 @@
         {{ settings_form.dm_privacy }}
         <p class="form-help">{{ settings_form.dm_privacy.help_text }}</p>
         {% for error in settings_form.dm_privacy.errors %}
+        <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <label for="{{ settings_form.theme_preference.id_for_label }}">Theme preference</label>
+        {{ settings_form.theme_preference }}
+        <p class="form-help">{{ settings_form.theme_preference.help_text }}</p>
+        {% for error in settings_form.theme_preference.errors %}
+        <p class="form-error">{{ error }}</p>
+        {% endfor %}
+
+        <label for="{{ settings_form.color_scheme.id_for_label }}">Color scheme</label>
+        {{ settings_form.color_scheme }}
+        <p class="form-help">{{ settings_form.color_scheme.help_text }}</p>
+        {% for error in settings_form.color_scheme.errors %}
         <p class="form-error">{{ error }}</p>
         {% endfor %}
 

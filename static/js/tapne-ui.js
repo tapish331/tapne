@@ -1,4 +1,4 @@
-/* Shared frontend helpers for guest/member interaction behavior. */
+/* Shared frontend helpers for theme controls and guest/member interaction behavior. */
 (function bootstrapTapneUI() {
     "use strict";
 
@@ -33,7 +33,279 @@
     var authModal = document.getElementById("authModal");
     var authModalTitle = document.getElementById("authModalTitle");
     var authModalContextNote = document.getElementById("authModalContextNote");
+    var themeToggleButton = document.getElementById("themeToggle");
+    var colorSchemeSelect = document.getElementById("colorSchemeSelect");
     var authQueryKeys = ["auth", "auth_reason", "auth_error", "auth_next"];
+    var themeStorageKey = "tapne.theme";
+    var paletteStorageKey = "tapne.palette";
+    var supportedPalettes = ["coast", "ember", "forest"];
+    var appearanceSource = normalizeFlag(window.TAPNE_RUNTIME && window.TAPNE_RUNTIME.appearanceSource) || "local-storage";
+    var appearanceSaveUrl = String((window.TAPNE_RUNTIME && window.TAPNE_RUNTIME.appearanceSaveUrl) || "").trim();
+    var shouldPersistAppearanceToBackend = (
+        userState === "member" &&
+        appearanceSource === "member-settings" &&
+        appearanceSaveUrl.length > 0
+    );
+
+    if (!window.TAPNE_RUNTIME) {
+        window.TAPNE_RUNTIME = {};
+    }
+
+    function readStorage(key) {
+        try {
+            return window.localStorage.getItem(key) || "";
+        } catch (_error) {
+            return "";
+        }
+    }
+
+    function writeStorage(key, value) {
+        try {
+            window.localStorage.setItem(key, value);
+        } catch (_error) {
+            vLog("Unable to write to localStorage for key.", key);
+        }
+    }
+
+    function removeStorage(key) {
+        try {
+            window.localStorage.removeItem(key);
+        } catch (_error) {
+            vLog("Unable to remove localStorage key.", key);
+        }
+    }
+
+    function readCookieValue(name) {
+        var cookieName = String(name || "").trim();
+        if (!cookieName || typeof document.cookie !== "string") {
+            return "";
+        }
+
+        var encodedPrefix = encodeURIComponent(cookieName) + "=";
+        var cookies = document.cookie.split(";");
+        for (var index = 0; index < cookies.length; index += 1) {
+            var candidate = String(cookies[index] || "").trim();
+            if (candidate.indexOf(encodedPrefix) !== 0) {
+                continue;
+            }
+
+            return decodeURIComponent(candidate.slice(encodedPrefix.length));
+        }
+        return "";
+    }
+
+    function persistAppearanceToBackend(themePreference, colorScheme) {
+        if (!shouldPersistAppearanceToBackend) {
+            return Promise.resolve(null);
+        }
+
+        var csrfToken = readCookieValue("csrftoken");
+        var payload = {
+            theme_preference: sanitizeThemePreference(themePreference),
+            color_scheme: sanitizePalette(colorScheme)
+        };
+        var headers = {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+        };
+        if (csrfToken) {
+            headers["X-CSRFToken"] = csrfToken;
+        }
+
+        return window.fetch(appearanceSaveUrl, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: headers,
+            body: JSON.stringify(payload)
+        }).then(function parseResponse(response) {
+            if (!response.ok) {
+                throw new Error("Appearance save failed with status " + response.status);
+            }
+            return response.json();
+        }).then(function applyNormalizedResponse(data) {
+            if (!data || data.ok !== true) {
+                throw new Error("Appearance save response was not ok.");
+            }
+
+            var savedThemePreference = sanitizeThemePreference(data.theme_preference);
+            var savedColorScheme = sanitizePalette(data.color_scheme);
+            var resolvedTheme = resolveThemeFromPreference(savedThemePreference);
+            applyTheme(resolvedTheme, savedThemePreference, true);
+            applyPalette(savedColorScheme, true);
+
+            vLog("Appearance persisted to backend.", {
+                outcome: data.outcome || "unknown",
+                themePreference: savedThemePreference,
+                colorScheme: savedColorScheme
+            });
+            return data;
+        }).catch(function onAppearancePersistError(error) {
+            vLog("Failed to persist appearance to backend.", String(error));
+            return null;
+        });
+    }
+
+    function prefersDarkTheme() {
+        try {
+            return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    function sanitizeTheme(themeValue) {
+        var normalized = normalizeFlag(themeValue);
+        if (normalized === "light" || normalized === "dark") {
+            return normalized;
+        }
+        return "";
+    }
+
+    function sanitizeThemePreference(preferenceValue) {
+        var normalized = normalizeFlag(preferenceValue);
+        if (normalized === "light" || normalized === "dark" || normalized === "system") {
+            return normalized;
+        }
+        return "system";
+    }
+
+    function sanitizePalette(paletteValue) {
+        var normalized = normalizeFlag(paletteValue);
+        if (supportedPalettes.indexOf(normalized) >= 0) {
+            return normalized;
+        }
+        return "coast";
+    }
+
+    function resolveThemeFromPreference(preferenceValue) {
+        var preference = sanitizeThemePreference(preferenceValue);
+        if (preference === "light" || preference === "dark") {
+            return preference;
+        }
+        return prefersDarkTheme() ? "dark" : "light";
+    }
+
+    function updateThemeToggleUI(themeValue) {
+        if (!themeToggleButton) {
+            return;
+        }
+
+        var theme = sanitizeTheme(themeValue) || "light";
+        var switchTarget = theme === "dark" ? "light" : "dark";
+        var buttonLabel = switchTarget === "dark" ? "Switch to dark" : "Switch to light";
+        themeToggleButton.textContent = buttonLabel;
+        themeToggleButton.setAttribute("aria-label", buttonLabel + " mode");
+        themeToggleButton.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+    }
+
+    function updatePaletteSelectUI(paletteValue) {
+        if (!colorSchemeSelect) {
+            return;
+        }
+        colorSchemeSelect.value = sanitizePalette(paletteValue);
+    }
+
+    function applyTheme(themeValue, preferenceValue, persistPreference) {
+        var preference = sanitizeThemePreference(preferenceValue);
+        var theme = sanitizeTheme(themeValue) || resolveThemeFromPreference(preference);
+        html.setAttribute("data-theme", theme);
+        html.setAttribute("data-theme-preference", preference);
+        window.TAPNE_RUNTIME.theme = theme;
+        window.TAPNE_RUNTIME.themePreference = preference;
+        updateThemeToggleUI(theme);
+
+        if (persistPreference) {
+            if (preference === "system") {
+                removeStorage(themeStorageKey);
+            } else {
+                writeStorage(themeStorageKey, theme);
+            }
+        }
+
+        return theme;
+    }
+
+    function applyPalette(paletteValue, persistPalette) {
+        var palette = sanitizePalette(paletteValue);
+        html.setAttribute("data-color-scheme", palette);
+        window.TAPNE_RUNTIME.colorScheme = palette;
+        updatePaletteSelectUI(palette);
+
+        if (persistPalette) {
+            writeStorage(paletteStorageKey, palette);
+        }
+        return palette;
+    }
+
+    function initializeThemeControls() {
+        var storedTheme = "";
+        var storedPaletteRaw = "";
+        if (!shouldPersistAppearanceToBackend) {
+            storedTheme = sanitizeTheme(readStorage(themeStorageKey));
+            storedPaletteRaw = readStorage(paletteStorageKey);
+        }
+        var storedPalette = storedPaletteRaw ? sanitizePalette(storedPaletteRaw) : "";
+        var currentThemePreference = sanitizeThemePreference(html.getAttribute("data-theme-preference"));
+        var currentTheme = sanitizeTheme(html.getAttribute("data-theme"));
+        var currentPalette = sanitizePalette(html.getAttribute("data-color-scheme"));
+
+        if (storedTheme) {
+            currentTheme = storedTheme;
+            currentThemePreference = storedTheme;
+        } else if (!currentTheme) {
+            currentTheme = resolveThemeFromPreference(currentThemePreference);
+        }
+
+        if (storedPalette) {
+            currentPalette = storedPalette;
+        }
+
+        applyTheme(currentTheme, currentThemePreference, false);
+        applyPalette(currentPalette, false);
+
+        if (themeToggleButton) {
+            themeToggleButton.addEventListener("click", function onThemeToggle() {
+                var activeTheme = sanitizeTheme(html.getAttribute("data-theme")) || "light";
+                var nextTheme = activeTheme === "dark" ? "light" : "dark";
+                applyTheme(nextTheme, nextTheme, true);
+                persistAppearanceToBackend(
+                    nextTheme,
+                    sanitizePalette(html.getAttribute("data-color-scheme"))
+                );
+                vLog("Theme toggled.", { previous: activeTheme, next: nextTheme });
+            });
+        }
+
+        if (colorSchemeSelect) {
+            colorSchemeSelect.addEventListener("change", function onPaletteChange() {
+                var nextPalette = sanitizePalette(colorSchemeSelect.value);
+                applyPalette(nextPalette, true);
+                persistAppearanceToBackend(
+                    sanitizeThemePreference(html.getAttribute("data-theme-preference")),
+                    nextPalette
+                );
+                vLog("Color scheme changed.", nextPalette);
+            });
+        }
+
+        if (window.matchMedia) {
+            var darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+            var onSystemThemeChange = function onSystemThemeChange() {
+                var preference = sanitizeThemePreference(html.getAttribute("data-theme-preference"));
+                if (preference !== "system") {
+                    return;
+                }
+                applyTheme(resolveThemeFromPreference("system"), "system", false);
+                vLog("Applied system theme change.");
+            };
+
+            if (typeof darkModeQuery.addEventListener === "function") {
+                darkModeQuery.addEventListener("change", onSystemThemeChange);
+            } else if (typeof darkModeQuery.addListener === "function") {
+                darkModeQuery.addListener(onSystemThemeChange);
+            }
+        }
+    }
 
     function normalizePath(pathValue, fallbackPath) {
         try {
@@ -161,6 +433,8 @@
 
         vLog("Closed auth modal.");
     }
+
+    initializeThemeControls();
 
     if (authModal) {
         authModal.addEventListener("click", function onModalClick(event) {

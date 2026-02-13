@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Final
+import json
+from typing import Final, cast
 from urllib.parse import urlsplit
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -16,6 +17,7 @@ from .models import (
     build_settings_payload_for_member,
     ensure_member_settings,
     resolve_member_settings_defaults,
+    update_member_appearance,
     update_member_settings,
 )
 
@@ -87,6 +89,8 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                 email_updates=form.cleaned_data["email_updates"],
                 profile_visibility=form.cleaned_data["profile_visibility"],
                 dm_privacy=form.cleaned_data["dm_privacy"],
+                theme_preference=form.cleaned_data["theme_preference"],
+                color_scheme=form.cleaned_data["color_scheme"],
                 search_visibility=form.cleaned_data["search_visibility"],
                 digest_enabled=form.cleaned_data["digest_enabled"],
             )
@@ -107,6 +111,7 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                 (
                     "Settings saved for @{username}; outcome={outcome}; changed_fields={changed_fields}; "
                     "email_updates={email_updates}; visibility={visibility}; dm_privacy={dm_privacy}; "
+                    "theme_preference={theme_preference}; color_scheme={color_scheme}; "
                     "search_visibility={search_visibility}; digest_enabled={digest_enabled}"
                 ).format(
                     username=request.user.username,
@@ -115,6 +120,8 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                     email_updates=updated_row.email_updates,
                     visibility=updated_row.profile_visibility,
                     dm_privacy=updated_row.dm_privacy,
+                    theme_preference=updated_row.theme_preference,
+                    color_scheme=updated_row.color_scheme,
                     search_visibility=updated_row.search_visibility,
                     digest_enabled=updated_row.digest_enabled,
                 ),
@@ -138,6 +145,7 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
             (
                 "Rendered settings page for @{username}; created={created}; "
                 "email_updates={email_updates}; visibility={visibility}; dm_privacy={dm_privacy}; "
+                "theme_preference={theme_preference}; color_scheme={color_scheme}; "
                 "search_visibility={search_visibility}; digest_enabled={digest_enabled}"
             ).format(
                 username=request.user.username,
@@ -145,6 +153,8 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                 email_updates=settings_row.email_updates,
                 visibility=settings_row.profile_visibility,
                 dm_privacy=settings_row.dm_privacy,
+                theme_preference=settings_row.theme_preference,
+                color_scheme=settings_row.color_scheme,
                 search_visibility=settings_row.search_visibility,
                 digest_enabled=settings_row.digest_enabled,
             ),
@@ -162,3 +172,71 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
         "settings_defaults": resolve_member_settings_defaults(),
     }
     return render(request, "pages/settings/index.html", context)
+
+
+@login_required(login_url="accounts:login")
+@require_http_methods(["POST"])
+def settings_appearance_update_view(request: HttpRequest) -> JsonResponse:
+    settings_row, _created = ensure_member_settings(request.user)
+    if settings_row is None:
+        return JsonResponse(
+            {"ok": False, "error": "invalid-member"},
+            status=400,
+        )
+
+    payload: dict[str, object] = {}
+    content_type = str(request.headers.get("Content-Type", "")).lower()
+    if "application/json" in content_type:
+        try:
+            parsed_payload_obj: object = json.loads(request.body.decode("utf-8") or "{}")
+            if isinstance(parsed_payload_obj, dict):
+                parsed_payload_map = cast(dict[object, object], parsed_payload_obj)
+                normalized_payload: dict[str, object] = {}
+                for raw_key, raw_value in parsed_payload_map.items():
+                    if isinstance(raw_key, str):
+                        normalized_payload[raw_key] = raw_value
+                payload = normalized_payload
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = {}
+
+    submitted_theme_preference = payload.get(
+        "theme_preference",
+        request.POST.get("theme_preference", settings_row.theme_preference),
+    )
+    submitted_color_scheme = payload.get(
+        "color_scheme",
+        request.POST.get("color_scheme", settings_row.color_scheme),
+    )
+
+    updated_row, outcome = update_member_appearance(
+        member=request.user,
+        theme_preference=submitted_theme_preference,
+        color_scheme=submitted_color_scheme,
+    )
+    if updated_row is None:
+        return JsonResponse(
+            {"ok": False, "error": "invalid-member"},
+            status=400,
+        )
+
+    _vprint(
+        request,
+        (
+            "Appearance persisted for @{username}; outcome={outcome}; "
+            "theme_preference={theme_preference}; color_scheme={color_scheme}"
+        ).format(
+            username=request.user.username,
+            outcome=outcome,
+            theme_preference=updated_row.theme_preference,
+            color_scheme=updated_row.color_scheme,
+        ),
+    )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "outcome": outcome,
+            "theme_preference": updated_row.theme_preference,
+            "color_scheme": updated_row.color_scheme,
+        }
+    )

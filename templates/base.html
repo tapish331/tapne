@@ -1,18 +1,92 @@
 {% load static %}
 <!doctype html>
-<html lang="en" data-user-state="{% if user.is_authenticated %}member{% else %}guest{% endif %}">
+<html
+    lang="en"
+    data-user-state="{% if user.is_authenticated %}member{% else %}guest{% endif %}"
+    data-theme="{% if appearance_theme_preference == 'dark' %}dark{% else %}light{% endif %}"
+    data-theme-preference="{{ appearance_theme_preference|default:'system' }}"
+    data-color-scheme="{{ appearance_color_scheme|default:'coast' }}"
+>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="tapne: host trips, write blogs, and grow audiences.">
     <title>{% block title %}tapne{% endblock %}</title>
     {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+    <script>
+        (function preloadTapneTheme() {
+            var html = document.documentElement;
+            var themeKey = "tapne.theme";
+            var paletteKey = "tapne.palette";
+            var fallbackPalette = "coast";
+            var fallbackThemePreference = "system";
+            var appearanceSource = "{{ appearance_source|default:'local-storage'|escapejs }}";
+            var serverThemePreference = "{{ appearance_theme_preference|default:'system'|escapejs }}";
+            var serverColorScheme = "{{ appearance_color_scheme|default:'coast'|escapejs }}";
+            var themePreference = serverThemePreference;
+            var colorScheme = serverColorScheme;
+
+            function readStorage(key) {
+                try {
+                    return window.localStorage.getItem(key) || "";
+                } catch (_error) {
+                    return "";
+                }
+            }
+
+            var prefersDark = false;
+            var allowedPalettes = ["coast", "ember", "forest"];
+            var allowedThemePreferences = ["system", "light", "dark"];
+
+            if (appearanceSource !== "member-settings") {
+                var savedTheme = readStorage(themeKey);
+                var savedPalette = readStorage(paletteKey);
+                if (savedTheme) {
+                    themePreference = savedTheme;
+                }
+                if (savedPalette) {
+                    colorScheme = savedPalette;
+                }
+            }
+
+            try {
+                prefersDark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+            } catch (_error) {
+                prefersDark = false;
+            }
+
+            var normalizedThemePreference = String(themePreference || "").trim().toLowerCase();
+            if (allowedThemePreferences.indexOf(normalizedThemePreference) < 0) {
+                normalizedThemePreference = fallbackThemePreference;
+            }
+
+            var resolvedTheme = normalizedThemePreference;
+            if (normalizedThemePreference !== "light" && normalizedThemePreference !== "dark") {
+                resolvedTheme = prefersDark ? "dark" : "light";
+                normalizedThemePreference = fallbackThemePreference;
+            }
+
+            var normalizedColorScheme = String(colorScheme || "").trim().toLowerCase();
+            if (allowedPalettes.indexOf(normalizedColorScheme) < 0) {
+                normalizedColorScheme = fallbackPalette;
+            }
+
+            html.setAttribute("data-theme", resolvedTheme);
+            html.setAttribute("data-theme-preference", normalizedThemePreference);
+            html.setAttribute("data-color-scheme", normalizedColorScheme);
+        })();
+    </script>
     <link rel="stylesheet" href="{% static 'css/tapne.css' %}">
     <script>
         // Frontend runtime flags shared with static JS helpers.
         window.TAPNE_RUNTIME = {
             userState: "{% if user.is_authenticated %}member{% else %}guest{% endif %}",
-            verbose: "{% if request.GET.verbose %}{{ request.GET.verbose }}{% else %}0{% endif %}"
+            verbose: "{% if request.GET.verbose %}{{ request.GET.verbose }}{% else %}0{% endif %}",
+            theme: document.documentElement.getAttribute("data-theme") || "light",
+            themePreference: document.documentElement.getAttribute("data-theme-preference") || "system",
+            colorScheme: document.documentElement.getAttribute("data-color-scheme") || "coast",
+            appearanceSource: "{{ appearance_source|default:'local-storage'|escapejs }}",
+            appearanceSaveUrl: "{% if user.is_authenticated %}{% url 'settings_app:appearance-update' %}{% endif %}"
         };
     </script>
     <script src="{% static 'js/tapne-ui.js' %}" defer></script>
@@ -35,16 +109,27 @@
                 <a href="/settings/">Settings</a>
                 {% endif %}
             </nav>
-            <div class="auth-links">
-                {% if user.is_authenticated %}
-                <a class="btn btn-secondary" href="/accounts/me/">My Profile</a>
-                <form method="post" action="/accounts/logout/" class="inline-form">
-                    {% csrf_token %}
-                    <button class="btn btn-ghost" type="submit">Log out</button>
-                </form>
-                {% else %}
-                <button class="btn btn-primary" type="button" data-modal-open="auth" data-auth-mode="login">Log in</button>
-                {% endif %}
+            <div class="header-tools">
+                <div class="theme-controls" role="group" aria-label="Appearance controls">
+                    <button id="themeToggle" class="btn btn-theme-toggle" type="button">Switch to dark</button>
+                    <label class="sr-only" for="colorSchemeSelect">Color scheme</label>
+                    <select id="colorSchemeSelect" class="scheme-select" aria-label="Color scheme">
+                        <option value="coast">Coast</option>
+                        <option value="ember">Ember</option>
+                        <option value="forest">Forest</option>
+                    </select>
+                </div>
+                <div class="auth-links">
+                    {% if user.is_authenticated %}
+                    <a class="btn btn-secondary" href="/accounts/me/">My Profile</a>
+                    <form method="post" action="/accounts/logout/" class="inline-form">
+                        {% csrf_token %}
+                        <button class="btn btn-ghost" type="submit">Log out</button>
+                    </form>
+                    {% else %}
+                    <button class="btn btn-primary" type="button" data-modal-open="auth" data-auth-mode="login">Log in</button>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </header>

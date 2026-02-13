@@ -10,6 +10,8 @@ from django.db import models
 EmailUpdates = Literal["all", "important", "none"]
 ProfileVisibility = Literal["public", "members"]
 DmPrivacy = Literal["everyone", "following", "none"]
+ThemePreference = Literal["system", "light", "dark"]
+ColorScheme = Literal["coast", "ember", "forest"]
 UpdateMemberSettingsOutcome = Literal[
     "member-required",
     "invalid-member",
@@ -21,6 +23,8 @@ UpdateMemberSettingsOutcome = Literal[
 ALLOWED_EMAIL_UPDATES: Final[set[str]] = {"all", "important", "none"}
 ALLOWED_PROFILE_VISIBILITY: Final[set[str]] = {"public", "members"}
 ALLOWED_DM_PRIVACY: Final[set[str]] = {"everyone", "following", "none"}
+ALLOWED_THEME_PREFERENCE: Final[set[str]] = {"system", "light", "dark"}
+ALLOWED_COLOR_SCHEME: Final[set[str]] = {"coast", "ember", "forest"}
 TRUE_VALUES: Final[set[str]] = {"1", "true", "yes", "on"}
 FALSE_VALUES: Final[set[str]] = {"0", "false", "no", "off"}
 
@@ -31,6 +35,8 @@ class MemberSettingsData(TypedDict):
     email_updates: str
     profile_visibility: str
     dm_privacy: str
+    theme_preference: str
+    color_scheme: str
     search_visibility: bool
     digest_enabled: bool
     created_at: datetime
@@ -77,6 +83,24 @@ class MemberSettings(models.Model):
         (DM_PRIVACY_NONE, "No one"),
     )
 
+    THEME_PREFERENCE_SYSTEM: Final[str] = "system"
+    THEME_PREFERENCE_LIGHT: Final[str] = "light"
+    THEME_PREFERENCE_DARK: Final[str] = "dark"
+    THEME_PREFERENCE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+        (THEME_PREFERENCE_SYSTEM, "Follow system"),
+        (THEME_PREFERENCE_LIGHT, "Light"),
+        (THEME_PREFERENCE_DARK, "Dark"),
+    )
+
+    COLOR_SCHEME_COAST: Final[str] = "coast"
+    COLOR_SCHEME_EMBER: Final[str] = "ember"
+    COLOR_SCHEME_FOREST: Final[str] = "forest"
+    COLOR_SCHEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+        (COLOR_SCHEME_COAST, "Coast"),
+        (COLOR_SCHEME_EMBER, "Ember"),
+        (COLOR_SCHEME_FOREST, "Forest"),
+    )
+
     member = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -96,6 +120,16 @@ class MemberSettings(models.Model):
         max_length=16,
         choices=DM_PRIVACY_CHOICES,
         default=DM_PRIVACY_FOLLOWING,
+    )
+    theme_preference = models.CharField(
+        max_length=16,
+        choices=THEME_PREFERENCE_CHOICES,
+        default=THEME_PREFERENCE_SYSTEM,
+    )
+    color_scheme = models.CharField(
+        max_length=16,
+        choices=COLOR_SCHEME_CHOICES,
+        default=COLOR_SCHEME_COAST,
     )
     search_visibility = models.BooleanField(
         default=True,
@@ -128,6 +162,8 @@ class MemberSettings(models.Model):
             "email_updates": str(self.email_updates or "").strip().lower(),
             "profile_visibility": str(self.profile_visibility or "").strip().lower(),
             "dm_privacy": str(self.dm_privacy or "").strip().lower(),
+            "theme_preference": str(self.theme_preference or "").strip().lower(),
+            "color_scheme": str(self.color_scheme or "").strip().lower(),
             "search_visibility": bool(self.search_visibility),
             "digest_enabled": bool(self.digest_enabled),
             "created_at": self.created_at,
@@ -175,6 +211,28 @@ def normalize_dm_privacy(raw_value: object) -> DmPrivacy:
     )
 
 
+def normalize_theme_preference(raw_value: object) -> ThemePreference:
+    return cast(
+        ThemePreference,
+        _normalize_choice(
+            raw_value,
+            allowed=ALLOWED_THEME_PREFERENCE,
+            fallback=MemberSettings.THEME_PREFERENCE_SYSTEM,
+        ),
+    )
+
+
+def normalize_color_scheme(raw_value: object) -> ColorScheme:
+    return cast(
+        ColorScheme,
+        _normalize_choice(
+            raw_value,
+            allowed=ALLOWED_COLOR_SCHEME,
+            fallback=MemberSettings.COLOR_SCHEME_COAST,
+        ),
+    )
+
+
 def normalize_bool(raw_value: object, *, default: bool) -> bool:
     if isinstance(raw_value, bool):
         return raw_value
@@ -206,6 +264,12 @@ def resolve_member_settings_defaults() -> dict[str, object]:
         ),
         "dm_privacy": normalize_dm_privacy(
             os.getenv("TAPNE_SETTINGS_DEFAULT_DM_PRIVACY", MemberSettings.DM_PRIVACY_FOLLOWING)
+        ),
+        "theme_preference": normalize_theme_preference(
+            os.getenv("TAPNE_SETTINGS_DEFAULT_THEME_PREFERENCE", MemberSettings.THEME_PREFERENCE_SYSTEM)
+        ),
+        "color_scheme": normalize_color_scheme(
+            os.getenv("TAPNE_SETTINGS_DEFAULT_COLOR_SCHEME", MemberSettings.COLOR_SCHEME_COAST)
         ),
         "search_visibility": normalize_bool(
             os.getenv("TAPNE_SETTINGS_DEFAULT_SEARCH_VISIBILITY", "true"),
@@ -249,6 +313,16 @@ def ensure_member_settings(member: object) -> tuple[MemberSettings | None, bool]
         settings_row.dm_privacy = normalized_dm_privacy
         changed_fields.append("dm_privacy")
 
+    normalized_theme_preference = normalize_theme_preference(settings_row.theme_preference)
+    if settings_row.theme_preference != normalized_theme_preference:
+        settings_row.theme_preference = normalized_theme_preference
+        changed_fields.append("theme_preference")
+
+    normalized_color_scheme = normalize_color_scheme(settings_row.color_scheme)
+    if settings_row.color_scheme != normalized_color_scheme:
+        settings_row.color_scheme = normalized_color_scheme
+        changed_fields.append("color_scheme")
+
     if changed_fields:
         settings_row.save(update_fields=[*changed_fields, "updated_at"])
 
@@ -261,6 +335,8 @@ def update_member_settings(
     email_updates: object,
     profile_visibility: object,
     dm_privacy: object,
+    theme_preference: object,
+    color_scheme: object,
     search_visibility: object,
     digest_enabled: object,
 ) -> tuple[MemberSettings | None, UpdateMemberSettingsOutcome]:
@@ -274,6 +350,8 @@ def update_member_settings(
     normalized_email = normalize_email_updates(email_updates)
     normalized_visibility = normalize_profile_visibility(profile_visibility)
     normalized_dm_privacy = normalize_dm_privacy(dm_privacy)
+    normalized_theme_preference = normalize_theme_preference(theme_preference)
+    normalized_color_scheme = normalize_color_scheme(color_scheme)
     normalized_search_visibility = normalize_bool(
         search_visibility,
         default=bool(settings_row.search_visibility),
@@ -293,12 +371,51 @@ def update_member_settings(
     if settings_row.dm_privacy != normalized_dm_privacy:
         settings_row.dm_privacy = normalized_dm_privacy
         changed_fields.append("dm_privacy")
+    if settings_row.theme_preference != normalized_theme_preference:
+        settings_row.theme_preference = normalized_theme_preference
+        changed_fields.append("theme_preference")
+    if settings_row.color_scheme != normalized_color_scheme:
+        settings_row.color_scheme = normalized_color_scheme
+        changed_fields.append("color_scheme")
     if settings_row.search_visibility != normalized_search_visibility:
         settings_row.search_visibility = normalized_search_visibility
         changed_fields.append("search_visibility")
     if settings_row.digest_enabled != normalized_digest_enabled:
         settings_row.digest_enabled = normalized_digest_enabled
         changed_fields.append("digest_enabled")
+
+    if changed_fields:
+        settings_row.save(update_fields=[*changed_fields, "updated_at"])
+        return settings_row, ("created" if created else "updated")
+
+    if created:
+        return settings_row, "created"
+    return settings_row, "unchanged"
+
+
+def update_member_appearance(
+    *,
+    member: object,
+    theme_preference: object,
+    color_scheme: object,
+) -> tuple[MemberSettings | None, UpdateMemberSettingsOutcome]:
+    if not bool(getattr(member, "is_authenticated", False)):
+        return None, "member-required"
+
+    settings_row, created = ensure_member_settings(member)
+    if settings_row is None:
+        return None, "invalid-member"
+
+    normalized_theme_preference = normalize_theme_preference(theme_preference)
+    normalized_color_scheme = normalize_color_scheme(color_scheme)
+
+    changed_fields: list[str] = []
+    if settings_row.theme_preference != normalized_theme_preference:
+        settings_row.theme_preference = normalized_theme_preference
+        changed_fields.append("theme_preference")
+    if settings_row.color_scheme != normalized_color_scheme:
+        settings_row.color_scheme = normalized_color_scheme
+        changed_fields.append("color_scheme")
 
     if changed_fields:
         settings_row.save(update_fields=[*changed_fields, "updated_at"])
