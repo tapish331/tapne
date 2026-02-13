@@ -6,7 +6,7 @@
 <section class="hero hero-compact">
     <p class="eyebrow">Direct messages</p>
     <h1>Message inbox</h1>
-    <p>{{ dm_reason }} ({{ dm_mode|default:"unknown" }})</p>
+    <p>{{ dm_reason|default:"Stay in touch with creators and members you follow." }}</p>
 </section>
 
 <form method="post" action="{% url 'interactions:dm-open' %}" class="search-form">

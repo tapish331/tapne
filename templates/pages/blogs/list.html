@@ -7,12 +7,9 @@
     <p class="eyebrow">Blogs</p>
     <h1>Read community stories and guides.</h1>
     {% if user.is_authenticated %}
-    <p>Member mode supports full blog reads plus create/edit/delete ownership flows.</p>
+    <p>Members can read, write, and manage their published posts.</p>
     {% else %}
     <p>Guests can read full content. Comment, review, and bookmark actions are member-only.</p>
-    {% endif %}
-    {% if blog_reason %}
-    <p class="detail-meta">{{ blog_reason }} ({{ blog_mode|default:"unknown" }} / {{ blog_source|default:"unknown" }})</p>
     {% endif %}
 
     {% if user.is_authenticated %}
@@ -30,7 +27,7 @@
         {% for blog in blogs %}
         {% include "partials/cards/blog_card.html" with blog=blog %}
         {% empty %}
-        <div class="empty-state">Blog list is empty. Run <code>python manage.py bootstrap_blogs --create-missing-authors --verbose</code> to seed demo data.</div>
+        <div class="empty-state">No blogs have been published yet. New stories will appear here.</div>
         {% endfor %}
     </div>
 </section>

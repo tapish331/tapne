@@ -7,10 +7,6 @@
     <p class="eyebrow">Trip details</p>
     <h1>{{ trip.title|default:"Trip title" }}</h1>
 
-    {% if trip_detail_reason %}
-    <p class="detail-meta">{{ trip_detail_reason }} ({{ trip_detail_mode|default:"unknown" }} / {{ trip_detail_source|default:"unknown" }})</p>
-    {% endif %}
-
     <p class="detail-meta">
         Host:
         {% if trip.host_username %}
@@ -61,7 +57,7 @@
 <section id="media" class="detail-shell stack-gap-top">
     <p class="eyebrow">Trip media</p>
     <h2>Photos and videos</h2>
-    <p class="detail-meta">{{ trip_media_reason }} ({{ trip_media_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ trip_media_reason|default:"Trip media shared by the host and reviewers." }}</p>
 
     {% if trip_media_can_upload %}
     <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="search-form">
@@ -122,7 +118,7 @@
 <section id="comments" class="detail-shell stack-gap-top">
     <p class="eyebrow">Trip comments</p>
     <h2>Conversation</h2>
-    <p class="detail-meta">{{ interaction_comment_reason }} ({{ interaction_comment_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ interaction_comment_reason|default:"Questions and discussion from members planning this trip." }}</p>
 
     {% if user.is_authenticated %}
     <form method="post" action="{% url 'interactions:comment' %}" class="search-form">
@@ -179,7 +175,7 @@
 <section id="reviews" class="detail-shell stack-gap-top">
     <p class="eyebrow">Trip reviews</p>
     <h2>Ratings</h2>
-    <p class="detail-meta">{{ review_reason }} ({{ review_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ review_reason|default:"Member ratings and feedback for this trip." }}</p>
     <p class="detail-meta">Average rating: {{ review_average_rating|floatformat:1 }}/5 from {{ review_count }} review{{ review_count|pluralize }}</p>
 
     {% if review_rating_buckets %}

@@ -7,16 +7,15 @@
     <p class="eyebrow">Member settings</p>
     <h1>Account settings</h1>
     <p>{{ settings_reason|default:"Tune account and privacy preferences for your member profile." }}</p>
+    {% if settings_record %}
     <p class="detail-meta">
-        {{ settings_mode|default:"member-settings" }}
-        {% if settings_record %}
-        / email: {{ settings_record.email_updates }}
-        / visibility: {{ settings_record.profile_visibility }}
-        / dm: {{ settings_record.dm_privacy }}
-        / theme: {{ settings_record.theme_preference }}
-        / palette: {{ settings_record.color_scheme }}
-        {% endif %}
+        Email: {{ settings_record.email_updates }}
+        / Visibility: {{ settings_record.profile_visibility }}
+        / DMs: {{ settings_record.dm_privacy }}
+        / Theme: {{ settings_record.theme_preference }}
+        / Palette: {{ settings_record.color_scheme }}
     </p>
+    {% endif %}
 </section>
 
 <section class="detail-shell">

@@ -127,6 +127,7 @@
                         <button class="btn btn-ghost" type="submit">Log out</button>
                     </form>
                     {% else %}
+                    <button class="btn btn-secondary" type="button" data-modal-open="auth" data-auth-mode="signup">Sign up</button>
                     <button class="btn btn-primary" type="button" data-modal-open="auth" data-auth-mode="login">Log in</button>
                     {% endif %}
                 </div>
@@ -149,8 +150,15 @@
 
     <footer class="site-footer">
         <div class="container footer-inner">
-            <p>tapne local UI scaffold</p>
-            <p>Guest and member behaviors are progressively enhanced in shared JS.</p>
+            <p class="footer-brand">tapne</p>
+            <nav class="footer-links" aria-label="Footer links">
+                <a href="/about/">About</a>
+                <a href="/how-it-works/">How it works</a>
+                <a href="/safety/">Safety</a>
+                <a href="/contact/">Contact</a>
+                <a href="/terms/">Terms</a>
+                <a href="/privacy/">Privacy</a>
+            </nav>
         </div>
     </footer>
 

@@ -7,12 +7,9 @@
     <p class="eyebrow">Trips</p>
     <h1>Browse upcoming and hosted trips.</h1>
     {% if user.is_authenticated %}
-    <p>Member mode supports full details, trip management, and My Trips segmentation.</p>
+    <p>Members can see full details, manage hosted trips, and track plans from My Trips.</p>
     {% else %}
     <p>Guests can browse limited details. Join, bookmark, and review actions require login.</p>
-    {% endif %}
-    {% if trip_reason %}
-    <p class="detail-meta">{{ trip_reason }} ({{ trip_mode|default:"unknown" }} / {{ trip_source|default:"unknown" }})</p>
     {% endif %}
 
     {% if user.is_authenticated %}
@@ -31,7 +28,7 @@
         {% for trip in trips %}
         {% include "partials/cards/trip_card.html" with trip=trip %}
         {% empty %}
-        <div class="empty-state">Trip list is empty. Run <code>python manage.py bootstrap_trips --create-missing-hosts --verbose</code> to seed demo data.</div>
+        <div class="empty-state">No trips are published yet. New hosted trips will appear here.</div>
         {% endfor %}
     </div>
 </section>

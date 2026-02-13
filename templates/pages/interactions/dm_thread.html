@@ -6,7 +6,7 @@
 <article class="detail-shell">
     <p class="eyebrow">Direct messages</p>
     <h1>Chat with <a href="{{ dm_thread.peer_url }}">@{{ dm_thread.peer_username }}</a></h1>
-    <p class="detail-meta">{{ dm_reason }} ({{ dm_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ dm_reason|default:"Private conversation between members." }}</p>
     <div class="inline-actions">
         <a class="btn btn-secondary" href="{% url 'interactions:dm-inbox' %}">Back to inbox</a>
         <a class="btn btn-ghost" href="{{ dm_thread.peer_url }}">View profile</a>

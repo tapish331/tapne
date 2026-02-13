@@ -7,7 +7,6 @@
     <p class="eyebrow">Enrollment</p>
     <h1>Review join requests for your hosted trips.</h1>
     <p>{{ hosting_inbox_reason|default:"Approve or deny member join requests from your hosted trip catalog." }}</p>
-    <p class="detail-meta">{{ hosting_inbox_mode|default:"member-hosting-inbox" }} / active filter: {{ active_status|default:"pending" }}</p>
 </section>
 
 <section class="section-grid">
@@ -76,7 +75,7 @@
         </article>
         {% empty %}
         <div class="empty-state">
-            No requests for this filter yet. Run <code>python manage.py bootstrap_enrollment --verbose --create-missing-members</code> to seed sample rows.
+            No requests for this filter yet.
         </div>
         {% endfor %}
     </div>

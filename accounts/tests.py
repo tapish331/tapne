@@ -207,7 +207,7 @@ class AccountsViewsTests(TestCase):
         response = self.client.get(reverse("public-profile", kwargs={"username": "mei"}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Mei Tanaka")
-        self.assertContains(response, "demo profile")
+        self.assertNotContains(response, "seeded demo profile")
 
 
 class BootstrapAccountsCommandTests(TestCase):

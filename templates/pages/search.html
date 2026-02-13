@@ -11,9 +11,6 @@
     {% else %}
     <p>Default suggestions should come from global traffic and search demand.</p>
     {% endif %}
-    {% if search_reason %}
-    <p class="detail-meta">{{ search_reason }} ({{ search_mode|default:"unknown" }})</p>
-    {% endif %}
 </section>
 
 {% with selected_type=active_type|default:"all" %}
@@ -77,7 +74,7 @@
     {% if has_query %}
     No results matched your query.
     {% else %}
-    No defaults are available yet. Seed demo records and try again.
+    No recommendations are available yet. Check back soon for fresh trips, creators, and stories.
     {% endif %}
 </div>
 {% endif %}

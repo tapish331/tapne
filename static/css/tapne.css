@@ -350,6 +350,35 @@ code {
     justify-content: space-between;
 }
 
+.footer-brand {
+    color: var(--text-1);
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
+}
+
+.footer-links {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.85rem;
+}
+
+.footer-links a {
+    color: var(--text-2);
+    font-family: var(--font-ui);
+    font-size: 0.86rem;
+    text-decoration: none;
+}
+
+.footer-links a:hover {
+    color: var(--accent-strong);
+    text-decoration: underline;
+    text-decoration-color: rgba(var(--accent-rgb), 0.58);
+}
+
 .flash-list {
     display: grid;
     gap: 0.5rem;
@@ -1128,6 +1157,10 @@ body.modal-open {
 
     .auth-links {
         width: 100%;
+    }
+
+    .footer-inner {
+        justify-content: flex-start;
     }
 
     .hero {

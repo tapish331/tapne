@@ -7,7 +7,6 @@
     <p class="eyebrow">Member activity</p>
     <h1>Recent activity</h1>
     <p>{{ activity_reason|default:"Recent notifications across follow, enrollment, comments, bookmarks, and reviews." }}</p>
-    <p class="detail-meta">{{ activity_mode|default:"member-activity" }} / active filter: {{ activity_filter|default:"all" }}</p>
 </section>
 
 <section class="section-grid">
@@ -51,7 +50,7 @@
         </article>
         {% empty %}
         <div class="empty-state">
-            No activity for this filter yet. Run <code>python manage.py bootstrap_activity --verbose --create-missing-members</code> to seed sample rows.
+            No activity for this filter yet.
         </div>
         {% endfor %}
     </div>

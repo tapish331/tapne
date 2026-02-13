@@ -7,10 +7,6 @@
     <p class="eyebrow">Blog details</p>
     <h1>{{ blog.title|default:"Blog title" }}</h1>
 
-    {% if blog_detail_reason %}
-    <p class="detail-meta">{{ blog_detail_reason }} ({{ blog_detail_mode|default:"unknown" }} / {{ blog_detail_source|default:"unknown" }})</p>
-    {% endif %}
-
     <p class="detail-meta">
         {% if blog.author_username %}
         By <a href="/u/{{ blog.author_username }}/">@{{ blog.author_username }}</a>
@@ -55,7 +51,7 @@
 <section id="media" class="detail-shell stack-gap-top">
     <p class="eyebrow">Blog media</p>
     <h2>Photos and videos</h2>
-    <p class="detail-meta">{{ blog_media_reason }} ({{ blog_media_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ blog_media_reason|default:"Media shared by the author and reviewers." }}</p>
 
     {% if blog_media_can_upload %}
     <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="search-form">
@@ -116,7 +112,7 @@
 <section id="comments" class="detail-shell stack-gap-top">
     <p class="eyebrow">Blog comments</p>
     <h2>Conversation</h2>
-    <p class="detail-meta">{{ interaction_comment_reason }} ({{ interaction_comment_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ interaction_comment_reason|default:"Questions and discussion about this post." }}</p>
 
     {% if user.is_authenticated %}
     <form method="post" action="{% url 'interactions:comment' %}" class="search-form">
@@ -173,7 +169,7 @@
 <section id="reviews" class="detail-shell stack-gap-top">
     <p class="eyebrow">Blog reviews</p>
     <h2>Ratings</h2>
-    <p class="detail-meta">{{ review_reason }} ({{ review_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ review_reason|default:"Member ratings and feedback for this blog." }}</p>
     <p class="detail-meta">Average rating: {{ review_average_rating|floatformat:1 }}/5 from {{ review_count }} review{{ review_count|pluralize }}</p>
 
     {% if review_rating_buckets %}

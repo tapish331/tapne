@@ -12,6 +12,12 @@ from django.views.decorators.http import require_GET
 
 SITEMAP_STATIC_PATHS: tuple[str, ...] = (
     "/",
+    "/about/",
+    "/how-it-works/",
+    "/safety/",
+    "/contact/",
+    "/terms/",
+    "/privacy/",
     "/search/",
     "/trips/",
     "/blogs/",

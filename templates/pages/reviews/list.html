@@ -6,10 +6,7 @@
 <section class="hero hero-compact">
     <p class="eyebrow">Reviews</p>
     <h1>{{ review_target_label|default:"Target reviews" }}</h1>
-    <p class="detail-meta">
-        {{ review_reason }}
-        ({{ review_mode|default:"unknown" }}, target={{ review_target_type|default:"unknown" }}:{{ review_target_key|default:"unknown" }})
-    </p>
+    <p class="detail-meta">{{ review_reason|default:"Member reviews and ratings for this page." }}</p>
     <p class="detail-meta">Average rating: {{ review_average_rating|floatformat:1 }}/5 from {{ review_count }} review{{ review_count|pluralize }}</p>
 
     <div class="inline-actions">
@@ -31,7 +28,7 @@
 
 <section id="media" class="detail-shell stack-gap-top">
     <h2>Target media</h2>
-    <p class="detail-meta">{{ target_media_reason }} ({{ target_media_mode|default:"unknown" }})</p>
+    <p class="detail-meta">{{ target_media_reason|default:"Media attached to this page and its reviews." }}</p>
 
     {% if target_media_can_upload %}
     <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="search-form">
