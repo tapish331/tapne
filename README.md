@@ -53,7 +53,7 @@ Members can browse **and** do actions.
 * bookmark trips/users/blogs
 * comment/reply (on trips/blogs)
 * DM users
-* review trips/blogs/hosts
+* review trips/blogs
 * CRUD:
 
   * create/edit/delete trips
@@ -76,6 +76,7 @@ These are shared assets:
   ```text
   templates/
     base.html
+    google7c0adbf9fe517d15.html
     partials/
       cards/
         trip_card.html
@@ -83,6 +84,8 @@ These are shared assets:
         blog_card.html
       modals/
         login_prompt_modal.html
+      navigation/
+        breadcrumbs.html
     pages/
       home.html
       search.html
@@ -94,6 +97,7 @@ These are shared assets:
       blogs/
         list.html
         detail.html
+        form.html
       users/
         profile.html
       activity/
@@ -105,6 +109,20 @@ These are shared assets:
       accounts/
         me.html
         me_edit.html
+      interactions/
+        dm_inbox.html
+        dm_thread.html
+      social/
+        bookmarks.html
+      reviews/
+        list.html
+      legal/
+        about.html
+        how_it_works.html
+        safety.html
+        contact.html
+        terms.html
+        privacy.html
   ```
 
   Conventions:
@@ -157,7 +175,7 @@ These are feature modules:
 
 ## Project wiring: `tapne/urls.py`
 
-This file just “connects” apps to URL prefixes.
+This file connects app URL prefixes and also declares project-level routes (site verification, robots/sitemap, legal pages, profile route, health, admin).
 
 ---
 
@@ -286,7 +304,7 @@ python manage.py bootstrap_search --verbose --member-username tapne --create-mis
 
 **Auth**
 
-* navbar shows one auth entry button: **Log in** (opens shared auth modal)
+* navbar shows two auth entry buttons: **Sign up** and **Log in** (both open the shared auth modal)
 * shared modal lives in `templates/partials/modals/login_prompt_modal.html`
 * `GET /accounts/signup/` and `GET /accounts/login/` are modal entry routes:
   * they redirect back to a safe origin with URL state (`?auth=signup` or `?auth=login`)
@@ -724,6 +742,7 @@ python manage.py bootstrap_enrollment --verbose --create-missing-members
 
 **DMs**
 
+* `POST /interactions/dm/open/` (`with=<username>`) opens/creates a thread, then redirects
 * `GET /interactions/dm/` (inbox)
 * `GET /interactions/dm/<thread_id>/`
 * `POST /interactions/dm/<thread_id>/send/`
@@ -735,6 +754,7 @@ python manage.py bootstrap_enrollment --verbose --create-missing-members
   * `interactions/urls.py` maps:
     * `path("comment/", views.comment_view, name="comment")`
     * `path("reply/", views.reply_view, name="reply")`
+    * `path("dm/open/", views.dm_open_view, name="dm-open")`
     * `path("dm/", views.dm_inbox_view, name="dm-inbox")`
     * `path("dm/<int:thread_id>/", views.dm_thread_view, name="dm-thread")`
     * `path("dm/<int:thread_id>/send/", views.dm_send_view, name="dm-send")`
@@ -752,7 +772,7 @@ python manage.py bootstrap_enrollment --verbose --create-missing-members
   * `submit_reply(...)` only allows replies to top-level comments (one-level reply depth)
   * reply rows inherit target metadata (`target_type`, `target_key`, `target_label`, `target_url`) from parent comment
 * DM behavior:
-  * `GET /interactions/dm/?with=<username>` can open or create a one-to-one thread, then redirects to thread view
+  * `POST /interactions/dm/open/` with `with=<username>` opens or creates a one-to-one thread, then redirects to thread view
   * self-thread creation is blocked
   * thread view is participant-scoped; non-participants receive `404`
   * send action validates participant membership and enforces message max length (`4000`)
@@ -1031,12 +1051,15 @@ python manage.py test activity
 
 * `GET /settings/`
 * `POST /settings/`
+* `POST /settings/appearance/` (AJAX appearance persistence endpoint used by UI theme controls)
 
 ### Current `settings_app` implementation contract
 
 * project routing:
   * `tapne/urls.py` delegates `/settings/` to `settings_app/urls.py`
-  * `settings_app/urls.py` maps `path("", views.settings_index_view, name="index")`
+  * `settings_app/urls.py` maps:
+    * `path("", views.settings_index_view, name="index")`
+    * `path("appearance/", views.settings_appearance_update_view, name="appearance-update")`
 * auth and method behavior:
   * settings page is member-only (`@login_required`)
   * route supports `GET` (render form) and `POST` (save preferences)
@@ -1057,6 +1080,8 @@ python manage.py test activity
     * `email_updates` (`all|important|none`)
     * `profile_visibility` (`public|members`)
     * `dm_privacy` (`everyone|following|none`)
+    * `theme_preference` (`system|light|dark`)
+    * `color_scheme` (`coast|ember|forest`)
     * `search_visibility` (boolean)
     * `digest_enabled` (boolean)
     * timestamps (`created_at`, `updated_at`)
@@ -1064,6 +1089,8 @@ python manage.py test activity
     * `TAPNE_SETTINGS_DEFAULT_EMAIL_UPDATES`
     * `TAPNE_SETTINGS_DEFAULT_PROFILE_VISIBILITY`
     * `TAPNE_SETTINGS_DEFAULT_DM_PRIVACY`
+    * `TAPNE_SETTINGS_DEFAULT_THEME_PREFERENCE`
+    * `TAPNE_SETTINGS_DEFAULT_COLOR_SCHEME`
     * `TAPNE_SETTINGS_DEFAULT_SEARCH_VISIBILITY`
     * `TAPNE_SETTINGS_DEFAULT_DIGEST_ENABLED`
   * update semantics are explicit:
@@ -1313,7 +1340,8 @@ It follows the same strategy as the rest of the project:
   * `get_buffered_runtime_tasks(...)` previews shelf contents for diagnostics
   * broker mode is env-driven:
     * `CELERY_BROKER_URL` present -> `broker-configured`
-    * no broker URL -> `buffered-local` (local shelf mode)
+    * if `CELERY_BROKER_URL` is missing but `REDIS_URL` exists, runtime still resolves a broker URL and reports `broker-configured`
+    * if neither is configured -> `buffered-local` (local shelf mode)
 * health and diagnostics:
   * `build_runtime_health_snapshot(...)` powers `/runtime/health/`
   * includes cache backend details and live runtime counters/ledger counts
@@ -1337,7 +1365,8 @@ Runtime reads these env-driven settings (defaults shown):
 * `TAPNE_RUNTIME_BROKER_SHELF_TTL_SECONDS` (`3600`)
 * `TAPNE_RUNTIME_BROKER_SHELF_MAX_ITEMS` (`200`)
 * `REDIS_URL` (cache backend when `django-redis` is enabled in settings)
-* `CELERY_BROKER_URL` (optional broker mode switch)
+* `CELERY_BROKER_URL` (preferred explicit broker URL)
+  * if unset, runtime falls back to `REDIS_URL` for broker-mode resolution
 * `CELERY_RESULT_BACKEND` (optional result backend)
 
 ### Integration guidance (where runtime should be used)
@@ -1388,6 +1417,7 @@ python manage.py migrate
 python manage.py bootstrap_runtime --verbose --create-missing-members
 python manage.py test runtime
 curl http://localhost:8000/runtime/health/
+# cache-preview is member-only; without auth this returns a redirect/login response
 curl http://localhost:8000/runtime/cache-preview/ -I
 ```
 
@@ -1400,7 +1430,7 @@ curl http://localhost:8000/runtime/cache-preview/ -I
   * confirm payload warmers are called in feed/search flows
   * verify TTL env values are non-zero and keys are stable
 * broker mode remains `buffered-local` unexpectedly:
-  * set `CELERY_BROKER_URL` in env and restart `web`
+  * set `CELERY_BROKER_URL` (or at minimum `REDIS_URL`) and restart `web`
 * idempotency records grow without cleanup:
   * run periodic purge using `purge_expired_idempotency_records(...)` in scheduled maintenance jobs
 
@@ -1409,7 +1439,8 @@ curl http://localhost:8000/runtime/cache-preview/ -I
 # 4) The single rule that makes everything work
 
 * **GET routes** are mostly browseable by guests (sometimes “limited” rendering).
-* **POST routes** are actions and are **member-only**.
+* **Most POST routes** are actions and are **member-only**.
+* explicit exception: auth endpoints (`/accounts/signup/`, `/accounts/login/`) accept guest POST submissions by design.
 
 Enforcement is simple:
 
@@ -1544,7 +1575,10 @@ If either request is not `200`:
 * ensure Django settings include:
   * `STATIC_ROOT = BASE_DIR / "staticfiles"`
   * `STATICFILES_DIRS = [BASE_DIR / "static"]`
-  * WhiteNoise middleware + `CompressedManifestStaticFilesStorage`
+  * WhiteNoise middleware
+  * `STORAGES["staticfiles"]` mode by environment:
+    * `DEBUG=true` -> `StaticFilesStorage`
+    * `DEBUG=false` -> `CompressedManifestStaticFilesStorage`
 * rebuild/restart web so `collectstatic` runs again:
 
 ```powershell
@@ -1560,10 +1594,8 @@ docker compose --project-directory . --env-file .\.env -f .\infra\docker-compose
 * You set:
 
   * `APP_PORT=8000` in `.env`
-* Your web server reads `APP_PORT` and binds to it (local)
-* Your code computes:
-
-  * `BASE_URL = http://localhost:<APP_PORT>`
+* Docker Compose maps `APP_PORT` into container `PORT` for gunicorn bind (`0.0.0.0:$PORT`)
+* `BASE_URL` can be kept as metadata in env/scripts, but canonical links in app responses are derived from request host/scheme + `CANONICAL_HOST`/`CANONICAL_SCHEME` settings
 
 Local:
 
@@ -1572,7 +1604,7 @@ Local:
 Production:
 
 * Cloud Run provides `PORT` automatically; the app binds to `PORT`
-* `BASE_URL` is explicitly `https://www.tapne.com` (no port)
+* set canonical URL behavior with `CANONICAL_SCHEME=https` and `CANONICAL_HOST=www.tapne.com`
 
 ---
 
@@ -1589,7 +1621,8 @@ Production:
 Local:
 
 * Postgres runs on `localhost:<DB_HOST_PORT>`
-* Django connects using a computed `DATABASE_URL`
+* Compose injects `DATABASE_URL=postgresql://...@db:5432/...` for container-to-container access
+* if `DATABASE_URL` is unset, settings fall back to `DB_USER/DB_PASSWORD/DB_HOST/DB_PORT/DB_NAME`
 
 Production:
 
@@ -1606,9 +1639,6 @@ Production:
 
   * `MINIO_PORT=9000` in `.env`
 * Docker Compose exposes `${MINIO_PORT}:9000`
-* Your app computes:
-
-  * `STORAGE_ENDPOINT = http://localhost:<MINIO_PORT>`
 * Your app uses two MinIO endpoint contexts:
   * internal container endpoint for storage SDK calls:
     * `AWS_S3_ENDPOINT_URL=http://minio:9000`
@@ -1642,9 +1672,8 @@ Redis is useful for:
 
   * `REDIS_PORT=6379` in `.env`
 * Docker Compose uses `${REDIS_PORT}:6379`
-* Your app computes:
-
-  * `REDIS_URL = redis://localhost:<REDIS_PORT>/0`
+* Compose injects `REDIS_URL=redis://redis:6379/0` for in-network app access
+* optional host-side tooling can use `redis://localhost:<REDIS_PORT>/0`
 
 Production (GCP equivalent):
 
@@ -1665,7 +1694,9 @@ Production needs a strategy (dev server behavior is not production behavior):
 * requires: `collectstatic` + correct static settings:
   * `STATIC_ROOT = BASE_DIR / "staticfiles"`
   * `STATICFILES_DIRS = [BASE_DIR / "static"]`
-  * `STORAGES["staticfiles"]["BACKEND"] = "whitenoise.storage.CompressedManifestStaticFilesStorage"`
+  * `STORAGES["staticfiles"]["BACKEND"]`:
+    * `django.contrib.staticfiles.storage.StaticFilesStorage` when `DEBUG=true`
+    * `whitenoise.storage.CompressedManifestStaticFilesStorage` when `DEBUG=false`
 * `base.html` should load project assets with:
   * `href="{% static 'css/tapne.css' %}"`
   * `src="{% static 'js/tapne-ui.js' %}"`
@@ -1715,43 +1746,61 @@ Local keeps these relaxed.
 
 Local:
 
-* `python manage.py migrate`
+* supported:
+  * explicit command: `python manage.py migrate`
+  * or compose boot migration when enabled (`RUN_MIGRATIONS=true` in `.env`)
 
 Production:
 
 * run migrations as a deliberate release step (often a one-off job/command) before new code serves traffic
+* avoid relying on app boot to run migrations in production
 
 ---
 
-# Recommended `.env` pattern (single source of truth for ports)
+# Recommended `.env` pattern (faithful to current local stack)
 
-### Local `.env` example (ports defined once)
+### Local `.env` example (matching current compose + settings behavior)
 
 ```text
 APP_ENV=dev
 
-# Ports (single source of truth)
+# App
 APP_PORT=8000
-DB_HOST_PORT=5432
-MINIO_PORT=9000
-REDIS_PORT=6379
-
-# Derived in code (do not hardcode full URLs here)
+PORT=8000
 HOST=localhost
 SCHEME=http
+BASE_URL=http://localhost:8000
+
+# Database (container-internal for app)
+DB_HOST=db
+DB_PORT=5432
+DB_HOST_PORT=5432
+DATABASE_URL=postgresql://tapne:tapne_password@db:5432/tapne_db
+# Optional host-reachable DSN for tools outside Docker:
+# DATABASE_URL_HOST=postgresql://tapne:tapne_password@localhost:5432/tapne_db
+
+# Object storage
+MINIO_PORT=9000
+MINIO_CONSOLE_PORT=9001
+MINIO_ENDPOINT=http://minio:9000
+MEDIA_PUBLIC_ENDPOINT=http://localhost:9000
+
+# Cache / broker (container-internal for app)
+REDIS_PORT=6379
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/1
+CELERY_RESULT_BACKEND=redis://redis:6379/2
 
 # DB credentials (local)
 DB_NAME=tapne_db
 DB_USER=tapne
 DB_PASSWORD=tapne_password
 
-# Storage (local)
+# Storage credentials (local)
 STORAGE_BACKEND=minio
 MINIO_BUCKET=tapne-local
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=...
-MINIO_ENDPOINT=http://minio:9000
-MEDIA_PUBLIC_ENDPOINT=http://localhost:9000
 AWS_ACCESS_KEY_ID=minioadmin
 AWS_SECRET_ACCESS_KEY=...
 AWS_S3_ENDPOINT_URL=http://minio:9000
@@ -1761,22 +1810,23 @@ AWS_STORAGE_BUCKET_NAME=tapne-local
 # AWS_S3_CUSTOM_DOMAIN=localhost:9000/tapne-local
 AWS_QUERYSTRING_AUTH=false
 
-# Redis (cache/queue)
-REDIS_ENABLED=true
-
 # Django secret
 SECRET_KEY=dev-only
 ```
 
-### What your Python config computes from that
+### How the current code resolves connections
 
-* `BASE_URL = f"{SCHEME}://{HOST}:{APP_PORT}"`
-* `DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{HOST}:{DB_HOST_PORT}/{DB_NAME}"`
-* `STORAGE_ENDPOINT = f"{SCHEME}://{HOST}:{MINIO_PORT}"`
-* `MEDIA_PUBLIC_ENDPOINT = f"{SCHEME}://{HOST}:{MINIO_PORT}"`
-* `REDIS_URL = f"redis://{HOST}:{REDIS_PORT}/0"`
-
-So you never repeat ports in multiple places.
+* DB:
+  * if `DATABASE_URL` is set, Django uses it directly
+  * otherwise it falls back to `DB_USER/DB_PASSWORD/DB_HOST/DB_PORT/DB_NAME`
+* Redis cache:
+  * if `REDIS_URL` is set, cache backend is `django_redis`
+  * otherwise cache falls back to local memory cache
+* static storage:
+  * `DEBUG=true` uses `StaticFilesStorage`
+  * `DEBUG=false` uses `CompressedManifestStaticFilesStorage`
+* media storage:
+  * selected by `STORAGE_BACKEND` (`filesystem`, `minio`, `gcs`)
 
 ---
 
@@ -1786,7 +1836,7 @@ In production you still “auto-pick up” ports, but differently:
 
 * Cloud Run sets `PORT` automatically
 * Your app binds to `PORT`
-* `BASE_URL` is explicitly `https://www.tapne.com`
+* production canonical URL should be enforced with `CANONICAL_SCHEME=https` + `CANONICAL_HOST=www.tapne.com`
 
 And:
 
