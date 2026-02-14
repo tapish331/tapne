@@ -285,6 +285,105 @@ code {
     justify-content: flex-end;
 }
 
+.member-menu {
+    margin-left: auto;
+    position: relative;
+}
+
+.member-menu-toggle {
+    min-height: 2.25rem;
+    min-width: 2.7rem;
+    padding: 0.45rem 0.62rem;
+}
+
+.member-menu-toggle[aria-expanded="true"] {
+    background: var(--accent-soft);
+    border-color: rgba(var(--accent-rgb), 0.32);
+    color: var(--accent-ink);
+}
+
+.member-menu-icon {
+    display: inline-grid;
+    gap: 0.2rem;
+}
+
+.member-menu-icon span {
+    background: currentColor;
+    border-radius: var(--radius-pill);
+    display: block;
+    height: 2px;
+    width: 1.1rem;
+}
+
+.member-menu-panel {
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+    display: grid;
+    gap: 0.72rem;
+    padding: 0.78rem;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.45rem);
+    width: min(22rem, calc(100vw - 2rem));
+    z-index: 60;
+}
+
+.member-menu-panel[hidden] {
+    display: none;
+}
+
+.member-menu-links {
+    display: grid;
+    gap: 0.3rem;
+}
+
+.member-menu-links a {
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-2);
+    font-family: var(--font-ui);
+    font-size: 0.86rem;
+    font-weight: 600;
+    padding: 0.45rem 0.62rem;
+    text-decoration: none;
+    transition:
+        background var(--ease-standard),
+        border-color var(--ease-standard),
+        color var(--ease-standard);
+}
+
+.member-menu-links a:hover {
+    background: var(--accent-soft);
+    border-color: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent-ink);
+}
+
+.member-menu-panel .theme-controls {
+    width: 100%;
+}
+
+.member-menu-panel .scheme-select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.member-menu-actions {
+    display: grid;
+    gap: 0.42rem;
+}
+
+.member-menu-actions .btn,
+.member-menu-actions form {
+    width: 100%;
+}
+
+.member-menu-actions form .btn {
+    justify-content: center;
+    width: 100%;
+}
+
 .theme-controls {
     align-items: center;
     background: var(--surface-1);
@@ -729,8 +828,12 @@ code {
     background: transparent;
     border-color: transparent;
     color: var(--text-2);
+    font-size: 1.1rem;
+    justify-content: center;
+    line-height: 1;
     min-height: 2.08rem;
-    padding: 0.5rem 0.72rem;
+    min-width: 2.2rem;
+    padding: 0.45rem 0.58rem;
 }
 
 .btn-theme-toggle:hover {
@@ -1201,6 +1304,10 @@ body.modal-open {
 
     .theme-controls {
         width: 100%;
+    }
+
+    .header-theme-controls {
+        width: auto;
     }
 
     .scheme-select {

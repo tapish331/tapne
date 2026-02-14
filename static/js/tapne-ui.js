@@ -48,6 +48,9 @@
     var authModalFocusRestoreTarget = null;
     var themeToggleButton = document.getElementById("themeToggle");
     var colorSchemeSelect = document.getElementById("colorSchemeSelect");
+    var memberMenuRoot = document.querySelector("[data-member-menu]");
+    var memberMenuToggle = memberMenuRoot ? memberMenuRoot.querySelector("[data-member-menu-toggle]") : null;
+    var memberMenuPanel = memberMenuRoot ? memberMenuRoot.querySelector("[data-member-menu-panel]") : null;
     var authQueryKeys = ["auth", "auth_reason", "auth_error", "auth_next"];
     var themeStorageKey = "tapne.theme";
     var paletteStorageKey = "tapne.palette";
@@ -209,9 +212,11 @@
 
         var theme = sanitizeTheme(themeValue) || "light";
         var switchTarget = theme === "dark" ? "light" : "dark";
-        var buttonLabel = switchTarget === "dark" ? "Switch to dark" : "Switch to light";
-        themeToggleButton.textContent = buttonLabel;
-        themeToggleButton.setAttribute("aria-label", buttonLabel + " mode");
+        var buttonLabel = switchTarget === "dark" ? "Switch to dark mode" : "Switch to light mode";
+        var buttonSymbol = switchTarget === "dark" ? "\uD83C\uDF19" : "\uD83C\uDF1E";
+        themeToggleButton.textContent = buttonSymbol;
+        themeToggleButton.setAttribute("aria-label", buttonLabel);
+        themeToggleButton.setAttribute("title", buttonLabel);
         themeToggleButton.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
     }
 
@@ -322,6 +327,81 @@
                 darkModeQuery.addListener(onSystemThemeChange);
             }
         }
+    }
+
+    function isMemberMenuOpen() {
+        return !!(memberMenuPanel && !memberMenuPanel.hidden);
+    }
+
+    function setMemberMenuOpen(shouldOpen) {
+        if (!memberMenuRoot || !memberMenuToggle || !memberMenuPanel) {
+            return;
+        }
+
+        var isOpen = !!shouldOpen;
+        memberMenuPanel.hidden = !isOpen;
+        memberMenuToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+
+        if (isOpen) {
+            memberMenuRoot.setAttribute("data-open", "true");
+        } else {
+            memberMenuRoot.removeAttribute("data-open");
+        }
+    }
+
+    function closeMemberMenu() {
+        if (!isMemberMenuOpen()) {
+            return;
+        }
+        setMemberMenuOpen(false);
+    }
+
+    function initializeMemberMenu() {
+        if (!memberMenuRoot || !memberMenuToggle || !memberMenuPanel) {
+            return;
+        }
+
+        setMemberMenuOpen(false);
+
+        memberMenuToggle.addEventListener("click", function onMemberMenuToggle(event) {
+            event.preventDefault();
+            setMemberMenuOpen(!isMemberMenuOpen());
+        });
+
+        document.addEventListener("click", function onDocumentClick(event) {
+            if (!isMemberMenuOpen()) {
+                return;
+            }
+
+            var clickTarget = event.target;
+            if (!(clickTarget instanceof Node)) {
+                return;
+            }
+            if (memberMenuRoot.contains(clickTarget)) {
+                return;
+            }
+            closeMemberMenu();
+        });
+
+        document.addEventListener("keydown", function onDocumentKeyDown(event) {
+            if (event.key !== "Escape" || !isMemberMenuOpen()) {
+                return;
+            }
+            closeMemberMenu();
+            if (typeof memberMenuToggle.focus === "function") {
+                memberMenuToggle.focus();
+            }
+        });
+
+        memberMenuPanel.addEventListener("click", function onPanelClick(event) {
+            var clickTarget = event.target;
+            if (!(clickTarget instanceof Element)) {
+                return;
+            }
+            if (clickTarget.closest("a[href]")) {
+                closeMemberMenu();
+            }
+        });
     }
 
     function normalizePath(pathValue, fallbackPath) {
@@ -668,6 +748,7 @@
     }
 
     initializeThemeControls();
+    initializeMemberMenu();
 
     if (authModal) {
         authModal.addEventListener("click", function onModalClick(event) {
