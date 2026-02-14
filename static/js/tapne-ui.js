@@ -47,14 +47,11 @@
     var authModalBackgroundState = [];
     var authModalFocusRestoreTarget = null;
     var themeToggleButton = document.getElementById("themeToggle");
-    var colorSchemeSelect = document.getElementById("colorSchemeSelect");
     var memberMenuRoot = document.querySelector("[data-member-menu]");
     var memberMenuToggle = memberMenuRoot ? memberMenuRoot.querySelector("[data-member-menu-toggle]") : null;
     var memberMenuPanel = memberMenuRoot ? memberMenuRoot.querySelector("[data-member-menu-panel]") : null;
     var authQueryKeys = ["auth", "auth_reason", "auth_error", "auth_next"];
     var themeStorageKey = "tapne.theme";
-    var paletteStorageKey = "tapne.palette";
-    var supportedPalettes = ["coast", "ember", "forest"];
     var appearanceSource = normalizeFlag(window.TAPNE_RUNTIME && window.TAPNE_RUNTIME.appearanceSource) || "local-storage";
     var appearanceSaveUrl = String((window.TAPNE_RUNTIME && window.TAPNE_RUNTIME.appearanceSaveUrl) || "").trim();
     var shouldPersistAppearanceToBackend = (
@@ -114,15 +111,14 @@
         return "";
     }
 
-    function persistAppearanceToBackend(themePreference, colorScheme) {
+    function persistAppearanceToBackend(themePreference) {
         if (!shouldPersistAppearanceToBackend) {
             return Promise.resolve(null);
         }
 
         var csrfToken = readCookieValue("csrftoken");
         var payload = {
-            theme_preference: sanitizeThemePreference(themePreference),
-            color_scheme: sanitizePalette(colorScheme)
+            theme_preference: sanitizeThemePreference(themePreference)
         };
         var headers = {
             "Content-Type": "application/json",
@@ -148,15 +144,12 @@
             }
 
             var savedThemePreference = sanitizeThemePreference(data.theme_preference);
-            var savedColorScheme = sanitizePalette(data.color_scheme);
             var resolvedTheme = resolveThemeFromPreference(savedThemePreference);
             applyTheme(resolvedTheme, savedThemePreference, true);
-            applyPalette(savedColorScheme, true);
 
             vLog("Appearance persisted to backend.", {
                 outcome: data.outcome || "unknown",
-                themePreference: savedThemePreference,
-                colorScheme: savedColorScheme
+                themePreference: savedThemePreference
             });
             return data;
         }).catch(function onAppearancePersistError(error) {
@@ -189,14 +182,6 @@
         return "system";
     }
 
-    function sanitizePalette(paletteValue) {
-        var normalized = normalizeFlag(paletteValue);
-        if (supportedPalettes.indexOf(normalized) >= 0) {
-            return normalized;
-        }
-        return "coast";
-    }
-
     function resolveThemeFromPreference(preferenceValue) {
         var preference = sanitizeThemePreference(preferenceValue);
         if (preference === "light" || preference === "dark") {
@@ -220,13 +205,6 @@
         themeToggleButton.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
     }
 
-    function updatePaletteSelectUI(paletteValue) {
-        if (!colorSchemeSelect) {
-            return;
-        }
-        colorSchemeSelect.value = sanitizePalette(paletteValue);
-    }
-
     function applyTheme(themeValue, preferenceValue, persistPreference) {
         var preference = sanitizeThemePreference(preferenceValue);
         var theme = sanitizeTheme(themeValue) || resolveThemeFromPreference(preference);
@@ -247,29 +225,13 @@
         return theme;
     }
 
-    function applyPalette(paletteValue, persistPalette) {
-        var palette = sanitizePalette(paletteValue);
-        html.setAttribute("data-color-scheme", palette);
-        window.TAPNE_RUNTIME.colorScheme = palette;
-        updatePaletteSelectUI(palette);
-
-        if (persistPalette) {
-            writeStorage(paletteStorageKey, palette);
-        }
-        return palette;
-    }
-
     function initializeThemeControls() {
         var storedTheme = "";
-        var storedPaletteRaw = "";
         if (!shouldPersistAppearanceToBackend) {
             storedTheme = sanitizeTheme(readStorage(themeStorageKey));
-            storedPaletteRaw = readStorage(paletteStorageKey);
         }
-        var storedPalette = storedPaletteRaw ? sanitizePalette(storedPaletteRaw) : "";
         var currentThemePreference = sanitizeThemePreference(html.getAttribute("data-theme-preference"));
         var currentTheme = sanitizeTheme(html.getAttribute("data-theme"));
-        var currentPalette = sanitizePalette(html.getAttribute("data-color-scheme"));
 
         if (storedTheme) {
             currentTheme = storedTheme;
@@ -278,35 +240,15 @@
             currentTheme = resolveThemeFromPreference(currentThemePreference);
         }
 
-        if (storedPalette) {
-            currentPalette = storedPalette;
-        }
-
         applyTheme(currentTheme, currentThemePreference, false);
-        applyPalette(currentPalette, false);
 
         if (themeToggleButton) {
             themeToggleButton.addEventListener("click", function onThemeToggle() {
                 var activeTheme = sanitizeTheme(html.getAttribute("data-theme")) || "light";
                 var nextTheme = activeTheme === "dark" ? "light" : "dark";
                 applyTheme(nextTheme, nextTheme, true);
-                persistAppearanceToBackend(
-                    nextTheme,
-                    sanitizePalette(html.getAttribute("data-color-scheme"))
-                );
+                persistAppearanceToBackend(nextTheme);
                 vLog("Theme toggled.", { previous: activeTheme, next: nextTheme });
-            });
-        }
-
-        if (colorSchemeSelect) {
-            colorSchemeSelect.addEventListener("change", function onPaletteChange() {
-                var nextPalette = sanitizePalette(colorSchemeSelect.value);
-                applyPalette(nextPalette, true);
-                persistAppearanceToBackend(
-                    sanitizeThemePreference(html.getAttribute("data-theme-preference")),
-                    nextPalette
-                );
-                vLog("Color scheme changed.", nextPalette);
             });
         }
 

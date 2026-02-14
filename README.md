@@ -1081,7 +1081,6 @@ python manage.py test activity
     * `profile_visibility` (`public|members`)
     * `dm_privacy` (`everyone|following|none`)
     * `theme_preference` (`system|light|dark`)
-    * `color_scheme` (`coast|ember|forest`)
     * `search_visibility` (boolean)
     * `digest_enabled` (boolean)
     * timestamps (`created_at`, `updated_at`)
@@ -1090,7 +1089,6 @@ python manage.py test activity
     * `TAPNE_SETTINGS_DEFAULT_PROFILE_VISIBILITY`
     * `TAPNE_SETTINGS_DEFAULT_DM_PRIVACY`
     * `TAPNE_SETTINGS_DEFAULT_THEME_PREFERENCE`
-    * `TAPNE_SETTINGS_DEFAULT_COLOR_SCHEME`
     * `TAPNE_SETTINGS_DEFAULT_SEARCH_VISIBILITY`
     * `TAPNE_SETTINGS_DEFAULT_DIGEST_ENABLED`
   * update semantics are explicit:

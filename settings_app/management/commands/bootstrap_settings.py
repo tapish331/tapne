@@ -18,7 +18,6 @@ class SettingsSeed:
     profile_visibility: str
     dm_privacy: str
     theme_preference: str
-    color_scheme: str
     search_visibility: bool
     digest_enabled: bool
 
@@ -30,7 +29,6 @@ DEMO_SETTINGS_SEEDS: tuple[SettingsSeed, ...] = (
         profile_visibility=MemberSettings.PROFILE_VISIBILITY_PUBLIC,
         dm_privacy=MemberSettings.DM_PRIVACY_FOLLOWING,
         theme_preference=MemberSettings.THEME_PREFERENCE_SYSTEM,
-        color_scheme=MemberSettings.COLOR_SCHEME_COAST,
         search_visibility=True,
         digest_enabled=True,
     ),
@@ -40,7 +38,6 @@ DEMO_SETTINGS_SEEDS: tuple[SettingsSeed, ...] = (
         profile_visibility=MemberSettings.PROFILE_VISIBILITY_MEMBERS,
         dm_privacy=MemberSettings.DM_PRIVACY_EVERYONE,
         theme_preference=MemberSettings.THEME_PREFERENCE_DARK,
-        color_scheme=MemberSettings.COLOR_SCHEME_EMBER,
         search_visibility=True,
         digest_enabled=False,
     ),
@@ -50,7 +47,6 @@ DEMO_SETTINGS_SEEDS: tuple[SettingsSeed, ...] = (
         profile_visibility=MemberSettings.PROFILE_VISIBILITY_PUBLIC,
         dm_privacy=MemberSettings.DM_PRIVACY_FOLLOWING,
         theme_preference=MemberSettings.THEME_PREFERENCE_LIGHT,
-        color_scheme=MemberSettings.COLOR_SCHEME_FOREST,
         search_visibility=False,
         digest_enabled=True,
     ),
@@ -60,7 +56,6 @@ DEMO_SETTINGS_SEEDS: tuple[SettingsSeed, ...] = (
         profile_visibility=MemberSettings.PROFILE_VISIBILITY_MEMBERS,
         dm_privacy=MemberSettings.DM_PRIVACY_NONE,
         theme_preference=MemberSettings.THEME_PREFERENCE_DARK,
-        color_scheme=MemberSettings.COLOR_SCHEME_COAST,
         search_visibility=False,
         digest_enabled=False,
     ),
@@ -158,7 +153,6 @@ class Command(BaseCommand):
                 profile_visibility=seed.profile_visibility,
                 dm_privacy=seed.dm_privacy,
                 theme_preference=seed.theme_preference,
-                color_scheme=seed.color_scheme,
                 search_visibility=seed.search_visibility,
                 digest_enabled=seed.digest_enabled,
             )
@@ -177,8 +171,8 @@ class Command(BaseCommand):
                     "Seeded settings for @{username}; outcome={outcome}; "
                     "email_updates={email_updates}; visibility={visibility}; "
                     "dm_privacy={dm_privacy}; theme_preference={theme_preference}; "
-                    "color_scheme={color_scheme}; search_visibility={search_visibility}; "
-                    "digest_enabled={digest_enabled}; settings_id={settings_id}"
+                    "search_visibility={search_visibility}; digest_enabled={digest_enabled}; "
+                    "settings_id={settings_id}"
                 ).format(
                     username=seed.username,
                     outcome=outcome,
@@ -186,7 +180,6 @@ class Command(BaseCommand):
                     visibility=seed.profile_visibility,
                     dm_privacy=seed.dm_privacy,
                     theme_preference=seed.theme_preference,
-                    color_scheme=seed.color_scheme,
                     search_visibility=seed.search_visibility,
                     digest_enabled=seed.digest_enabled,
                     settings_id=(settings_row.pk if settings_row is not None else "n/a"),

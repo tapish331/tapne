@@ -413,7 +413,7 @@ def _infer_trip_type(text_blob: str) -> str:
         return "trekking"
     if any(token in text_blob for token in ("city", "urban", "neighborhood", "street", "lanes")):
         return "city"
-    if any(token in text_blob for token in ("coast", "beach", "island", "sea")):
+    if any(token in text_blob for token in ("shore", "beach", "island", "sea")):
         return "coastal"
     return "adventure"
 

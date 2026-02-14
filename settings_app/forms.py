@@ -22,7 +22,6 @@ class MemberSettingsForm(forms.ModelForm):
             "profile_visibility",
             "dm_privacy",
             "theme_preference",
-            "color_scheme",
             "search_visibility",
             "digest_enabled",
         )
@@ -33,7 +32,6 @@ class MemberSettingsForm(forms.ModelForm):
                 "profile_visibility": forms.Select(),
                 "dm_privacy": forms.Select(),
                 "theme_preference": forms.Select(),
-                "color_scheme": forms.Select(),
                 "search_visibility": forms.CheckboxInput(),
                 "digest_enabled": forms.CheckboxInput(),
             },
@@ -43,7 +41,6 @@ class MemberSettingsForm(forms.ModelForm):
             "profile_visibility": "Control who can view your public profile details.",
             "dm_privacy": "Decide who can initiate new direct messages.",
             "theme_preference": "Choose whether your account prefers light, dark, or system mode.",
-            "color_scheme": "Set the accent palette used across the site UI.",
             "search_visibility": "Hide or show your profile in discovery ranking surfaces.",
             "digest_enabled": "Enable periodic activity digest notifications.",
         }
@@ -64,16 +61,12 @@ class MemberSettingsForm(forms.ModelForm):
     def clean_theme_preference(self) -> str:
         return str(self.cleaned_data.get("theme_preference", "")).strip().lower()
 
-    def clean_color_scheme(self) -> str:
-        return str(self.cleaned_data.get("color_scheme", "")).strip().lower()
-
     def save(self, commit: bool = True) -> MemberSettings:  # type: ignore[override]
         settings_row = super().save(commit=False)
         settings_row.email_updates = settings_row.email_updates.strip().lower()
         settings_row.profile_visibility = settings_row.profile_visibility.strip().lower()
         settings_row.dm_privacy = settings_row.dm_privacy.strip().lower()
         settings_row.theme_preference = settings_row.theme_preference.strip().lower()
-        settings_row.color_scheme = settings_row.color_scheme.strip().lower()
 
         if commit:
             settings_row.save()

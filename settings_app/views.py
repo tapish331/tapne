@@ -90,7 +90,6 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                 profile_visibility=form.cleaned_data["profile_visibility"],
                 dm_privacy=form.cleaned_data["dm_privacy"],
                 theme_preference=form.cleaned_data["theme_preference"],
-                color_scheme=form.cleaned_data["color_scheme"],
                 search_visibility=form.cleaned_data["search_visibility"],
                 digest_enabled=form.cleaned_data["digest_enabled"],
             )
@@ -111,7 +110,7 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                 (
                     "Settings saved for @{username}; outcome={outcome}; changed_fields={changed_fields}; "
                     "email_updates={email_updates}; visibility={visibility}; dm_privacy={dm_privacy}; "
-                    "theme_preference={theme_preference}; color_scheme={color_scheme}; "
+                    "theme_preference={theme_preference}; "
                     "search_visibility={search_visibility}; digest_enabled={digest_enabled}"
                 ).format(
                     username=request.user.username,
@@ -121,7 +120,6 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                     visibility=updated_row.profile_visibility,
                     dm_privacy=updated_row.dm_privacy,
                     theme_preference=updated_row.theme_preference,
-                    color_scheme=updated_row.color_scheme,
                     search_visibility=updated_row.search_visibility,
                     digest_enabled=updated_row.digest_enabled,
                 ),
@@ -145,7 +143,7 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
             (
                 "Rendered settings page for @{username}; created={created}; "
                 "email_updates={email_updates}; visibility={visibility}; dm_privacy={dm_privacy}; "
-                "theme_preference={theme_preference}; color_scheme={color_scheme}; "
+                "theme_preference={theme_preference}; "
                 "search_visibility={search_visibility}; digest_enabled={digest_enabled}"
             ).format(
                 username=request.user.username,
@@ -154,7 +152,6 @@ def settings_index_view(request: HttpRequest) -> HttpResponse:
                 visibility=settings_row.profile_visibility,
                 dm_privacy=settings_row.dm_privacy,
                 theme_preference=settings_row.theme_preference,
-                color_scheme=settings_row.color_scheme,
                 search_visibility=settings_row.search_visibility,
                 digest_enabled=settings_row.digest_enabled,
             ),
@@ -203,15 +200,10 @@ def settings_appearance_update_view(request: HttpRequest) -> JsonResponse:
         "theme_preference",
         request.POST.get("theme_preference", settings_row.theme_preference),
     )
-    submitted_color_scheme = payload.get(
-        "color_scheme",
-        request.POST.get("color_scheme", settings_row.color_scheme),
-    )
 
     updated_row, outcome = update_member_appearance(
         member=request.user,
         theme_preference=submitted_theme_preference,
-        color_scheme=submitted_color_scheme,
     )
     if updated_row is None:
         return JsonResponse(
@@ -221,14 +213,10 @@ def settings_appearance_update_view(request: HttpRequest) -> JsonResponse:
 
     _vprint(
         request,
-        (
-            "Appearance persisted for @{username}; outcome={outcome}; "
-            "theme_preference={theme_preference}; color_scheme={color_scheme}"
-        ).format(
+        "Appearance persisted for @{username}; outcome={outcome}; theme_preference={theme_preference}".format(
             username=request.user.username,
             outcome=outcome,
             theme_preference=updated_row.theme_preference,
-            color_scheme=updated_row.color_scheme,
         ),
     )
 
@@ -237,6 +225,5 @@ def settings_appearance_update_view(request: HttpRequest) -> JsonResponse:
             "ok": True,
             "outcome": outcome,
             "theme_preference": updated_row.theme_preference,
-            "color_scheme": updated_row.color_scheme,
         }
     )

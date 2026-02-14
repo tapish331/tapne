@@ -14,8 +14,8 @@ class Migration(migrations.Migration):
             model_name="membersettings",
             name="color_scheme",
             field=models.CharField(
-                choices=[("coast", "Coast"), ("ember", "Ember"), ("forest", "Forest")],
-                default="coast",
+                choices=[("soft_teal", "Soft teal")],
+                default="soft_teal",
                 max_length=16,
             ),
         ),

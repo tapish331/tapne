@@ -48,7 +48,6 @@ class SettingsViewTests(TestCase):
                 "profile_visibility": MemberSettings.PROFILE_VISIBILITY_MEMBERS,
                 "dm_privacy": MemberSettings.DM_PRIVACY_NONE,
                 "theme_preference": MemberSettings.THEME_PREFERENCE_DARK,
-                "color_scheme": MemberSettings.COLOR_SCHEME_EMBER,
                 "search_visibility": "",
                 "digest_enabled": "on",
                 "next": reverse("settings_app:index"),
@@ -61,7 +60,6 @@ class SettingsViewTests(TestCase):
         self.assertEqual(row.profile_visibility, MemberSettings.PROFILE_VISIBILITY_MEMBERS)
         self.assertEqual(row.dm_privacy, MemberSettings.DM_PRIVACY_NONE)
         self.assertEqual(row.theme_preference, MemberSettings.THEME_PREFERENCE_DARK)
-        self.assertEqual(row.color_scheme, MemberSettings.COLOR_SCHEME_EMBER)
         self.assertFalse(row.search_visibility)
         self.assertTrue(row.digest_enabled)
 
@@ -70,7 +68,7 @@ class SettingsViewTests(TestCase):
         expected_redirect = f"{reverse('accounts:login')}?next={reverse('settings_app:appearance-update')}"
         self.assertRedirects(response, expected_redirect, fetch_redirect_response=False)
 
-    def test_settings_appearance_endpoint_updates_theme_and_palette(self) -> None:
+    def test_settings_appearance_endpoint_updates_theme_preference(self) -> None:
         self.client.login(username=self.member.username, password=self.password)
 
         response = self.client.post(
@@ -78,7 +76,6 @@ class SettingsViewTests(TestCase):
             data=json.dumps(
                 {
                     "theme_preference": MemberSettings.THEME_PREFERENCE_LIGHT,
-                    "color_scheme": MemberSettings.COLOR_SCHEME_FOREST,
                 }
             ),
             content_type="application/json",
@@ -88,7 +85,6 @@ class SettingsViewTests(TestCase):
         self.assertEqual(response.json()["ok"], True)
         row = MemberSettings.objects.get(member=self.member)
         self.assertEqual(row.theme_preference, MemberSettings.THEME_PREFERENCE_LIGHT)
-        self.assertEqual(row.color_scheme, MemberSettings.COLOR_SCHEME_FOREST)
 
     def test_base_template_uses_member_persisted_appearance_preferences(self) -> None:
         self.client.login(username=self.member.username, password=self.password)
@@ -96,7 +92,6 @@ class SettingsViewTests(TestCase):
             member=self.member,
             defaults={
                 "theme_preference": MemberSettings.THEME_PREFERENCE_DARK,
-                "color_scheme": MemberSettings.COLOR_SCHEME_FOREST,
             },
         )
 
@@ -105,7 +100,6 @@ class SettingsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('data-theme-preference="dark"', html)
-        self.assertIn('data-color-scheme="forest"', html)
         self.assertIn('appearanceSource: "member\\u002Dsettings"', html)
 
     def test_settings_verbose_query_prints_debug_lines(self) -> None:

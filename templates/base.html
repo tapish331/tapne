@@ -5,7 +5,6 @@
     data-user-state="{% if user.is_authenticated %}member{% else %}guest{% endif %}"
     data-theme="{% if appearance_theme_preference == 'dark' %}dark{% else %}light{% endif %}"
     data-theme-preference="{{ appearance_theme_preference|default:'system' }}"
-    data-color-scheme="{{ appearance_color_scheme|default:'coast' }}"
 >
 <head>
     <meta charset="utf-8">
@@ -30,14 +29,10 @@
         (function preloadTapneTheme() {
             var html = document.documentElement;
             var themeKey = "tapne.theme";
-            var paletteKey = "tapne.palette";
-            var fallbackPalette = "coast";
             var fallbackThemePreference = "system";
             var appearanceSource = "{{ appearance_source|default:'local-storage'|escapejs }}";
             var serverThemePreference = "{{ appearance_theme_preference|default:'system'|escapejs }}";
-            var serverColorScheme = "{{ appearance_color_scheme|default:'coast'|escapejs }}";
             var themePreference = serverThemePreference;
-            var colorScheme = serverColorScheme;
 
             function readStorage(key) {
                 try {
@@ -48,17 +43,12 @@
             }
 
             var prefersDark = false;
-            var allowedPalettes = ["coast", "ember", "forest"];
             var allowedThemePreferences = ["system", "light", "dark"];
 
             if (appearanceSource !== "member-settings") {
                 var savedTheme = readStorage(themeKey);
-                var savedPalette = readStorage(paletteKey);
                 if (savedTheme) {
                     themePreference = savedTheme;
-                }
-                if (savedPalette) {
-                    colorScheme = savedPalette;
                 }
             }
 
@@ -79,14 +69,8 @@
                 normalizedThemePreference = fallbackThemePreference;
             }
 
-            var normalizedColorScheme = String(colorScheme || "").trim().toLowerCase();
-            if (allowedPalettes.indexOf(normalizedColorScheme) < 0) {
-                normalizedColorScheme = fallbackPalette;
-            }
-
             html.setAttribute("data-theme", resolvedTheme);
             html.setAttribute("data-theme-preference", normalizedThemePreference);
-            html.setAttribute("data-color-scheme", normalizedColorScheme);
         })();
     </script>
     <link rel="stylesheet" href="{% static 'css/tapne.css' %}">
@@ -97,7 +81,6 @@
             verbose: "{% if request.GET.verbose %}{{ request.GET.verbose }}{% else %}0{% endif %}",
             theme: document.documentElement.getAttribute("data-theme") || "light",
             themePreference: document.documentElement.getAttribute("data-theme-preference") || "system",
-            colorScheme: document.documentElement.getAttribute("data-color-scheme") || "coast",
             appearanceSource: "{{ appearance_source|default:'local-storage'|escapejs }}",
             appearanceSaveUrl: "{% if user.is_authenticated %}{% url 'settings_app:appearance-update' %}{% endif %}"
         };
@@ -157,14 +140,6 @@
                             <a href="/activity/">Activity</a>
                             <a href="/settings/">Settings</a>
                         </nav>
-                        <div class="theme-controls" role="group" aria-label="Color scheme controls">
-                            <label class="sr-only" for="colorSchemeSelect">Color scheme</label>
-                            <select id="colorSchemeSelect" class="scheme-select" aria-label="Color scheme">
-                                <option value="coast">Coast</option>
-                                <option value="ember">Ember</option>
-                                <option value="forest">Forest</option>
-                            </select>
-                        </div>
                         <div class="member-menu-actions">
                             <a class="btn btn-secondary" href="/accounts/me/">My Profile</a>
                             <form method="post" action="/accounts/logout/" class="inline-form">

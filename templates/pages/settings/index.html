@@ -13,7 +13,6 @@
         / Visibility: {{ settings_record.profile_visibility }}
         / DMs: {{ settings_record.dm_privacy }}
         / Theme: {{ settings_record.theme_preference }}
-        / Palette: {{ settings_record.color_scheme }}
     </p>
     {% endif %}
 </section>
@@ -56,13 +55,6 @@
         {{ settings_form.theme_preference }}
         <p class="form-help">{{ settings_form.theme_preference.help_text }}</p>
         {% for error in settings_form.theme_preference.errors %}
-        <p class="form-error">{{ error }}</p>
-        {% endfor %}
-
-        <label for="{{ settings_form.color_scheme.id_for_label }}">Color scheme</label>
-        {{ settings_form.color_scheme }}
-        <p class="form-help">{{ settings_form.color_scheme.help_text }}</p>
-        {% for error in settings_form.color_scheme.errors %}
         <p class="form-error">{{ error }}</p>
         {% endfor %}
 
