@@ -5,6 +5,14 @@ from typing import Final
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 
+from tapne.seo import (
+    BreadcrumbItem,
+    build_absolute_url,
+    build_breadcrumb_json_ld,
+    build_seo_meta_context,
+    combine_json_ld_payloads,
+)
+
 from .models import build_search_payload_for_user, normalize_search_result_type
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
@@ -79,4 +87,39 @@ def search_page(request: HttpRequest) -> HttpResponse:
         "active_type": payload["result_type"],
         "has_query": bool(query),
     }
+
+    query_type_label = {
+        "all": "Search",
+        "trips": "Trips",
+        "users": "Creators",
+        "blogs": "Blogs",
+    }.get(payload["result_type"], "Search")
+    if query:
+        seo_title = f'{query_type_label} results for "{query}" | tapne'
+        seo_description = f'Explore {query_type_label.lower()} matching "{query}" on tapne.'
+    else:
+        seo_title = f"{query_type_label} | tapne"
+        seo_description = "Discover trips, creators, and blogs on tapne."
+
+    breadcrumbs: list[BreadcrumbItem] = [{"label": "Home", "url": "/"}, {"label": query_type_label}]
+    if payload["result_type"] == "all":
+        breadcrumbs = [{"label": "Home", "url": "/"}, {"label": "Search"}]
+    context["breadcrumbs"] = breadcrumbs
+
+    search_page_json_ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": seo_title.replace(" | tapne", ""),
+        "description": seo_description,
+        "url": build_absolute_url(request, request.get_full_path()),
+    }
+    breadcrumb_json_ld = build_breadcrumb_json_ld(request, breadcrumbs)
+    context.update(
+        build_seo_meta_context(
+            request,
+            title=seo_title,
+            description=seo_description,
+            json_ld_payload=combine_json_ld_payloads(search_page_json_ld, breadcrumb_json_ld),
+        )
+    )
     return render(request, "pages/search.html", context)

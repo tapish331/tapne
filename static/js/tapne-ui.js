@@ -31,8 +31,21 @@
     var runtimeState = normalizeFlag(window.TAPNE_RUNTIME && window.TAPNE_RUNTIME.userState);
     var userState = runtimeState || normalizeFlag(html.getAttribute("data-user-state")) || "guest";
     var authModal = document.getElementById("authModal");
+    var authModalPanel = authModal ? authModal.querySelector(".auth-modal-panel") : null;
     var authModalTitle = document.getElementById("authModalTitle");
     var authModalContextNote = document.getElementById("authModalContextNote");
+    var authFocusableSelector = [
+        "a[href]",
+        "area[href]",
+        "input:not([disabled]):not([type='hidden'])",
+        "select:not([disabled])",
+        "textarea:not([disabled])",
+        "button:not([disabled])",
+        "[tabindex]:not([tabindex='-1'])",
+        "[contenteditable='true']"
+    ].join(", ");
+    var authModalBackgroundState = [];
+    var authModalFocusRestoreTarget = null;
     var themeToggleButton = document.getElementById("themeToggle");
     var colorSchemeSelect = document.getElementById("colorSchemeSelect");
     var authQueryKeys = ["auth", "auth_reason", "auth_error", "auth_next"];
@@ -49,6 +62,10 @@
 
     if (!window.TAPNE_RUNTIME) {
         window.TAPNE_RUNTIME = {};
+    }
+
+    if (authModalPanel && !authModalPanel.hasAttribute("tabindex")) {
+        authModalPanel.setAttribute("tabindex", "-1");
     }
 
     function readStorage(key) {
@@ -364,6 +381,211 @@
             });
     }
 
+    function isVisibleForFocus(element) {
+        if (!(element instanceof HTMLElement)) {
+            return false;
+        }
+        if (element.hidden || element.getAttribute("aria-hidden") === "true") {
+            return false;
+        }
+        if (typeof element.closest === "function") {
+            if (element.closest("[hidden]")) {
+                return false;
+            }
+            if (element.closest("[aria-hidden='true']")) {
+                return false;
+            }
+        }
+        return element.getClientRects().length > 0;
+    }
+
+    function modalFocusableElements() {
+        if (!authModal) {
+            return [];
+        }
+
+        return Array.prototype.slice.call(authModal.querySelectorAll(authFocusableSelector))
+            .filter(function keepFocusable(element) {
+                if (!(element instanceof HTMLElement)) {
+                    return false;
+                }
+                if (element.hasAttribute("disabled")) {
+                    return false;
+                }
+                return isVisibleForFocus(element);
+            });
+    }
+
+    function rememberModalFocusRestoreTarget(triggerElement) {
+        if (triggerElement instanceof HTMLElement) {
+            authModalFocusRestoreTarget = triggerElement;
+            return;
+        }
+
+        var activeElement = document.activeElement;
+        if (activeElement instanceof HTMLElement && (!authModal || !authModal.contains(activeElement))) {
+            authModalFocusRestoreTarget = activeElement;
+        }
+    }
+
+    function restoreModalFocus() {
+        var focusTarget = authModalFocusRestoreTarget;
+        authModalFocusRestoreTarget = null;
+        if (!(focusTarget instanceof HTMLElement) || typeof focusTarget.focus !== "function") {
+            return;
+        }
+
+        window.setTimeout(function focusAfterClose() {
+            try {
+                focusTarget.focus();
+            } catch (_error) {
+                // No-op: target may no longer exist or be focusable.
+            }
+        }, 0);
+    }
+
+    function setAuthBackgroundInert(shouldInert) {
+        if (!authModal) {
+            return;
+        }
+
+        if (shouldInert) {
+            if (authModalBackgroundState.length > 0) {
+                return;
+            }
+
+            Array.prototype.slice.call(document.body.children)
+                .forEach(function captureAndInert(node) {
+                    if (!(node instanceof HTMLElement)) {
+                        return;
+                    }
+                    if (node === authModal) {
+                        return;
+                    }
+
+                    authModalBackgroundState.push({
+                        element: node,
+                        hadInert: node.hasAttribute("inert"),
+                        hadAriaHidden: node.hasAttribute("aria-hidden"),
+                        ariaHiddenValue: node.getAttribute("aria-hidden")
+                    });
+
+                    node.setAttribute("inert", "");
+                    node.setAttribute("aria-hidden", "true");
+                });
+            return;
+        }
+
+        if (authModalBackgroundState.length === 0) {
+            return;
+        }
+
+        authModalBackgroundState.forEach(function restoreNode(state) {
+            var node = state.element;
+            if (!(node instanceof HTMLElement)) {
+                return;
+            }
+
+            if (!state.hadInert) {
+                node.removeAttribute("inert");
+            }
+
+            if (state.hadAriaHidden) {
+                if (state.ariaHiddenValue === null) {
+                    node.setAttribute("aria-hidden", "true");
+                } else {
+                    node.setAttribute("aria-hidden", state.ariaHiddenValue);
+                }
+            } else {
+                node.removeAttribute("aria-hidden");
+            }
+        });
+        authModalBackgroundState = [];
+    }
+
+    function focusFirstElementInAuthModal() {
+        if (!authModal || authModal.hidden) {
+            return;
+        }
+
+        var activePane = null;
+        Array.prototype.slice.call(authModal.querySelectorAll("[data-auth-pane]"))
+            .forEach(function findVisiblePane(pane) {
+                if (activePane || pane.hidden) {
+                    return;
+                }
+                activePane = pane;
+            });
+
+        var preferredField = null;
+        if (activePane) {
+            preferredField = activePane.querySelector(
+                "input:not([type='hidden']):not([disabled]), " +
+                "select:not([disabled]), textarea:not([disabled]), " +
+                "button:not([disabled]), a[href]"
+            );
+            if (!isVisibleForFocus(preferredField)) {
+                preferredField = null;
+            }
+        }
+
+        var focusTargets = modalFocusableElements();
+        var focusTarget = preferredField || focusTargets[0] || authModalPanel;
+        if (focusTarget && typeof focusTarget.focus === "function") {
+            focusTarget.focus();
+        }
+    }
+
+    function enforceModalFocusContainment() {
+        if (!authModal || authModal.hidden) {
+            return;
+        }
+
+        var activeElement = document.activeElement;
+        if (activeElement instanceof Element && authModal.contains(activeElement)) {
+            return;
+        }
+
+        var focusTargets = modalFocusableElements();
+        var focusTarget = focusTargets[0] || authModalPanel;
+        if (focusTarget && typeof focusTarget.focus === "function") {
+            focusTarget.focus();
+        }
+    }
+
+    function trapModalTabNavigation(event) {
+        if (!authModal || authModal.hidden || event.key !== "Tab") {
+            return;
+        }
+
+        var focusTargets = modalFocusableElements();
+        if (focusTargets.length === 0) {
+            event.preventDefault();
+            if (authModalPanel && typeof authModalPanel.focus === "function") {
+                authModalPanel.focus();
+            }
+            return;
+        }
+
+        var firstTarget = focusTargets[0];
+        var lastTarget = focusTargets[focusTargets.length - 1];
+        var activeElement = document.activeElement;
+        var activeInsideModal = activeElement instanceof Element && authModal.contains(activeElement);
+
+        if (event.shiftKey) {
+            if (!activeInsideModal || activeElement === firstTarget) {
+                event.preventDefault();
+                lastTarget.focus();
+            }
+            return;
+        }
+
+        if (!activeInsideModal || activeElement === lastTarget) {
+            event.preventDefault();
+            firstTarget.focus();
+        }
+    }
+
     function setAuthMode(mode) {
         var normalizedMode = mode === "signup" ? "signup" : "login";
         Array.prototype.slice.call(document.querySelectorAll("[data-auth-pane]"))
@@ -387,6 +609,7 @@
             return;
         }
 
+        rememberModalFocusRestoreTarget(config && config.triggerElement);
         var mode = (config && config.mode) || "login";
         var reason = (config && config.reason) === "continue" ? "continue" : "";
         var originPath = cleanOriginPath((config && config.originPath) || window.location.href);
@@ -407,6 +630,8 @@
         authModal.hidden = false;
         authModal.setAttribute("aria-hidden", "false");
         document.body.classList.add("modal-open");
+        setAuthBackgroundInert(true);
+        focusFirstElementInAuthModal();
         vLog("Opened auth modal.", {
             mode: mode,
             reason: reason,
@@ -415,20 +640,28 @@
         });
     }
 
-    function closeAuthModal() {
+    function closeAuthModal(options) {
         if (!authModal) {
             return;
         }
 
+        var shouldRestoreFocus = !options || options.restoreFocus !== false;
         authModal.hidden = true;
         authModal.setAttribute("aria-hidden", "true");
         document.body.classList.remove("modal-open");
+        setAuthBackgroundInert(false);
 
         // Remove transient auth modal query params on close/cancel.
         var cleanedPath = cleanOriginPath(window.location.href);
         var currentPath = window.location.pathname + window.location.search + window.location.hash;
         if (cleanedPath !== currentPath) {
             window.history.replaceState({}, "", cleanedPath);
+        }
+
+        if (shouldRestoreFocus) {
+            restoreModalFocus();
+        } else {
+            authModalFocusRestoreTarget = null;
         }
 
         vLog("Closed auth modal.");
@@ -449,9 +682,30 @@
         });
 
         document.addEventListener("keydown", function onKeyDown(event) {
-            if (event.key === "Escape" && !authModal.hidden) {
-                closeAuthModal();
+            if (authModal.hidden) {
+                return;
             }
+
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeAuthModal();
+                return;
+            }
+
+            trapModalTabNavigation(event);
+        });
+
+        document.addEventListener("focusin", function onFocusIn(event) {
+            if (authModal.hidden) {
+                return;
+            }
+
+            var focusedNode = event.target;
+            if (focusedNode instanceof Element && authModal.contains(focusedNode)) {
+                return;
+            }
+
+            enforceModalFocusContainment();
         });
 
         Array.prototype.slice.call(document.querySelectorAll("[data-auth-switch]"))
@@ -460,6 +714,7 @@
                     event.preventDefault();
                     var requestedMode = normalizeFlag(button.getAttribute("data-auth-switch"));
                     setAuthMode(requestedMode === "signup" ? "signup" : "login");
+                    focusFirstElementInAuthModal();
                 });
             });
     }
@@ -476,7 +731,8 @@
                 mode: buttonMode === "signup" ? "signup" : "login",
                 reason: buttonReason === "continue" ? "continue" : "",
                 originPath: window.location.href,
-                nextPath: window.location.href
+                nextPath: window.location.href,
+                triggerElement: button
             });
         });
     });
@@ -495,7 +751,8 @@
                     mode: "login",
                     reason: "continue",
                     originPath: window.location.href,
-                    nextPath: window.location.href
+                    nextPath: window.location.href,
+                    triggerElement: button
                 });
             });
         });

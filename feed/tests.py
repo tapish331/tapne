@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .models import MemberFeedPreference
@@ -36,6 +36,16 @@ class FeedHomeViewTests(TestCase):
         self.assertEqual(top_trip["host_username"], "mei")
         self.assertEqual(top_profile["username"], "mei")
         self.assertEqual(top_blog["author_username"], "mei")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_guest_home_uses_live_catalog_when_demo_catalog_disabled(self) -> None:
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["feed_mode"], "guest-trending-live")
+        self.assertEqual(response.context["trips"], [])
+        self.assertEqual(response.context["blogs"], [])
+        self.assertEqual(response.context["profiles"][0]["username"], "member1")
 
     def test_member_home_uses_personalized_payload_from_preferences(self) -> None:
         MemberFeedPreference.objects.create(

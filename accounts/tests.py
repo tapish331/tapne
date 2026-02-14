@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .models import AccountProfile, ensure_profile
@@ -208,6 +208,11 @@ class AccountsViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Mei Tanaka")
         self.assertNotContains(response, "seeded demo profile")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_public_profile_for_demo_user_returns_404_when_demo_catalog_disabled(self) -> None:
+        response = self.client.get(reverse("public-profile", kwargs={"username": "mei"}))
+        self.assertEqual(response.status_code, 404)
 
 
 class BootstrapAccountsCommandTests(TestCase):

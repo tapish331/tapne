@@ -16,6 +16,7 @@ from feed.models import (
     get_demo_profiles,
     get_demo_trips,
 )
+from tapne.features import demo_catalog_enabled
 
 SearchResultType = Literal["all", "trips", "users", "blogs"]
 ALLOWED_SEARCH_RESULT_TYPES: Final[set[str]] = {"all", "trips", "users", "blogs"}
@@ -195,13 +196,15 @@ def _rank_trips(
 
 def _trip_candidates(query: str) -> list[TripData]:
     """
-    Keep defaults stable (demo-only) unless query is present.
-
-    For query-time search, merge live trip rows when trip models are available.
+    In live-only mode, use live published rows for both defaults and queries.
+    In demo mode, keep stable demo defaults and merge live rows for query-time search.
     """
 
-    demo_trips = get_demo_trips()
     normalized_query = query.strip()
+    if not demo_catalog_enabled():
+        return _live_trips_for_query(normalized_query)
+
+    demo_trips = get_demo_trips()
     if not normalized_query:
         return demo_trips
 
@@ -252,14 +255,15 @@ def _rank_profiles(
 
 def _profile_candidates(query: str) -> list[ProfileData]:
     """
-    Keep default profile behavior demo-only unless a query is provided.
-
-    When `q` exists, merge in live account rows so real users appear in
-    `type=users` and `type=all` results.
+    In live-only mode, use live account rows for defaults and queries.
+    In demo mode, keep demo defaults and merge in live rows for query-time search.
     """
 
-    demo_profiles = get_demo_profiles()
     normalized_query = query.strip()
+    if not demo_catalog_enabled():
+        return _live_profiles_for_query(normalized_query)
+
+    demo_profiles = get_demo_profiles()
     if not normalized_query:
         return demo_profiles
 
@@ -281,10 +285,9 @@ def _profile_candidates(query: str) -> list[ProfileData]:
 
 def _live_profiles_for_query(query: str) -> list[ProfileData]:
     normalized_query = query.strip()
-    if not normalized_query:
-        return []
-
     live_profiles: list[ProfileData] = []
+    trip_model = _resolve_model("trips", "Trip")
+    follow_model = _resolve_model("social", "FollowRelation")
     users = UserModel.objects.select_related("account_profile").all().order_by("username")
     for user in users:
         username = str(getattr(user, "username", "")).strip()
@@ -294,11 +297,14 @@ def _live_profiles_for_query(query: str) -> list[ProfileData]:
         profile = getattr(user, "account_profile", None)
         display_name = str(getattr(profile, "display_name", "") or "").strip()
         bio = str(getattr(profile, "bio", "") or "").strip()
+        if not bio:
+            bio = "No bio has been added yet."
         location = str(getattr(profile, "location", "") or "").strip()
         website = str(getattr(profile, "website", "") or "").strip()
         email = str(getattr(user, "email", "") or "").strip()
+        user_id = int(getattr(user, "pk", 0) or 0)
 
-        if (
+        if normalized_query and (
             _query_match_score(
                 normalized_query,
                 username,
@@ -312,13 +318,21 @@ def _live_profiles_for_query(query: str) -> list[ProfileData]:
         ):
             continue
 
+        followers_count = 0
+        if follow_model is not None and user_id > 0:
+            followers_count = int(follow_model.objects.filter(following_id=user_id).count())
+
+        trips_count = 0
+        if trip_model is not None and user_id > 0:
+            trips_count = int(trip_model.objects.filter(host_id=user_id, is_published=True).count())
+
         live_profiles.append(
             {
-                "id": int(getattr(user, "pk", 0)),
+                "id": user_id,
                 "username": username,
                 "bio": bio,
-                "followers_count": 0,
-                "trips_count": 0,
+                "followers_count": followers_count,
+                "trips_count": trips_count,
                 "url": f"/u/{username}/",
             }
         )
@@ -370,15 +384,12 @@ def _int_attr(instance: object, *names: str) -> int:
 
 def _live_trips_for_query(query: str) -> list[TripData]:
     normalized_query = query.strip()
-    if not normalized_query:
-        return []
-
     trip_model = _resolve_model("trips", "Trip")
     if trip_model is None:
         return []
 
     live_trips: list[TripData] = []
-    queryset = trip_model.objects.all().order_by("-pk")
+    queryset = trip_model.objects.filter(is_published=True).order_by("-pk")
     for trip in queryset:
         title = _string_attr(trip, "title", "name")
         summary = _string_attr(trip, "summary", "excerpt")
@@ -391,7 +402,7 @@ def _live_trips_for_query(query: str) -> list[TripData]:
             or getattr(trip, "host_username", None)
         )
 
-        if (
+        if normalized_query and (
             _query_match_score(
                 normalized_query,
                 title,
@@ -478,13 +489,15 @@ def _rank_blogs(
 
 def _blog_candidates(query: str) -> list[BlogData]:
     """
-    Keep defaults stable (demo-only) unless query is present.
-
-    For query-time search, merge live blog rows when blog models are available.
+    In live-only mode, use live published blog rows for defaults and queries.
+    In demo mode, keep stable demo defaults and merge live rows for query-time search.
     """
 
-    demo_blogs = get_demo_blogs()
     normalized_query = query.strip()
+    if not demo_catalog_enabled():
+        return _live_blogs_for_query(normalized_query)
+
+    demo_blogs = get_demo_blogs()
     if not normalized_query:
         return demo_blogs
 
@@ -506,9 +519,6 @@ def _blog_candidates(query: str) -> list[BlogData]:
 
 def _live_blogs_for_query(query: str) -> list[BlogData]:
     normalized_query = query.strip()
-    if not normalized_query:
-        return []
-
     blog_model = _resolve_model("blogs", "Blog")
     if blog_model is None:
         return []
@@ -539,7 +549,7 @@ def _live_blogs_for_query(query: str) -> list[BlogData]:
         if not slug:
             slug = f"blog-{blog_id}"
 
-        if (
+        if normalized_query and (
             _query_match_score(
                 normalized_query,
                 title,

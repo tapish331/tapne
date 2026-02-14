@@ -1,14 +1,26 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone as datetime_timezone
+from typing import NotRequired, TypedDict, cast
 from urllib.parse import urlsplit
 from xml.sax.saxutils import escape
 
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
+
+SITE_NAME = "tapne"
+DEFAULT_META_DESCRIPTION = "tapne: host trips, write blogs, and grow audiences."
+
+
+class BreadcrumbItem(TypedDict):
+    label: str
+    url: NotRequired[str]
+
 
 SITEMAP_STATIC_PATHS: tuple[str, ...] = (
     "/",
@@ -63,6 +75,147 @@ def build_absolute_url(request: HttpRequest, path: str) -> str:
 
 def build_canonical_url(request: HttpRequest) -> str:
     return build_absolute_url(request, request.path)
+
+
+def _clean_text(value: object) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _truncate_text(value: object, *, max_length: int) -> str:
+    text = _clean_text(value)
+    if len(text) <= max_length:
+        return text
+    return f"{text[: max_length - 3].rstrip()}..."
+
+
+def normalize_meta_description(value: object, *, fallback: str = DEFAULT_META_DESCRIPTION) -> str:
+    cleaned = _truncate_text(value, max_length=220)
+    if cleaned:
+        return cleaned
+    return fallback
+
+
+def normalize_seo_title(value: object, *, fallback: str = SITE_NAME) -> str:
+    cleaned = _truncate_text(value, max_length=120)
+    if cleaned:
+        return cleaned
+    return fallback
+
+
+def ensure_absolute_url(request: HttpRequest, value: object) -> str:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+
+    if "://" in candidate:
+        parsed = urlsplit(candidate)
+        if parsed.scheme and parsed.netloc:
+            return candidate
+    return build_absolute_url(request, candidate)
+
+
+def serialize_json_ld(payload: object) -> str:
+    normalized_payload: object = payload
+    if isinstance(payload, tuple):
+        normalized_payload = list(cast(tuple[object, ...], payload))
+    json_text = json.dumps(
+        normalized_payload,
+        cls=DjangoJSONEncoder,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return json_text.replace("</", "<\\/")
+
+
+def combine_json_ld_payloads(*payloads: object | None) -> object | None:
+    normalized: list[object] = []
+    for payload in payloads:
+        if payload is None:
+            continue
+        if isinstance(payload, list):
+            list_payload = cast(list[object], payload)
+            if not list_payload:
+                continue
+            normalized.append(list_payload)
+            continue
+        normalized.append(payload)
+
+    if not normalized:
+        return None
+    if len(normalized) == 1:
+        return normalized[0]
+    return normalized
+
+
+def build_breadcrumb_json_ld(request: HttpRequest, breadcrumbs: list[BreadcrumbItem]) -> dict[str, object] | None:
+    item_list: list[dict[str, object]] = []
+    position = 1
+    for item in breadcrumbs:
+        label = _clean_text(item.get("label", ""))
+        url = str(item.get("url", "") or "").strip()
+        if not label or not url:
+            continue
+
+        item_list.append(
+            {
+                "@type": "ListItem",
+                "position": position,
+                "name": label,
+                "item": ensure_absolute_url(request, url),
+            }
+        )
+        position += 1
+
+    if not item_list:
+        return None
+
+    return {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": item_list,
+    }
+
+
+def build_seo_meta_context(
+    request: HttpRequest,
+    *,
+    title: object,
+    description: object,
+    og_type: str = "website",
+    image_url: object = "",
+    twitter_card: str = "",
+    json_ld_payload: object | None = None,
+) -> dict[str, object]:
+    normalized_title = normalize_seo_title(title)
+    normalized_description = normalize_meta_description(description)
+    normalized_og_type = str(og_type or "website").strip().lower() or "website"
+    canonical_url = build_canonical_url(request)
+    absolute_image_url = ensure_absolute_url(request, image_url)
+    effective_twitter_card = (
+        str(twitter_card or "").strip().lower()
+        or ("summary_large_image" if absolute_image_url else "summary")
+    )
+
+    context: dict[str, object] = {
+        "seo_title": normalized_title,
+        "seo_description": normalized_description,
+        "seo_og_title": normalized_title,
+        "seo_og_description": normalized_description,
+        "seo_og_type": normalized_og_type,
+        "seo_url": canonical_url,
+        "seo_twitter_title": normalized_title,
+        "seo_twitter_description": normalized_description,
+        "seo_twitter_card": effective_twitter_card,
+    }
+
+    if absolute_image_url:
+        context["seo_og_image"] = absolute_image_url
+        context["seo_twitter_image"] = absolute_image_url
+
+    if json_ld_payload is not None:
+        context["seo_json_ld"] = serialize_json_ld(json_ld_payload)
+
+    return context
 
 
 def _collect_sitemap_entries(request: HttpRequest) -> list[tuple[str, datetime | None]]:

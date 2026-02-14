@@ -287,4 +287,9 @@ TAPNE_MEDIA_ALLOWED_VIDEO_EXTENSIONS = env_csv(
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-TAPNE_PLACEHOLDER_MODE = True
+# Demo catalog behavior:
+# - enabled by default in DEBUG/local workflows
+# - disabled by default in production-style runs
+TAPNE_ENABLE_DEMO_DATA = env_bool("TAPNE_ENABLE_DEMO_DATA", DEBUG)
+# Backward-compatible alias used by earlier scaffolding scripts/docs.
+TAPNE_PLACEHOLDER_MODE = TAPNE_ENABLE_DEMO_DATA

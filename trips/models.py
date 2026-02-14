@@ -10,6 +10,7 @@ from django.db import models
 from django.utils import timezone
 
 from feed.models import MemberFeedPreference, TripData, enrich_trip_preview_fields, get_demo_trips, get_trip_by_id
+from tapne.features import demo_catalog_enabled
 
 
 class TripListPayload(TypedDict):
@@ -420,7 +421,7 @@ def build_trip_list_payload_for_user(
     source = "live-db"
     candidate_trips = [trip.to_trip_data() for trip in live_rows]
 
-    if not candidate_trips:
+    if not candidate_trips and demo_catalog_enabled():
         source = "demo-fallback"
         candidate_trips = [_as_trip_data_copy(item) for item in get_demo_trips()]
 
@@ -494,7 +495,7 @@ def build_trip_detail_payload_for_user(user: object, trip_id: int) -> TripDetail
         source = "live-db"
         can_manage_trip = bool(viewer_is_member and live_row_host_id == viewer_id)
     else:
-        demo_trip = get_trip_by_id(trip_id)
+        demo_trip = get_trip_by_id(trip_id) if demo_catalog_enabled() else None
         if demo_trip is not None:
             trip_data = _as_trip_data_copy(demo_trip)
             source = "demo-fallback"

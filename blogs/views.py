@@ -9,6 +9,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
+from tapne.seo import (
+    BreadcrumbItem,
+    build_absolute_url,
+    build_breadcrumb_json_ld,
+    build_seo_meta_context,
+    combine_json_ld_payloads,
+    normalize_meta_description,
+)
+
 from interactions.models import build_comment_threads_payload_for_target
 from media.models import (
     MediaTargetPayload,
@@ -62,6 +71,32 @@ def blog_list_view(request: HttpRequest) -> HttpResponse:
         "blog_reason": payload["reason"],
         "blog_source": payload["source"],
     }
+    breadcrumbs: list[BreadcrumbItem] = [{"label": "Home", "url": "/"}, {"label": "Blogs"}]
+    context["breadcrumbs"] = breadcrumbs
+    list_json_ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": "Blogs",
+        "description": "Read community stories and guides on tapne.",
+        "numberOfItems": len(payload["blogs"]),
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": index + 1,
+                "name": str(blog.get("title", "") or "Blog"),
+                "url": build_absolute_url(request, str(blog.get("url", "") or "/blogs/")),
+            }
+            for index, blog in enumerate(payload["blogs"][:12])
+        ],
+    }
+    context.update(
+        build_seo_meta_context(
+            request,
+            title="Blogs | tapne",
+            description="Read community stories and guides on tapne.",
+            json_ld_payload=combine_json_ld_payloads(list_json_ld, build_breadcrumb_json_ld(request, breadcrumbs)),
+        )
+    )
     return render(request, "pages/blogs/list.html", context)
 
 
@@ -171,6 +206,42 @@ def blog_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
         "blog_media_reason": blog_media_payload["reason"],
         "blog_media_can_upload": blog_media_payload["can_upload"],
     }
+
+    blog_title = str(payload["blog"].get("title", "") or slug.replace("-", " ").title())
+    blog_description = normalize_meta_description(
+        payload["blog"].get("excerpt") or payload["blog"].get("summary") or payload["blog"].get("body")
+    )
+    breadcrumbs: list[BreadcrumbItem] = [
+        {"label": "Home", "url": "/"},
+        {"label": "Blogs", "url": "/blogs/"},
+        {"label": blog_title},
+    ]
+    context["breadcrumbs"] = breadcrumbs
+
+    author_username = str(payload["blog"].get("author_username", "") or "").strip()
+    blog_json_ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        "headline": blog_title,
+        "description": blog_description,
+        "mainEntityOfPage": build_absolute_url(request, str(payload["blog"].get("url", "") or f"/blogs/{slug}/")),
+    }
+    if author_username:
+        blog_json_ld["author"] = {
+            "@type": "Person",
+            "name": f"@{author_username}",
+            "url": build_absolute_url(request, f"/u/{author_username}/"),
+        }
+
+    context.update(
+        build_seo_meta_context(
+            request,
+            title=f"{blog_title} | tapne",
+            description=blog_description,
+            og_type="article",
+            json_ld_payload=combine_json_ld_payloads(blog_json_ld, build_breadcrumb_json_ld(request, breadcrumbs)),
+        )
+    )
     return render(request, "pages/blogs/detail.html", context)
 
 

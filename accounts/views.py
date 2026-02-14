@@ -14,6 +14,16 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
+from tapne.features import demo_catalog_enabled
+from tapne.seo import (
+    BreadcrumbItem,
+    build_absolute_url,
+    build_breadcrumb_json_ld,
+    build_seo_meta_context,
+    combine_json_ld_payloads,
+    normalize_meta_description,
+)
+
 from .forms import LoginForm, ProfileEditForm, SignUpForm
 from .models import AccountProfile, ensure_profile
 from social.models import build_follow_stats_for_user, is_following_user
@@ -425,7 +435,11 @@ def public_profile_view(request: HttpRequest, username: str) -> HttpResponse:
         profile = ensure_profile(profile_user)
         profile_payload = _profile_context_from_model(profile_user, profile)
     else:
-        demo_profile = DEMO_PUBLIC_PROFILES.get(lookup_username.lower())
+        demo_profile = (
+            DEMO_PUBLIC_PROFILES.get(lookup_username.lower())
+            if demo_catalog_enabled()
+            else None
+        )
         if not demo_profile:
             raise Http404("Profile not found.")
 
@@ -467,4 +481,35 @@ def public_profile_view(request: HttpRequest, username: str) -> HttpResponse:
         "is_following_profile": is_following_profile,
         "profile_followers_count": follow_stats["followers"],
     }
+    profile_title = str(profile_payload.get("display_name", "") or f"@{profile_payload['username']}")
+    profile_description = normalize_meta_description(profile_payload.get("bio") or "Creator profile on tapne.")
+    breadcrumbs: list[BreadcrumbItem] = [
+        {"label": "Home", "url": "/"},
+        {"label": "Creators", "url": "/search/?type=users"},
+        {"label": f"@{profile_payload['username']}"},
+    ]
+    context["breadcrumbs"] = breadcrumbs
+
+    person_json_ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": profile_title,
+        "identifier": f"@{profile_payload['username']}",
+        "description": profile_description,
+        "url": build_absolute_url(request, f"/u/{profile_payload['username']}/"),
+    }
+    if profile_payload.get("location"):
+        person_json_ld["homeLocation"] = str(profile_payload["location"])
+    if profile_payload.get("website"):
+        person_json_ld["sameAs"] = [str(profile_payload["website"])]
+
+    context.update(
+        build_seo_meta_context(
+            request,
+            title=f"{profile_title} | tapne",
+            description=profile_description,
+            og_type="profile",
+            json_ld_payload=combine_json_ld_payloads(person_json_ld, build_breadcrumb_json_ld(request, breadcrumbs)),
+        )
+    )
     return render(request, "pages/users/profile.html", context)

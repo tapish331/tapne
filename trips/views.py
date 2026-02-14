@@ -11,6 +11,15 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
+from tapne.seo import (
+    BreadcrumbItem,
+    build_absolute_url,
+    build_breadcrumb_json_ld,
+    build_seo_meta_context,
+    combine_json_ld_payloads,
+    normalize_meta_description,
+)
+
 from interactions.models import build_comment_threads_payload_for_target
 from media.models import (
     MediaTargetPayload,
@@ -87,6 +96,33 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
         "trip_filtered_count": payload["filtered_count"],
         "trip_has_active_filters": has_active_trip_filters(payload["filters"]),
     }
+
+    breadcrumbs: list[BreadcrumbItem] = [{"label": "Home", "url": "/"}, {"label": "Trips"}]
+    context["breadcrumbs"] = breadcrumbs
+    list_json_ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": "Trips",
+        "description": "Browse upcoming and hosted trips on tapne.",
+        "numberOfItems": len(payload["trips"]),
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": index + 1,
+                "name": str(trip.get("title", "") or "Trip"),
+                "url": build_absolute_url(request, str(trip.get("url", "") or "/trips/")),
+            }
+            for index, trip in enumerate(payload["trips"][:12])
+        ],
+    }
+    context.update(
+        build_seo_meta_context(
+            request,
+            title="Trips | tapne",
+            description="Browse upcoming and hosted trips on tapne.",
+            json_ld_payload=combine_json_ld_payloads(list_json_ld, build_breadcrumb_json_ld(request, breadcrumbs)),
+        )
+    )
     return render(request, "pages/trips/list.html", context)
 
 
@@ -196,6 +232,44 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         "trip_media_reason": trip_media_payload["reason"],
         "trip_media_can_upload": trip_media_payload["can_upload"],
     }
+
+    trip_title = str(payload["trip"].get("title", "") or f"Trip #{trip_id}")
+    trip_description = normalize_meta_description(
+        payload["trip"].get("summary") or payload["trip"].get("description") or "Trip details on tapne."
+    )
+    breadcrumbs: list[BreadcrumbItem] = [
+        {"label": "Home", "url": "/"},
+        {"label": "Trips", "url": "/trips/"},
+        {"label": trip_title},
+    ]
+    context["breadcrumbs"] = breadcrumbs
+
+    trip_json_ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "TouristTrip",
+        "name": trip_title,
+        "description": trip_description,
+        "url": build_absolute_url(request, str(payload["trip"].get("url", "") or f"/trips/{trip_id}/")),
+        "touristType": str(payload["trip"].get("trip_type_label", "") or "Travelers"),
+        "itinerary": str(payload["trip"].get("destination", "") or ""),
+    }
+    host_username = str(payload["trip"].get("host_username", "") or "").strip()
+    if host_username:
+        trip_json_ld["provider"] = {
+            "@type": "Person",
+            "name": f"@{host_username}",
+            "url": build_absolute_url(request, f"/u/{host_username}/"),
+        }
+
+    context.update(
+        build_seo_meta_context(
+            request,
+            title=f"{trip_title} | tapne",
+            description=trip_description,
+            og_type="article",
+            json_ld_payload=combine_json_ld_payloads(trip_json_ld, build_breadcrumb_json_ld(request, breadcrumbs)),
+        )
+    )
     return render(request, "pages/trips/detail.html", context)
 
 

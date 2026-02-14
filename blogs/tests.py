@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from feed.models import MemberFeedPreference
@@ -36,6 +36,15 @@ class BlogViewsTests(TestCase):
         self.assertEqual(response.context["blog_source"], "demo-fallback")
         self.assertEqual(response.context["blog_mode"], "guest-most-read-demo")
         self.assertGreater(len(response.context["blogs"]), 0)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_guest_blog_list_is_live_only_when_demo_catalog_disabled(self) -> None:
+        response = self.client.get(reverse("blogs:list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["blog_source"], "live-db")
+        self.assertEqual(response.context["blog_mode"], "guest-most-read-live")
+        self.assertEqual(response.context["blogs"], [])
 
     def test_member_blog_list_uses_live_rows_and_preference_boost(self) -> None:
         Blog.objects.create(

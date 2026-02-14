@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db import models
 
 from feed.models import BlogData, MemberFeedPreference, get_blog_by_slug, get_demo_blogs
+from tapne.features import demo_catalog_enabled
 
 
 class BlogListPayload(TypedDict):
@@ -193,7 +194,7 @@ def build_blog_list_payload_for_user(user: object, limit: int = 24) -> BlogListP
     source = "live-db"
     candidate_blogs = [blog.to_blog_data() for blog in live_rows]
 
-    if not candidate_blogs:
+    if not candidate_blogs and demo_catalog_enabled():
         source = "demo-fallback"
         candidate_blogs = [_as_blog_data_copy(item) for item in get_demo_blogs()]
 
@@ -246,7 +247,7 @@ def build_blog_detail_payload_for_user(user: object, slug: str) -> BlogDetailPay
         source = "live-db"
         can_manage_blog = bool(viewer_is_member and live_row_author_id == viewer_id)
     else:
-        demo_blog = get_blog_by_slug(slug)
+        demo_blog = get_blog_by_slug(slug) if demo_catalog_enabled() else None
         if demo_blog is not None:
             blog_data = _as_blog_data_copy(demo_blog)
             source = "demo-fallback"

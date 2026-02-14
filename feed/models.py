@@ -4,8 +4,12 @@ from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, NotRequired, TypedDict, cast
 
+from django.apps import apps
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import models
+
+from tapne.features import demo_catalog_enabled
 
 
 class TripData(TypedDict):
@@ -589,6 +593,207 @@ def get_blog_by_slug(slug: str) -> BlogData | None:
     return cast(BlogData, dict(blog))
 
 
+UserModel = get_user_model()
+
+
+def _resolve_model(app_label: str, model_name: str) -> type[Any] | None:
+    try:
+        return cast(type[Any], apps.get_model(app_label, model_name))
+    except LookupError:
+        return None
+
+
+def _string_attr(instance: object, *names: str) -> str:
+    for name in names:
+        value = getattr(instance, name, None)
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                return cleaned
+    return ""
+
+
+def _int_attr(instance: object, *names: str) -> int:
+    for name in names:
+        value = getattr(instance, name, None)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if text.isdigit():
+                return int(text)
+    return 0
+
+
+def _object_username(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    username = getattr(value, "username", None)
+    if isinstance(username, str):
+        return username.strip()
+    return ""
+
+
+def _live_trip_rows() -> list[TripData]:
+    trip_model = _resolve_model("trips", "Trip")
+    if trip_model is None:
+        return []
+
+    live_rows: list[TripData] = []
+    queryset = (
+        trip_model.objects.select_related("host")
+        .filter(is_published=True)
+        .order_by("-traffic_score", "starts_at", "pk")
+    )
+    for trip in queryset:
+        to_trip_data = getattr(trip, "to_trip_data", None)
+        if callable(to_trip_data):
+            result = to_trip_data()
+            if isinstance(result, dict):
+                live_rows.append(enrich_trip_preview_fields(cast(TripData, result)))
+                continue
+
+        trip_id = int(getattr(trip, "pk", 0) or 0)
+        if trip_id <= 0:
+            continue
+
+        payload: TripData = {
+            "id": trip_id,
+            "title": _string_attr(trip, "title", "name") or f"Trip #{trip_id}",
+            "summary": _string_attr(trip, "summary", "excerpt"),
+            "description": _string_attr(trip, "description", "details", "body"),
+            "destination": _string_attr(trip, "destination", "location"),
+            "host_username": _object_username(
+                getattr(trip, "host", None)
+                or getattr(trip, "creator", None)
+                or getattr(trip, "user", None)
+                or getattr(trip, "host_username", None)
+            ),
+            "traffic_score": _int_attr(trip, "traffic_score", "search_count", "views_count"),
+            "url": f"/trips/{trip_id}/",
+        }
+
+        get_absolute_url = getattr(trip, "get_absolute_url", None)
+        if callable(get_absolute_url):
+            try:
+                maybe_url = get_absolute_url()
+                if isinstance(maybe_url, str) and maybe_url.strip():
+                    payload["url"] = maybe_url
+            except Exception:
+                pass
+
+        starts_at_value = getattr(trip, "starts_at", None)
+        if isinstance(starts_at_value, (datetime, str)):
+            payload["starts_at"] = starts_at_value
+        ends_at_value = getattr(trip, "ends_at", None)
+        if isinstance(ends_at_value, (datetime, str)):
+            payload["ends_at"] = ends_at_value
+
+        live_rows.append(enrich_trip_preview_fields(payload))
+    return live_rows
+
+
+def _live_profile_rows() -> list[ProfileData]:
+    trip_model = _resolve_model("trips", "Trip")
+    follow_model = _resolve_model("social", "FollowRelation")
+    profiles: list[ProfileData] = []
+
+    queryset = UserModel.objects.select_related("account_profile").all().order_by("username")
+    for user in queryset:
+        username = str(getattr(user, "username", "")).strip()
+        if not username:
+            continue
+
+        user_id = int(getattr(user, "pk", 0) or 0)
+        profile = getattr(user, "account_profile", None)
+        bio = _string_attr(profile, "bio")
+        if not bio:
+            bio = "No bio has been added yet."
+
+        followers_count = 0
+        if follow_model is not None and user_id > 0:
+            followers_count = int(follow_model.objects.filter(following_id=user_id).count())
+
+        trips_count = 0
+        if trip_model is not None and user_id > 0:
+            trips_count = int(trip_model.objects.filter(host_id=user_id, is_published=True).count())
+
+        profiles.append(
+            {
+                "id": user_id,
+                "username": username,
+                "bio": bio,
+                "followers_count": followers_count,
+                "trips_count": trips_count,
+                "url": f"/u/{username}/",
+            }
+        )
+
+    return profiles
+
+
+def _live_blog_rows() -> list[BlogData]:
+    blog_model = _resolve_model("blogs", "Blog")
+    if blog_model is None:
+        return []
+
+    live_rows: list[BlogData] = []
+    queryset = (
+        blog_model.objects.select_related("author")
+        .filter(is_published=True)
+        .order_by("-reads", "-created_at", "-pk")
+    )
+    for blog in queryset:
+        to_blog_data = getattr(blog, "to_blog_data", None)
+        if callable(to_blog_data):
+            result = to_blog_data()
+            if isinstance(result, dict):
+                live_rows.append(cast(BlogData, result))
+                continue
+
+        blog_id = int(getattr(blog, "pk", 0) or 0)
+        slug = _string_attr(blog, "slug") or f"blog-{blog_id}"
+        payload: BlogData = {
+            "id": blog_id,
+            "slug": slug,
+            "title": _string_attr(blog, "title", "headline", "name") or slug.replace("-", " ").title(),
+            "excerpt": _string_attr(blog, "excerpt", "summary"),
+            "summary": _string_attr(blog, "summary", "excerpt"),
+            "author_username": _object_username(
+                getattr(blog, "author", None)
+                or getattr(blog, "creator", None)
+                or getattr(blog, "user", None)
+                or getattr(blog, "author_username", None)
+            ),
+            "reads": _int_attr(blog, "reads", "read_count", "views_count"),
+            "reviews_count": _int_attr(blog, "reviews_count", "review_count", "comments_count"),
+            "url": f"/blogs/{slug}/",
+            "body": _string_attr(blog, "body", "content"),
+        }
+
+        get_absolute_url = getattr(blog, "get_absolute_url", None)
+        if callable(get_absolute_url):
+            try:
+                maybe_url = get_absolute_url()
+                if isinstance(maybe_url, str) and maybe_url.strip():
+                    payload["url"] = maybe_url
+            except Exception:
+                pass
+
+        live_rows.append(payload)
+    return live_rows
+
+
+def _catalog_candidates() -> tuple[list[TripData], list[ProfileData], list[BlogData], str]:
+    if demo_catalog_enabled():
+        return get_demo_trips(), get_demo_profiles(), get_demo_blogs(), "demo-catalog"
+    return _live_trip_rows(), _live_profile_rows(), _live_blog_rows(), "live-catalog"
+
+
 def search_trips(query: str) -> list[TripData]:
     return [
         enrich_trip_preview_fields(cast(TripData, dict(trip)))
@@ -614,32 +819,39 @@ def search_blogs(query: str) -> list[BlogData]:
 
 
 def build_guest_home_payload(limit_per_section: int = 6) -> HomeFeedPayload:
+    trip_candidates, profile_candidates, blog_candidates, source = _catalog_candidates()
     sorted_trips = sorted(
-        get_demo_trips(),
+        trip_candidates,
         key=lambda trip: int(trip.get("traffic_score", 0)),
         reverse=True,
     )
     sorted_profiles = sorted(
-        get_demo_profiles(),
+        profile_candidates,
         key=lambda profile: int(profile.get("followers_count", 0)),
         reverse=True,
     )
     sorted_blogs = sorted(
-        get_demo_blogs(),
+        blog_candidates,
         key=lambda blog: int(blog.get("reads", 0)),
         reverse=True,
     )
+
+    mode = "guest-trending" if source == "demo-catalog" else "guest-trending-live"
+    reason = "Traffic-ranked defaults for guests."
+    if source == "live-catalog":
+        reason = "Traffic-ranked live catalog for guests."
 
     return {
         "trips": sorted_trips[:limit_per_section],
         "profiles": sorted_profiles[:limit_per_section],
         "blogs": sorted_blogs[:limit_per_section],
-        "mode": "guest-trending",
-        "reason": "Traffic-ranked defaults for guests.",
+        "mode": mode,
+        "reason": reason,
     }
 
 
 def build_member_home_payload(user: object, limit_per_section: int = 6) -> HomeFeedPayload:
+    trip_candidates, profile_candidates, blog_candidates, source = _catalog_candidates()
     followed_usernames, interest_keywords, has_saved_preference = _member_preference_sets(user)
     viewer_username = str(getattr(user, "username", "")).strip().lower()
 
@@ -692,19 +904,21 @@ def build_member_home_payload(user: object, limit_per_section: int = 6) -> HomeF
 
         return score
 
-    sorted_trips = sorted(get_demo_trips(), key=trip_rank_score, reverse=True)
-    sorted_profiles = sorted(get_demo_profiles(), key=profile_rank_score, reverse=True)
-    sorted_blogs = sorted(get_demo_blogs(), key=blog_rank_score, reverse=True)
+    sorted_trips = sorted(trip_candidates, key=trip_rank_score, reverse=True)
+    sorted_profiles = sorted(profile_candidates, key=profile_rank_score, reverse=True)
+    sorted_blogs = sorted(blog_candidates, key=blog_rank_score, reverse=True)
 
     reason = "Followed creators + like-minded topic recommendations."
     if not has_saved_preference:
         reason = "Fallback member personalization using inferred topic interests."
+    if source == "live-catalog":
+        reason = f"{reason} (live catalog)"
 
     return {
         "trips": sorted_trips[:limit_per_section],
         "profiles": sorted_profiles[:limit_per_section],
         "blogs": sorted_blogs[:limit_per_section],
-        "mode": "member-personalized",
+        "mode": "member-personalized" if source == "demo-catalog" else "member-personalized-live",
         "reason": reason,
     }
 

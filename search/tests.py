@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from blogs.models import Blog
@@ -33,6 +33,16 @@ class SearchViewTests(TestCase):
         self.assertEqual(response.context["trips"][0]["id"], 102)
         self.assertEqual(response.context["profiles"][0]["username"], "mei")
         self.assertEqual(response.context["blogs"][0]["slug"], "packing-for-swing-weather")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_guest_search_defaults_use_live_catalog_when_demo_catalog_disabled(self) -> None:
+        response = self.client.get(reverse("search:search"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["search_mode"], "guest-most-searched")
+        self.assertEqual(response.context["trips"], [])
+        self.assertEqual(response.context["blogs"], [])
+        self.assertEqual(response.context["profiles"][0]["username"], "member-search")
 
     def test_member_search_defaults_use_like_minded_signals(self) -> None:
         MemberFeedPreference.objects.create(

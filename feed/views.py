@@ -5,6 +5,8 @@ from typing import Final
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 
+from tapne.seo import build_absolute_url, build_seo_meta_context
+
 from .models import build_home_payload_for_user
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
@@ -51,4 +53,24 @@ def home(request: HttpRequest) -> HttpResponse:
         "feed_mode": payload["mode"],
         "feed_reason": payload["reason"],
     }
+    home_description = "Host trips, publish stories, and build your audience with tapne."
+    home_json_ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "tapne",
+        "url": build_absolute_url(request, "/"),
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": build_absolute_url(request, "/search/?q={search_term_string}"),
+            "query-input": "required name=search_term_string",
+        },
+    }
+    context.update(
+        build_seo_meta_context(
+            request,
+            title="tapne | Home",
+            description=home_description,
+            json_ld_payload=home_json_ld,
+        )
+    )
     return render(request, "pages/home.html", context)
