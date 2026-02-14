@@ -3,14 +3,66 @@
 {% block title %}tapne | Home{% endblock %}
 
 {% block content %}
-<section class="hero">
-    <p class="eyebrow">{% if user.is_authenticated %}Member home{% else %}Guest home{% endif %}</p>
-    <h1>Host trips, publish stories, and build your audience.</h1>
-    {% if user.is_authenticated %}
-    <p>Your feed combines creators you follow with recommendations from like-minded members.</p>
-    {% else %}
-    <p>Guests see traffic-ranked trips, people, and blogs. Sign up to unlock actions and personalized feed ranking.</p>
-    {% endif %}
+<section class="hero home-hero">
+    <h1>Find your kind of people. <span class="home-hero-accent">Then travel.</span></h1>
+    <p class="home-hero-subheading">Join community-led trips with like-minded travelers. Discover adventures, make friends, and explore the world together.</p>
+
+    {% with selected_type=request.GET.type|default:"all" %}
+    <form class="search-form home-hero-search" method="get" action="/search/">
+        <label class="sr-only" for="homeSearchType">Search type</label>
+        <select id="homeSearchType" name="type">
+            <option value="all" {% if selected_type == "all" %}selected{% endif %}>All</option>
+            <option value="trips" {% if selected_type == "trips" %}selected{% endif %}>Trips</option>
+            <option value="users" {% if selected_type == "users" %}selected{% endif %}>User</option>
+            <option value="blogs" {% if selected_type == "blogs" %}selected{% endif %}>Blogs</option>
+        </select>
+        <label class="sr-only" for="homeSearchQuery">Search query</label>
+        <input
+            id="homeSearchQuery"
+            name="q"
+            type="search"
+            placeholder="Try Bali, @host, or food guide..."
+            value="{{ request.GET.q|default:'' }}"
+        >
+        <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+    {% endwith %}
+
+    <div class="home-hero-stats" aria-label="Community metrics">
+        <div class="home-hero-stat">
+            <span class="home-hero-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"></path>
+                    <circle cx="12" cy="10" r="2.6"></circle>
+                </svg>
+            </span>
+            <span class="home-hero-stat-value">{{ total_unique_destinations }}</span>
+            <span class="home-hero-stat-label">Destinations</span>
+        </div>
+        <div class="home-hero-stat">
+            <span class="home-hero-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <circle cx="8" cy="9" r="3"></circle>
+                    <circle cx="16.5" cy="10" r="2.4"></circle>
+                    <path d="M3.5 18.2c.8-2.5 2.8-4 5.5-4s4.8 1.5 5.6 4"></path>
+                    <path d="M13.7 18.2c.6-1.8 2.1-2.9 4.2-2.9 1.1 0 2.1.3 2.8.9"></path>
+                </svg>
+            </span>
+            <span class="home-hero-stat-value">{{ total_authenticated_users }}</span>
+            <span class="home-hero-stat-label">Travelers</span>
+        </div>
+        <div class="home-hero-stat">
+            <span class="home-hero-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <circle cx="12" cy="12" r="8"></circle>
+                    <path d="M10 14l2-6 2 2-4 4z"></path>
+                    <circle cx="12" cy="12" r="1.2"></circle>
+                </svg>
+            </span>
+            <span class="home-hero-stat-value">{{ total_trips_created }}</span>
+            <span class="home-hero-stat-label">Trips Created</span>
+        </div>
+    </div>
 </section>
 
 <section class="section-grid">

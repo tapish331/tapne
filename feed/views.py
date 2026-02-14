@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from typing import Final
 
+from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
+from django.db.models.functions import Lower
 
 from tapne.seo import build_absolute_url, build_seo_meta_context
+from trips.models import Trip
 
 from .models import build_home_payload_for_user
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
+UserModel = get_user_model()
 
 
 def _is_verbose_request(request: HttpRequest) -> bool:
@@ -25,6 +29,24 @@ def _is_verbose_request(request: HttpRequest) -> bool:
 def _vprint(request: HttpRequest, message: str) -> None:
     if _is_verbose_request(request):
         print(f"[feed][verbose] {message}", flush=True)
+
+
+def _home_totals() -> dict[str, int]:
+    total_trips_created = int(Trip.objects.count())
+    total_unique_destinations = int(
+        Trip.objects.exclude(destination__isnull=True)
+        .exclude(destination__exact="")
+        .annotate(destination_normalized=Lower("destination"))
+        .values("destination_normalized")
+        .distinct()
+        .count()
+    )
+    total_authenticated_users = int(UserModel.objects.filter(is_active=True).count())
+    return {
+        "total_unique_destinations": total_unique_destinations,
+        "total_authenticated_users": total_authenticated_users,
+        "total_trips_created": total_trips_created,
+    }
 
 
 def home(request: HttpRequest) -> HttpResponse:
@@ -52,6 +74,7 @@ def home(request: HttpRequest) -> HttpResponse:
         "blogs": payload["blogs"],
         "feed_mode": payload["mode"],
         "feed_reason": payload["reason"],
+        **_home_totals(),
     }
     home_description = "Host trips, publish stories, and build your audience with tapne."
     home_json_ld: dict[str, object] = {
