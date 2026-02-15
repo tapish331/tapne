@@ -27,6 +27,12 @@
 .PARAMETER HealthTimeoutSeconds
   Maximum time to wait for service health before failing.
 
+.PARAMETER AutoStartDocker
+  Attempts to start Docker Desktop if the daemon is not reachable (enabled by default).
+
+.PARAMETER NoAutoStartDocker
+  Disables Docker Desktop auto-start behavior.
+
 .EXAMPLE
   pwsh -File infra/setup-faithful-local.ps1 --verbose
 
@@ -41,6 +47,8 @@ param(
     [switch]$InfraOnly,
     [ValidateRange(30, 1800)]
     [int]$HealthTimeoutSeconds = 180,
+    [switch]$AutoStartDocker = $true,
+    [switch]$NoAutoStartDocker,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ExtraArgs
 )
@@ -58,9 +66,13 @@ if ($unsupportedArgs.Count -gt 0) {
     Write-Warning ("Ignoring unsupported argument(s): {0}" -f ($unsupportedArgs -join ", "))
 }
 
+if ($NoAutoStartDocker) {
+    $AutoStartDocker = $false
+}
+
 Write-Verbose (
-    "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; HealthTimeoutSeconds={4}" -f
-    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $HealthTimeoutSeconds
+    "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; HealthTimeoutSeconds={4}; AutoStartDocker={5}" -f
+    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $HealthTimeoutSeconds, $AutoStartDocker
 )
 
 function Write-Step {
@@ -77,6 +89,16 @@ function Write-Ok {
 function Test-CommandExists {
     param([string]$CommandName)
     return [bool](Get-Command $CommandName -ErrorAction SilentlyContinue)
+}
+
+function Test-DockerDaemonReachable {
+    try {
+        & docker info *> $null
+    }
+    catch {
+        return $false
+    }
+    return ($LASTEXITCODE -eq 0)
 }
 
 function New-RandomToken {
@@ -582,13 +604,65 @@ function Initialize-DockerRuntime {
     }
     Write-Verbose ("Compose version: {0}" -f $composeVersion)
 
-    try {
-        & docker info *> $null
-    }
-    catch {
-        Write-Host "[ACTION REQUIRED] Docker daemon is not reachable." -ForegroundColor Yellow
-        Write-Host "Start Docker Desktop and wait until it shows Running, then rerun this script." -ForegroundColor Yellow
-        throw "Docker daemon is not running."
+    if (-not (Test-DockerDaemonReachable)) {
+        if ($AutoStartDocker) {
+            $runningOnWindows = $false
+            if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+                $runningOnWindows = [bool]$IsWindows
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($env:OS) -and $env:OS -eq "Windows_NT") {
+                $runningOnWindows = $true
+            }
+
+            if (-not $runningOnWindows) {
+                Write-Host "[ACTION REQUIRED] -AutoStartDocker is only supported on Windows with Docker Desktop." -ForegroundColor Yellow
+                throw "Docker daemon is not running."
+            }
+
+            $dockerDesktopCandidates = @()
+            if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+                $dockerDesktopCandidates += (Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe")
+            }
+            if (
+                -not [string]::IsNullOrWhiteSpace($env:ProgramW6432) -and
+                $env:ProgramW6432 -ne $env:ProgramFiles
+            ) {
+                $dockerDesktopCandidates += (Join-Path $env:ProgramW6432 "Docker\Docker\Docker Desktop.exe")
+            }
+
+            $dockerDesktopPath = $dockerDesktopCandidates |
+                Where-Object { Test-Path -Path $_ -PathType Leaf } |
+                Select-Object -First 1
+            if ([string]::IsNullOrWhiteSpace($dockerDesktopPath)) {
+                Write-Host "[ACTION REQUIRED] Docker daemon is not reachable, and Docker Desktop.exe could not be found." -ForegroundColor Yellow
+                Write-Host "Start Docker Desktop manually and rerun this script." -ForegroundColor Yellow
+                throw "Docker daemon is not running."
+            }
+
+            Write-Verbose ("Docker daemon unreachable. Attempting to start Docker Desktop: {0}" -f $dockerDesktopPath)
+            try {
+                Start-Process -FilePath $dockerDesktopPath -ErrorAction Stop | Out-Null
+            }
+            catch {
+                Write-Verbose ("Failed to start Docker Desktop automatically: {0}" -f $_.Exception.Message)
+            }
+
+            $startupTimeoutSeconds = [Math]::Max(30, [Math]::Min($HealthTimeoutSeconds, 600))
+            $deadline = (Get-Date).AddSeconds($startupTimeoutSeconds)
+            while ((Get-Date) -lt $deadline) {
+                Start-Sleep -Seconds 2
+                if (Test-DockerDaemonReachable) {
+                    Write-Verbose ("Docker daemon became reachable after auto-start attempt (timeout={0}s)." -f $startupTimeoutSeconds)
+                    break
+                }
+            }
+        }
+
+        if (-not (Test-DockerDaemonReachable)) {
+            Write-Host "[ACTION REQUIRED] Docker daemon is not reachable." -ForegroundColor Yellow
+            Write-Host "Start Docker Desktop and wait until it shows Running, then rerun this script." -ForegroundColor Yellow
+            throw "Docker daemon is not running."
+        }
     }
 
     Write-Ok "Docker is installed and running."

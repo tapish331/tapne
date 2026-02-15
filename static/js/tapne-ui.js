@@ -346,6 +346,94 @@
         });
     }
 
+    function initializeNavbarSearchDocking() {
+        var navbarSearchSlot = document.querySelector("[data-navbar-search-slot]");
+        var dockSourceForm = document.querySelector("form[data-navbar-dock-source]");
+        var siteHeader = document.querySelector(".site-header");
+        if (
+            !(navbarSearchSlot instanceof HTMLElement) ||
+            !(dockSourceForm instanceof HTMLFormElement) ||
+            !(siteHeader instanceof HTMLElement)
+        ) {
+            return;
+        }
+
+        var sourceParent = dockSourceForm.parentNode;
+        if (!(sourceParent instanceof Element)) {
+            return;
+        }
+
+        var sourceEndMarker = document.createElement("span");
+        sourceEndMarker.className = "search-dock-marker";
+        sourceEndMarker.setAttribute("aria-hidden", "true");
+        sourceParent.insertBefore(sourceEndMarker, dockSourceForm.nextSibling);
+
+        var sourcePlaceholder = document.createElement("div");
+        sourcePlaceholder.className = "search-dock-placeholder";
+        sourcePlaceholder.setAttribute("aria-hidden", "true");
+        sourcePlaceholder.hidden = true;
+
+        var isDocked = false;
+        var hasScheduledUpdate = false;
+
+        function setDockedState(shouldDock) {
+            var docked = !!shouldDock;
+            if (docked === isDocked) {
+                return;
+            }
+
+            if (docked) {
+                if (sourceEndMarker.parentNode && !sourcePlaceholder.parentNode) {
+                    sourceEndMarker.parentNode.insertBefore(sourcePlaceholder, sourceEndMarker);
+                }
+                sourcePlaceholder.hidden = false;
+                sourcePlaceholder.style.height = Math.max(dockSourceForm.offsetHeight, 1) + "px";
+                navbarSearchSlot.appendChild(dockSourceForm);
+                dockSourceForm.classList.add("is-navbar-docked");
+                navbarSearchSlot.setAttribute("data-has-docked-search", "true");
+                isDocked = true;
+                return;
+            }
+
+            if (sourceEndMarker.parentNode) {
+                sourceEndMarker.parentNode.insertBefore(dockSourceForm, sourceEndMarker);
+            }
+            dockSourceForm.classList.remove("is-navbar-docked");
+            if (sourcePlaceholder.parentNode) {
+                sourcePlaceholder.parentNode.removeChild(sourcePlaceholder);
+            }
+            sourcePlaceholder.hidden = true;
+            sourcePlaceholder.style.height = "";
+            navbarSearchSlot.removeAttribute("data-has-docked-search");
+            isDocked = false;
+        }
+
+        function shouldDockSearch() {
+            var headerHeight = siteHeader.getBoundingClientRect().height || 0;
+            var markerBottom = sourceEndMarker.getBoundingClientRect().bottom;
+            return markerBottom <= (headerHeight + 6);
+        }
+
+        function updateDocking() {
+            setDockedState(shouldDockSearch());
+        }
+
+        function queueDockUpdate() {
+            if (hasScheduledUpdate) {
+                return;
+            }
+            hasScheduledUpdate = true;
+            window.requestAnimationFrame(function flushDockUpdate() {
+                hasScheduledUpdate = false;
+                updateDocking();
+            });
+        }
+
+        window.addEventListener("scroll", queueDockUpdate, { passive: true });
+        window.addEventListener("resize", queueDockUpdate);
+        queueDockUpdate();
+    }
+
     function normalizePath(pathValue, fallbackPath) {
         try {
             var normalizedUrl = new URL(pathValue || "", window.location.origin);
@@ -691,6 +779,7 @@
 
     initializeThemeControls();
     initializeMemberMenu();
+    initializeNavbarSearchDocking();
 
     if (authModal) {
         authModal.addEventListener("click", function onModalClick(event) {

@@ -29,7 +29,8 @@ class FeedHomeViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["feed_mode"], "guest-trending")
-        self.assertContains(response, "Find your kind of people. Then travel.")
+        self.assertContains(response, "Find your kind of people.")
+        self.assertContains(response, "Then travel.")
         self.assertContains(
             response,
             "Join community-led trips with like-minded travelers. Discover adventures, make friends, and explore the world together.",
@@ -70,7 +71,8 @@ class FeedHomeViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["feed_mode"], "member-personalized")
         self.assertNotContains(response, "Member home")
-        self.assertContains(response, "Find your kind of people. Then travel.")
+        self.assertContains(response, "Find your kind of people.")
+        self.assertContains(response, "Then travel.")
 
         top_trip = response.context["trips"][0]
         top_blog = response.context["blogs"][0]

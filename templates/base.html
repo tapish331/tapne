@@ -92,9 +92,33 @@
     <header class="site-header">
         <div class="container header-inner">
             <a class="brand" href="/">tapne</a>
+            {% with nav_search_type=request.GET.type|default:"all" nav_search_query=request.GET.q|default:"" %}
+            {% if request.path == "/" or request.path == "/search/" %}
+            <div class="header-search-slot" data-navbar-search-slot data-navbar-search-dock-only="true"></div>
+            {% else %}
+            <div class="header-search-slot" data-navbar-search-slot>
+                <form class="search-form header-search-form" method="get" action="/search/">
+                    <label class="sr-only" for="navSearchType">Search type</label>
+                    <select id="navSearchType" name="type">
+                        <option value="all" {% if nav_search_type == "all" %}selected{% endif %}>All</option>
+                        <option value="trips" {% if nav_search_type == "trips" %}selected{% endif %}>Trips</option>
+                        <option value="users" {% if nav_search_type == "users" %}selected{% endif %}>Users</option>
+                        <option value="blogs" {% if nav_search_type == "blogs" %}selected{% endif %}>Blogs</option>
+                    </select>
+                    <label class="sr-only" for="navSearchQuery">Search query</label>
+                    <input
+                        id="navSearchQuery"
+                        name="q"
+                        type="search"
+                        placeholder="Search trips, users, blogs..."
+                        value="{{ nav_search_query }}"
+                    >
+                    <button class="btn btn-primary" type="submit">Search</button>
+                </form>
+            </div>
+            {% endif %}
+            {% endwith %}
             <nav class="site-nav" aria-label="Primary navigation">
-                <a href="/">Home</a>
-                <a href="/search/">Search</a>
                 <a href="/trips/">Trips</a>
                 <a href="/blogs/">Blogs</a>
             </nav>

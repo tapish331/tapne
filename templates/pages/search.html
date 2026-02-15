@@ -14,7 +14,7 @@
 </section>
 
 {% with selected_type=active_type|default:"all" %}
-<form class="search-form" method="get" action="/search/">
+<form class="search-form" method="get" action="/search/" data-navbar-dock-source>
     <label for="q">Search</label>
     <input id="q" name="q" type="search" placeholder="Try Bali, @host, or food guide..." value="{{ search_query|default:'' }}">
 

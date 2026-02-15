@@ -213,7 +213,7 @@ code {
     align-items: center;
     display: grid;
     gap: var(--space-3);
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     min-height: 5rem;
 }
 
@@ -231,6 +231,7 @@ code {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem 0.65rem;
+    justify-content: flex-end;
     min-width: 0;
 }
 
@@ -264,6 +265,66 @@ code {
     flex-wrap: wrap;
     gap: 0.55rem;
     justify-content: flex-end;
+}
+
+.header-search-slot {
+    justify-self: center;
+    min-width: 0;
+    width: min(100%, 38rem);
+}
+
+.header-search-slot[data-navbar-search-dock-only="true"] {
+    display: none;
+}
+
+.header-search-slot[data-navbar-search-dock-only="true"][data-has-docked-search="true"] {
+    display: block;
+}
+
+.header-search-slot .search-form {
+    align-items: center;
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 0.35rem;
+    grid-template-columns: minmax(7.8rem, 9.2rem) minmax(0, 1fr) auto;
+    padding: 0.3rem;
+    width: 100%;
+}
+
+.header-search-slot .search-form label {
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+.header-search-slot .search-form input:not([type="checkbox"]):not([type="radio"]),
+.header-search-slot .search-form select {
+    min-height: 2.15rem;
+}
+
+.header-search-slot .search-form .btn {
+    min-height: 2.15rem;
+    white-space: nowrap;
+}
+
+.search-dock-marker {
+    display: block;
+    height: 0;
+    width: 100%;
+}
+
+.search-dock-placeholder {
+    width: 100%;
 }
 
 .member-menu {
@@ -1326,13 +1387,19 @@ body.modal-open {
         padding: 0.82rem 0;
     }
 
-    .site-nav {
+    .header-search-slot {
         order: 2;
+        width: 100%;
+    }
+
+    .site-nav {
+        order: 3;
+        justify-content: flex-start;
     }
 
     .header-tools {
         justify-content: flex-start;
-        order: 3;
+        order: 4;
     }
 }
 
@@ -1346,6 +1413,14 @@ body.modal-open {
         overflow-x: auto;
         padding-bottom: 0.2rem;
         scrollbar-width: thin;
+    }
+
+    .header-search-slot .search-form {
+        grid-template-columns: 1fr;
+    }
+
+    .header-search-slot .search-form .btn {
+        width: 100%;
     }
 
     .theme-controls {

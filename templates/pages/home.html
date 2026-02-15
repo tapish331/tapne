@@ -8,7 +8,7 @@
     <p class="home-hero-subheading">Join community-led trips with like-minded travelers. Discover adventures, make friends, and explore the world together.</p>
 
     {% with selected_type=request.GET.type|default:"all" %}
-    <form class="search-form home-hero-search" method="get" action="/search/">
+    <form class="search-form home-hero-search" method="get" action="/search/" data-navbar-dock-source>
         <label class="sr-only" for="homeSearchType">Search type</label>
         <select id="homeSearchType" name="type">
             <option value="all" {% if selected_type == "all" %}selected{% endif %}>All</option>

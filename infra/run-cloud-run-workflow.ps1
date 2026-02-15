@@ -17,6 +17,9 @@
   pwsh -File infra/run-cloud-run-workflow.ps1 -Verbose
 
 .EXAMPLE
+  pwsh -File infra/run-cloud-run-workflow.ps1 -AutoStartDocker -Verbose
+
+.EXAMPLE
   pwsh -File infra/run-cloud-run-workflow.ps1 `
     -ProjectId tapne-487110 `
     -Region asia-south1 `
@@ -53,6 +56,7 @@ param(
     [switch]$SkipAuthLogin,
     [switch]$SkipMigrations,
     [switch]$SkipSmokeTest,
+    [switch]$AutoStartDocker = $true,
 
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ExtraArgs
@@ -181,8 +185,13 @@ $domainScript = Join-Path $scriptDirectory "setup-custom-domain.ps1"
 $deployScript = Join-Path $scriptDirectory "deploy-cloud-run.ps1"
 
 $setupArgs = @(
-    "-Verbose:$isVerbose"
 )
+if (-not $AutoStartDocker) {
+    $setupArgs += "-NoAutoStartDocker"
+}
+if ($isVerbose) {
+    $setupArgs += "-Verbose"
+}
 
 $checkArgs = @(
     "--image", $localImageRef,
@@ -200,9 +209,11 @@ $pushArgs = @(
     "-Repository", $Repository,
     "-ImageName", $ImageName,
     "-ImageTag", $ImageTag,
-    "-SkipAuthLogin:$([bool]$SkipAuthLogin)",
-    "-Verbose:$isVerbose"
+    "-SkipAuthLogin:$([bool]$SkipAuthLogin)"
 )
+if ($isVerbose) {
+    $pushArgs += "-Verbose"
+}
 
 $domainArgs = @(
     "-ProjectId", $ProjectId,
@@ -210,9 +221,11 @@ $domainArgs = @(
     "-ServiceName", $ServiceName,
     "-Domain", $Domain,
     "-WwwDomain", $WwwDomain,
-    "-SkipAuthLogin:$([bool]$SkipAuthLogin)",
-    "-Verbose:$isVerbose"
+    "-SkipAuthLogin:$([bool]$SkipAuthLogin)"
 )
+if ($isVerbose) {
+    $domainArgs += "-Verbose"
+}
 
 $deployArgs = @(
     "-ProjectId", $ProjectId,
@@ -230,13 +243,15 @@ $deployArgs = @(
     "-CsrfTrustedOrigins", $csrfTrustedOrigins,
     "-CanonicalHost", $canonicalHost,
     "-SmokeBaseUrl", ("https://{0}" -f $canonicalHost),
-    "-UptimeCheckHost", $canonicalHost,
-    "-Verbose:$isVerbose"
+    "-UptimeCheckHost", $canonicalHost
 )
+if ($isVerbose) {
+    $deployArgs += "-Verbose"
+}
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}" -f
-    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest
+    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}" -f
+    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $AutoStartDocker
 )
 
 $startTime = Get-Date
