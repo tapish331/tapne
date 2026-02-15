@@ -56,7 +56,8 @@ param(
     [switch]$SkipAuthLogin,
     [switch]$SkipMigrations,
     [switch]$SkipSmokeTest,
-    [switch]$AutoStartDocker = $true,
+    [switch]$AutoStartDocker,
+    [switch]$NoAutoStartDocker,
 
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ExtraArgs
@@ -73,6 +74,14 @@ if ($ExtraArgs -contains "--verbose") {
 $unsupportedArgs = @($ExtraArgs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne "--verbose" })
 if ($unsupportedArgs.Count -gt 0) {
     Write-Warning ("Ignoring unsupported argument(s): {0}" -f ($unsupportedArgs -join ", "))
+}
+
+$EnableAutoStartDocker = $true
+if ($PSBoundParameters.ContainsKey("AutoStartDocker")) {
+    $EnableAutoStartDocker = [bool]$AutoStartDocker
+}
+if ($NoAutoStartDocker) {
+    $EnableAutoStartDocker = $false
 }
 
 function Write-Step {
@@ -186,7 +195,7 @@ $deployScript = Join-Path $scriptDirectory "deploy-cloud-run.ps1"
 
 $setupArgs = @(
 )
-if (-not $AutoStartDocker) {
+if (-not $EnableAutoStartDocker) {
     $setupArgs += "-NoAutoStartDocker"
 }
 if ($isVerbose) {
@@ -251,7 +260,7 @@ if ($isVerbose) {
 
 Write-Verbose (
     "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}" -f
-    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $AutoStartDocker
+    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker
 )
 
 $startTime = Get-Date

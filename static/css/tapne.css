@@ -784,6 +784,15 @@ code {
     background: linear-gradient(90deg, rgba(var(--support-rgb), 0.96), rgba(var(--support-rgb), 0.15));
 }
 
+.trip-card-banner {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: block;
+    height: 168px;
+    object-fit: cover;
+    width: 100%;
+}
+
 .card:hover {
     border-color: var(--line-strong);
     box-shadow: var(--shadow-float);
@@ -997,6 +1006,15 @@ code {
     font-size: clamp(1.45rem, 2.6vw, 2.2rem);
 }
 
+.trip-detail-banner {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: block;
+    height: clamp(200px, 34vw, 340px);
+    object-fit: cover;
+    width: 100%;
+}
+
 .detail-shell h2 {
     font-size: clamp(1.1rem, 2vw, 1.45rem);
 }
@@ -1053,12 +1071,28 @@ code {
     gap: 0.36rem;
 }
 
+.trip-form-banner-preview {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: block;
+    height: 180px;
+    object-fit: cover;
+    width: 100%;
+}
+
 label {
     color: var(--text-2);
     font-family: var(--font-ui);
     font-size: 0.84rem;
     font-weight: 700;
     letter-spacing: 0.01em;
+}
+
+.inline-checkbox-label {
+    align-items: center;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 0.45rem;
 }
 
 .search-form input:not([type="checkbox"]):not([type="radio"]),

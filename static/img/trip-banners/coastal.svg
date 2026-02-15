@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-label="Cute coastal trip banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d6f6ff"/>
+      <stop offset="100%" stop-color="#fff7df"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="600" fill="url(#bg)"/>
+  <circle cx="170" cy="120" r="58" fill="#ffe48a"/>
+  <path d="M0 390 C200 360 320 420 520 390 C720 360 920 420 1200 390 L1200 600 L0 600 Z" fill="#7ad0f0"/>
+  <path d="M0 430 C220 400 360 460 560 430 C760 400 940 460 1200 430 L1200 600 L0 600 Z" fill="#4fb7df"/>
+  <path d="M0 470 C200 450 340 500 560 470 C760 450 940 500 1200 470 L1200 600 L0 600 Z" fill="#3a9fce"/>
+  <path d="M820 420 L920 220 L1020 420 Z" fill="#f4e8bf"/>
+  <rect x="900" y="420" width="40" height="70" fill="#f4e8bf"/>
+  <text x="600" y="560" text-anchor="middle" font-family="Verdana, sans-serif" font-size="46" fill="#2d6f89">coastal escape</text>
+</svg>

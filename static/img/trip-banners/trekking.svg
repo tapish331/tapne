@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-label="Cute trekking trip banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#dff4ff"/>
+      <stop offset="100%" stop-color="#eefbe9"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="600" fill="url(#bg)"/>
+  <circle cx="1020" cy="120" r="58" fill="#fff59c"/>
+  <polygon points="120,470 350,190 580,470" fill="#91c3a3"/>
+  <polygon points="340,470 620,130 900,470" fill="#6da07f"/>
+  <polygon points="640,470 920,220 1120,470" fill="#4d7f62"/>
+  <polygon points="560,210 620,130 680,210" fill="#ffffff" opacity="0.9"/>
+  <path d="M120 520 C320 470 500 560 700 510 C860 470 1040 560 1160 520" fill="none" stroke="#6b8d7a" stroke-width="14" stroke-linecap="round"/>
+  <text x="600" y="560" text-anchor="middle" font-family="Verdana, sans-serif" font-size="46" fill="#355642">trekking</text>
+</svg>

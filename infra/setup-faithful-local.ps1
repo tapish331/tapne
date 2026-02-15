@@ -47,7 +47,7 @@ param(
     [switch]$InfraOnly,
     [ValidateRange(30, 1800)]
     [int]$HealthTimeoutSeconds = 180,
-    [switch]$AutoStartDocker = $true,
+    [switch]$AutoStartDocker,
     [switch]$NoAutoStartDocker,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ExtraArgs
@@ -66,13 +66,17 @@ if ($unsupportedArgs.Count -gt 0) {
     Write-Warning ("Ignoring unsupported argument(s): {0}" -f ($unsupportedArgs -join ", "))
 }
 
+$EnableAutoStartDocker = $true
+if ($PSBoundParameters.ContainsKey("AutoStartDocker")) {
+    $EnableAutoStartDocker = [bool]$AutoStartDocker
+}
 if ($NoAutoStartDocker) {
-    $AutoStartDocker = $false
+    $EnableAutoStartDocker = $false
 }
 
 Write-Verbose (
     "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; HealthTimeoutSeconds={4}; AutoStartDocker={5}" -f
-    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $HealthTimeoutSeconds, $AutoStartDocker
+    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $HealthTimeoutSeconds, $EnableAutoStartDocker
 )
 
 function Write-Step {
@@ -605,7 +609,7 @@ function Initialize-DockerRuntime {
     Write-Verbose ("Compose version: {0}" -f $composeVersion)
 
     if (-not (Test-DockerDaemonReachable)) {
-        if ($AutoStartDocker) {
+        if ($EnableAutoStartDocker) {
             $runningOnWindows = $false
             if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
                 $runningOnWindows = [bool]$IsWindows

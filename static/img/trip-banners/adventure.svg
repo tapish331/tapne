@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-label="Cute adventure trip banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8fbe8"/>
+      <stop offset="100%" stop-color="#e8f0ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="600" fill="url(#bg)"/>
+  <circle cx="1020" cy="120" r="58" fill="#fff5a6"/>
+  <path d="M0 470 C180 430 340 520 520 470 C700 430 860 520 1040 470 C1100 455 1160 455 1200 470 L1200 600 L0 600 Z" fill="#9ccf92"/>
+  <path d="M130 430 L250 250 L370 430 Z" fill="#7ab17c"/>
+  <path d="M320 430 L470 210 L620 430 Z" fill="#5f9866"/>
+  <path d="M570 430 L710 260 L850 430 Z" fill="#4c8158"/>
+  <path d="M560 300 L620 210 L680 300 Z" fill="#ffffff" opacity="0.9"/>
+  <circle cx="870" cy="330" r="26" fill="#ff9db1"/>
+  <circle cx="900" cy="300" r="16" fill="#ffd3df"/>
+  <text x="600" y="560" text-anchor="middle" font-family="Verdana, sans-serif" font-size="46" fill="#39624a">adventure</text>
+</svg>

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import mimetypes
 from datetime import timedelta
 from typing import Final
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, HttpResponseNotFound
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -19,6 +20,7 @@ from tapne.seo import (
     combine_json_ld_payloads,
     normalize_meta_description,
 )
+from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 from interactions.models import build_comment_threads_payload_for_target
 from media.models import (
@@ -56,6 +58,52 @@ def _is_verbose_request(request: HttpRequest) -> bool:
 def _vprint(request: HttpRequest, message: str) -> None:
     if _is_verbose_request(request):
         print(f"[trips][verbose] {message}", flush=True)
+
+
+def _safe_file_url(file_field: object) -> str:
+    return resolve_file_url(file_field)
+
+
+def _safe_file_url_with_fallback(file_field: object, *, fallback_url: str = "") -> str:
+    resolved = _safe_file_url(file_field)
+    fallback = str(fallback_url or "").strip()
+    if fallback and should_use_fallback_file_url(resolved):
+        return fallback
+    return resolved
+
+
+def _safe_file_name(file_field: object) -> str:
+    if not file_field:
+        return ""
+    try:
+        return str(getattr(file_field, "name", "") or "").strip()
+    except Exception:
+        return ""
+
+
+@require_http_methods(["GET"])
+def trip_banner_view(request: HttpRequest, trip_id: int) -> HttpResponse | FileResponse:
+    trip = get_object_or_404(Trip.objects.only("id", "host_id", "is_published", "banner_image"), pk=trip_id)
+    viewer_id = int(getattr(request.user, "pk", 0) or 0)
+    trip_host_id = int(getattr(trip, "host_id", 0) or 0)
+    is_published = bool(getattr(trip, "is_published", False))
+    if not is_published and (not request.user.is_authenticated or trip_host_id != viewer_id):
+        return HttpResponseNotFound()
+
+    banner_field = trip.banner_image
+    banner_name = _safe_file_name(banner_field)
+    if not banner_name:
+        return HttpResponseNotFound()
+
+    try:
+        banner_field.open("rb")
+    except Exception:
+        return HttpResponseNotFound()
+
+    content_type, _ = mimetypes.guess_type(banner_name)
+    response = FileResponse(banner_field.file, content_type=content_type or "application/octet-stream")
+    response["Cache-Control"] = "public, max-age=300" if is_published else "private, max-age=60"
+    return response
 
 
 @require_http_methods(["GET"])
@@ -277,7 +325,7 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def trip_create_view(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
-        form = TripForm(request.POST)
+        form = TripForm(request.POST, request.FILES)
         if form.is_valid():
             trip = form.save(commit=False)
             trip.host = request.user
@@ -295,7 +343,7 @@ def trip_create_view(request: HttpRequest) -> HttpResponse:
             second=0,
             microsecond=0,
         )
-        form = TripForm(initial={"starts_at": suggested_start, "traffic_score": 0, "is_published": True})
+        form = TripForm(initial={"starts_at": suggested_start, "is_published": True})
         _vprint(request, f"Rendered trip create form for @{request.user.username}")
 
     context: dict[str, object] = {
@@ -303,6 +351,16 @@ def trip_create_view(request: HttpRequest) -> HttpResponse:
         "form_mode": "create",
         "page_title": "Create trip",
         "submit_label": "Create trip",
+        "form_timezone_label": timezone.get_current_timezone_name(),
+        "current_banner_preview_url": _safe_file_url_with_fallback(
+            getattr(form.instance, "banner_image", None),
+            fallback_url=build_trip_banner_fallback_url(
+                trip_id=int(getattr(form.instance, "pk", 0) or 0),
+                file_name=_safe_file_name(getattr(form.instance, "banner_image", None)),
+                updated_at=getattr(form.instance, "updated_at", None),
+            ),
+        ),
+        "current_banner_name": _safe_file_name(getattr(form.instance, "banner_image", None)),
     }
     return render(request, "pages/trips/form.html", context)
 
@@ -313,7 +371,7 @@ def trip_edit_view(request: HttpRequest, trip_id: int) -> HttpResponse:
     trip = get_object_or_404(Trip, pk=trip_id, host=request.user)
 
     if request.method == "POST":
-        form = TripForm(request.POST, instance=trip)
+        form = TripForm(request.POST, request.FILES, instance=trip)
         if form.is_valid():
             form.save()
             messages.success(request, "Trip updated.")
@@ -332,6 +390,16 @@ def trip_edit_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         "trip": trip,
         "page_title": "Edit trip",
         "submit_label": "Save changes",
+        "form_timezone_label": timezone.get_current_timezone_name(),
+        "current_banner_preview_url": _safe_file_url_with_fallback(
+            getattr(form.instance, "banner_image", None),
+            fallback_url=build_trip_banner_fallback_url(
+                trip_id=int(getattr(form.instance, "pk", 0) or 0),
+                file_name=_safe_file_name(getattr(form.instance, "banner_image", None)),
+                updated_at=getattr(form.instance, "updated_at", None),
+            ),
+        ),
+        "current_banner_name": _safe_file_name(getattr(form.instance, "banner_image", None)),
     }
     return render(request, "pages/trips/form.html", context)
 

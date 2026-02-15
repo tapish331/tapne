@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 
 from tapne.features import demo_catalog_enabled
+from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 
 class TripData(TypedDict):
@@ -18,6 +19,7 @@ class TripData(TypedDict):
     summary: NotRequired[str]
     description: NotRequired[str]
     destination: NotRequired[str]
+    banner_image_url: NotRequired[str]
     host_username: NotRequired[str]
     traffic_score: NotRequired[int]
     url: NotRequired[str]
@@ -195,6 +197,15 @@ TRIP_TYPE_LABELS: dict[str, str] = {
     "coastal": "Coastal Escape",
     "adventure": "Adventure",
 }
+DEFAULT_TRIP_BANNER_PATH: str = "img/trip-banners/adventure.svg"
+TRIP_TYPE_BANNER_PATHS: dict[str, str] = {
+    "food-culture": "img/trip-banners/food-culture.svg",
+    "trekking": "img/trip-banners/trekking.svg",
+    "desert": "img/trip-banners/desert.svg",
+    "city": "img/trip-banners/city.svg",
+    "coastal": "img/trip-banners/coastal.svg",
+    "adventure": DEFAULT_TRIP_BANNER_PATH,
+}
 BUDGET_LABELS: dict[str, str] = {
     "budget": "$ Budget-friendly",
     "mid": "$$ Mid-range",
@@ -354,6 +365,26 @@ def _trip_text_blob(trip: TripData) -> str:
     )
 
 
+def _join_static_url(path: str) -> str:
+    cleaned_path = str(path or "").strip().lstrip("/")
+    if not cleaned_path:
+        cleaned_path = DEFAULT_TRIP_BANNER_PATH
+
+    static_url = str(getattr(settings, "STATIC_URL", "/static/") or "/static/").strip()
+    if not static_url:
+        static_url = "/static/"
+    if not static_url.endswith("/"):
+        static_url = f"{static_url}/"
+
+    return f"{static_url}{cleaned_path}"
+
+
+def _default_trip_banner_url(trip_type: str) -> str:
+    normalized_trip_type = str(trip_type or "").strip().lower()
+    banner_path = TRIP_TYPE_BANNER_PATHS.get(normalized_trip_type, DEFAULT_TRIP_BANNER_PATH)
+    return _join_static_url(banner_path)
+
+
 def _as_datetime(value: object) -> datetime | None:
     if isinstance(value, datetime):
         return value
@@ -469,6 +500,11 @@ def enrich_trip_preview_fields(trip: TripData) -> TripData:
         trip_type = _infer_trip_type(text_blob)
     enriched["trip_type"] = trip_type
     enriched["trip_type_label"] = TRIP_TYPE_LABELS.get(trip_type, TRIP_TYPE_LABELS["adventure"])
+
+    banner_image_url = str(enriched.get("banner_image_url", "") or "").strip()
+    if not banner_image_url:
+        banner_image_url = _default_trip_banner_url(trip_type)
+    enriched["banner_image_url"] = banner_image_url
 
     duration_days = int(enriched.get("duration_days", 0) or 0)
     if duration_days <= 0:
@@ -676,6 +712,19 @@ def _live_trip_rows() -> list[TripData]:
             "traffic_score": _int_attr(trip, "traffic_score", "search_count", "views_count"),
             "url": f"/trips/{trip_id}/",
         }
+
+        banner_field = getattr(trip, "banner_image", None)
+        if banner_field is not None:
+            banner_url = resolve_file_url(banner_field)
+            banner_name = str(getattr(banner_field, "name", "") or "").strip()
+            if should_use_fallback_file_url(banner_url) and trip_id > 0:
+                banner_url = build_trip_banner_fallback_url(
+                    trip_id=trip_id,
+                    file_name=banner_name,
+                    updated_at=getattr(trip, "updated_at", None),
+                )
+            if banner_url:
+                payload["banner_image_url"] = banner_url
 
         get_absolute_url = getattr(trip, "get_absolute_url", None)
         if callable(get_absolute_url):

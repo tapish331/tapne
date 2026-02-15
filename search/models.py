@@ -17,6 +17,7 @@ from feed.models import (
     get_demo_trips,
 )
 from tapne.features import demo_catalog_enabled
+from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 SearchResultType = Literal["all", "trips", "users", "blogs"]
 ALLOWED_SEARCH_RESULT_TYPES: Final[set[str]] = {"all", "trips", "users", "blogs"}
@@ -197,7 +198,8 @@ def _rank_trips(
 def _trip_candidates(query: str) -> list[TripData]:
     """
     In live-only mode, use live published rows for both defaults and queries.
-    In demo mode, keep stable demo defaults and merge live rows for query-time search.
+    In demo mode, keep stable demo defaults and merge live rows for both defaults
+    and query-time search.
     """
 
     normalized_query = query.strip()
@@ -205,8 +207,6 @@ def _trip_candidates(query: str) -> list[TripData]:
         return _live_trips_for_query(normalized_query)
 
     demo_trips = get_demo_trips()
-    if not normalized_query:
-        return demo_trips
 
     merged_by_id: dict[int, TripData] = {}
     for trip in demo_trips:
@@ -441,6 +441,19 @@ def _live_trips_for_query(query: str) -> list[TripData]:
             "traffic_score": _int_attr(trip, "traffic_score", "search_count", "views_count"),
             "url": url,
         }
+
+        banner_field = getattr(trip, "banner_image", None)
+        if banner_field is not None:
+            banner_url = resolve_file_url(banner_field)
+            banner_name = str(getattr(banner_field, "name", "") or "").strip()
+            if should_use_fallback_file_url(banner_url) and trip_id > 0:
+                banner_url = build_trip_banner_fallback_url(
+                    trip_id=trip_id,
+                    file_name=banner_name,
+                    updated_at=getattr(trip, "updated_at", None),
+                )
+            if banner_url:
+                trip_payload["banner_image_url"] = banner_url
 
         starts_at_value = getattr(trip, "starts_at", None)
         if isinstance(starts_at_value, (datetime, str)):

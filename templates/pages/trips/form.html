@@ -6,12 +6,13 @@
 <section class="hero hero-compact">
     <p class="eyebrow">Trips</p>
     <h1>{{ page_title|default:"Trip form" }}</h1>
-    <p>These fields are stored in PostgreSQL and flow into trip list/detail and search results.</p>
+    <p>These fields are stored in PostgreSQL and drive trip list/detail, filters, and search results.</p>
 </section>
 
 <section class="section-grid">
-    <form method="post" class="form-stack" novalidate>
+    <form method="post" class="form-stack" enctype="multipart/form-data">
         {% csrf_token %}
+        <p class="detail-meta">Date/time fields use {{ form_timezone_label|default:"UTC" }}.</p>
 
         {% if form.non_field_errors %}
         <div class="flash flash-error">
@@ -23,10 +24,23 @@
 
         {% for field in form %}
         <div class="form-field">
+            {% if field.field.widget.input_type == "checkbox" %}
+            <label class="inline-checkbox-label" for="{{ field.id_for_label }}">
+                {{ field }} {{ field.label }}
+            </label>
+            {% else %}
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
+            {% endif %}
             {% if field.help_text %}
             <p class="detail-meta">{{ field.help_text }}</p>
+            {% endif %}
+            {% if field.name == "banner_image" and current_banner_name %}
+            <p class="detail-meta">Current banner file: {{ current_banner_name }}</p>
+            <p class="detail-meta">"No file selected" is expected until you choose a replacement file.</p>
+            {% endif %}
+            {% if field.name == "banner_image" and current_banner_preview_url %}
+            <img class="trip-form-banner-preview" src="{{ current_banner_preview_url }}" alt="Current trip banner image">
             {% endif %}
             {% if field.errors %}
             <div class="flash flash-error">

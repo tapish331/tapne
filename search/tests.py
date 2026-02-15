@@ -198,12 +198,27 @@ class SearchViewTests(TestCase):
         self.assertIn(998, trip_ids)
         self.assertIn("tapne-live-blog", blog_slugs)
 
-    def test_search_trips_defaults_do_not_pull_live_rows_without_query(self) -> None:
-        with patch("search.models._live_trips_for_query") as mock_live_trips:
+    def test_search_trips_defaults_pull_live_rows_without_query(self) -> None:
+        with patch(
+            "search.models._live_trips_for_query",
+            return_value=[
+                {
+                    "id": 996,
+                    "title": "Live default trip",
+                    "summary": "Live trip row",
+                    "destination": "Test Plains",
+                    "host_username": "tapne",
+                    "traffic_score": 99,
+                    "url": "/trips/996/",
+                }
+            ],
+        ) as mock_live_trips:
             response = self.client.get(f"{reverse('search:search')}?type=trips")
 
         self.assertEqual(response.status_code, 200)
-        mock_live_trips.assert_not_called()
+        mock_live_trips.assert_called_once_with("")
+        trip_ids = {trip["id"] for trip in response.context["trips"]}
+        self.assertIn(996, trip_ids)
 
     def test_search_blogs_defaults_do_not_pull_live_rows_without_query(self) -> None:
         with patch("search.models._live_blogs_for_query") as mock_live_blogs:

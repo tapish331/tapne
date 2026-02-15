@@ -6,6 +6,9 @@
 <article class="detail-shell">
     <p class="eyebrow">Trip details</p>
     <h1>{{ trip.title|default:"Trip title" }}</h1>
+    {% if trip.banner_image_url %}
+    <img class="trip-detail-banner" src="{{ trip.banner_image_url }}" alt="{{ trip.title|default:'Trip banner' }}">
+    {% endif %}
 
     <p class="detail-meta">
         Host:

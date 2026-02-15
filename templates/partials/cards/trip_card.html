@@ -1,4 +1,7 @@
 <article class="card card-trip" data-card-type="trip" data-card-id="{{ trip.id|default:'n/a' }}">
+    {% if trip.banner_image_url %}
+    <img class="trip-card-banner" src="{{ trip.banner_image_url }}" alt="{{ trip.title|default:'Trip banner' }}">
+    {% endif %}
     <header class="card-header">
         <p class="card-kicker">Trip</p>
         <h3 class="card-title">{{ trip.title|default:"Untitled trip" }}</h3>

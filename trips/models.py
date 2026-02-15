@@ -6,11 +6,13 @@ from typing import Any, Final, TypedDict, cast
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxLengthValidator
 from django.db import models
 from django.utils import timezone
 
 from feed.models import MemberFeedPreference, TripData, enrich_trip_preview_fields, get_demo_trips, get_trip_by_id
 from tapne.features import demo_catalog_enabled
+from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 
 class TripListPayload(TypedDict):
@@ -47,6 +49,37 @@ class TripMinePayload(TypedDict):
     reason: str
 
 
+TRIP_TYPE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("food-culture", "Food & Culture"),
+    ("trekking", "Trekking"),
+    ("desert", "Desert Route"),
+    ("city", "City Discovery"),
+    ("coastal", "Coastal Escape"),
+    ("adventure", "Adventure"),
+)
+BUDGET_TIER_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("budget", "$ Budget-friendly"),
+    ("mid", "$$ Mid-range"),
+    ("premium", "$$$ Premium"),
+)
+DIFFICULTY_LEVEL_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("easy", "Easy"),
+    ("moderate", "Moderate"),
+    ("challenging", "Challenging"),
+)
+PACE_LEVEL_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("relaxed", "Relaxed"),
+    ("balanced", "Balanced"),
+    ("fast", "Fast-paced"),
+)
+GROUP_SIZE_LABEL_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("4-6 travelers", "4-6 travelers"),
+    ("6-8 travelers", "6-8 travelers"),
+    ("6-10 travelers", "6-10 travelers"),
+    ("8-12 travelers", "8-12 travelers"),
+    ("10-14 travelers", "10-14 travelers"),
+)
+
 class Trip(models.Model):
     """
     Core trip record used by list/detail/CRUD flows.
@@ -62,8 +95,15 @@ class Trip(models.Model):
     )
     title = models.CharField(max_length=180)
     summary = models.CharField(max_length=280, blank=True)
-    description = models.TextField(blank=True)
+    description = models.TextField(blank=True, validators=[MaxLengthValidator(4000)])
     destination = models.CharField(max_length=160, blank=True)
+    banner_image = models.ImageField(upload_to="trip_banners/", blank=True)
+    trip_type = models.CharField(max_length=24, choices=TRIP_TYPE_CHOICES, blank=True, default="")
+    budget_tier = models.CharField(max_length=16, choices=BUDGET_TIER_CHOICES, blank=True, default="")
+    difficulty_level = models.CharField(max_length=16, choices=DIFFICULTY_LEVEL_CHOICES, blank=True, default="")
+    pace_level = models.CharField(max_length=16, choices=PACE_LEVEL_CHOICES, blank=True, default="")
+    group_size_label = models.CharField(max_length=32, choices=GROUP_SIZE_LABEL_CHOICES, blank=True, default="")
+    includes_label = models.CharField(max_length=280, blank=True, default="")
     starts_at = models.DateTimeField(default=timezone.now, db_index=True)
     ends_at = models.DateTimeField(blank=True, null=True)
     traffic_score = models.PositiveIntegerField(default=0)
@@ -83,6 +123,16 @@ class Trip(models.Model):
 
     def clean(self) -> None:
         super().clean()
+        self.title = str(self.title or "").strip()
+        self.summary = str(self.summary or "").strip()
+        self.description = str(self.description or "").strip()
+        self.destination = str(self.destination or "").strip()
+        self.trip_type = str(self.trip_type or "").strip().lower()
+        self.budget_tier = str(self.budget_tier or "").strip().lower()
+        self.difficulty_level = str(self.difficulty_level or "").strip().lower()
+        self.pace_level = str(self.pace_level or "").strip().lower()
+        self.group_size_label = str(self.group_size_label or "").strip()
+        self.includes_label = str(self.includes_label or "").strip()
         if self.ends_at and self.starts_at and self.ends_at < self.starts_at:
             raise ValidationError({"ends_at": "End time must be after the start time."})
 
@@ -90,8 +140,9 @@ class Trip(models.Model):
         return f"/trips/{self.pk}/"
 
     def to_trip_data(self) -> TripData:
+        trip_id = int(self.pk or 0)
         trip_data: TripData = {
-            "id": int(self.pk or 0),
+            "id": trip_id,
             "title": self.title,
             "summary": self.summary,
             "description": self.description,
@@ -101,6 +152,29 @@ class Trip(models.Model):
             "starts_at": self.starts_at,
             "url": self.get_absolute_url(),
         }
+        if self.banner_image:
+            banner_url = resolve_file_url(self.banner_image)
+            banner_name = str(getattr(self.banner_image, "name", "") or "").strip()
+            if should_use_fallback_file_url(banner_url):
+                banner_url = build_trip_banner_fallback_url(
+                    trip_id=trip_id,
+                    file_name=banner_name,
+                    updated_at=self.updated_at,
+                )
+            if banner_url:
+                trip_data["banner_image_url"] = banner_url
+        if self.trip_type:
+            trip_data["trip_type"] = self.trip_type
+        if self.budget_tier:
+            trip_data["budget_tier"] = self.budget_tier
+        if self.difficulty_level:
+            trip_data["difficulty_level"] = self.difficulty_level
+        if self.pace_level:
+            trip_data["pace_level"] = self.pace_level
+        if self.group_size_label:
+            trip_data["group_size_label"] = self.group_size_label
+        if self.includes_label:
+            trip_data["includes_label"] = self.includes_label
         if self.ends_at is not None:
             trip_data["ends_at"] = self.ends_at
         return trip_data
@@ -113,26 +187,11 @@ TRIP_DURATION_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
     ("medium", "4-7 days"),
     ("long", "8+ days"),
 )
-TRIP_TYPE_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
-    ("all", "Any trip type"),
-    ("food-culture", "Food & Culture"),
-    ("trekking", "Trekking"),
-    ("desert", "Desert Route"),
-    ("city", "City Discovery"),
-    ("coastal", "Coastal Escape"),
-    ("adventure", "Adventure"),
-)
-TRIP_BUDGET_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
-    ("all", "Any budget"),
-    ("budget", "$ Budget-friendly"),
-    ("mid", "$$ Mid-range"),
-    ("premium", "$$$ Premium"),
-)
+TRIP_TYPE_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (("all", "Any trip type"), *TRIP_TYPE_CHOICES)
+TRIP_BUDGET_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (("all", "Any budget"), *BUDGET_TIER_CHOICES)
 TRIP_DIFFICULTY_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
     ("all", "Any difficulty"),
-    ("easy", "Easy"),
-    ("moderate", "Moderate"),
-    ("challenging", "Challenging"),
+    *DIFFICULTY_LEVEL_CHOICES,
 )
 
 TRIP_DURATION_FILTER_VALUES: Final[set[str]] = {item[0] for item in TRIP_DURATION_FILTER_OPTIONS}

@@ -22,6 +22,11 @@ class TripSeed:
     description: str
     destination: str
     traffic_score: int
+    trip_type: str
+    budget_tier: str
+    difficulty_level: str
+    pace_level: str
+    group_size_label: str
     starts_in_days: int
     duration_days: int = 3
 
@@ -38,6 +43,11 @@ DEMO_TRIP_SEEDS: tuple[TripSeed, ...] = (
         ),
         destination="Kyoto, Japan",
         traffic_score=92,
+        trip_type="food-culture",
+        budget_tier="mid",
+        difficulty_level="easy",
+        pace_level="balanced",
+        group_size_label="6-10 travelers",
         starts_in_days=12,
         duration_days=2,
     ),
@@ -52,6 +62,11 @@ DEMO_TRIP_SEEDS: tuple[TripSeed, ...] = (
         ),
         destination="El Chalten, Argentina",
         traffic_score=87,
+        trip_type="trekking",
+        budget_tier="premium",
+        difficulty_level="challenging",
+        pace_level="balanced",
+        group_size_label="6-8 travelers",
         starts_in_days=26,
         duration_days=5,
     ),
@@ -66,6 +81,11 @@ DEMO_TRIP_SEEDS: tuple[TripSeed, ...] = (
         ),
         destination="Marrakech to Merzouga",
         traffic_score=81,
+        trip_type="desert",
+        budget_tier="mid",
+        difficulty_level="moderate",
+        pace_level="balanced",
+        group_size_label="8-12 travelers",
         starts_in_days=-8,
         duration_days=4,
     ),
@@ -170,6 +190,15 @@ class Command(BaseCommand):
                     "summary": seed.summary,
                     "description": seed.description,
                     "destination": seed.destination,
+                    "trip_type": seed.trip_type,
+                    "budget_tier": seed.budget_tier,
+                    "difficulty_level": seed.difficulty_level,
+                    "pace_level": seed.pace_level,
+                    "group_size_label": seed.group_size_label,
+                    "includes_label": (
+                        "Host planning support, route guidance, and group coordination. "
+                        "Bookings are self-managed by members."
+                    ),
                     "starts_at": starts_at,
                     "ends_at": ends_at,
                     "traffic_score": seed.traffic_score,
