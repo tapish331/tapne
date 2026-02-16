@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime
+import re
 from typing import Any, NotRequired, TypedDict, cast
 
 from django.apps import apps
@@ -21,6 +22,7 @@ class TripData(TypedDict):
     destination: NotRequired[str]
     banner_image_url: NotRequired[str]
     host_username: NotRequired[str]
+    is_bookmarked: NotRequired[bool]
     traffic_score: NotRequired[int]
     url: NotRequired[str]
     starts_at: NotRequired[datetime | str]
@@ -35,11 +37,13 @@ class TripData(TypedDict):
     budget_tier: NotRequired[str]
     budget_label: NotRequired[str]
     budget_range_label: NotRequired[str]
+    cost_label: NotRequired[str]
     difficulty_level: NotRequired[str]
     difficulty_label: NotRequired[str]
     pace_level: NotRequired[str]
     pace_label: NotRequired[str]
     group_size_label: NotRequired[str]
+    spots_left_label: NotRequired[str]
     includes_label: NotRequired[str]
     highlights: NotRequired[list[str]]
 
@@ -489,6 +493,22 @@ def _infer_group_size_label(text_blob: str, trip_type: str) -> str:
     return "6-10 travelers"
 
 
+def _infer_spots_left_label(group_size_label: str) -> str:
+    cleaned = str(group_size_label or "").strip().lower()
+    if not cleaned:
+        return "Limited spots"
+
+    matches = [int(token) for token in re.findall(r"\d+", cleaned)]
+    if not matches:
+        return "Limited spots"
+
+    max_size = max(matches)
+    if max_size <= 0:
+        return "Limited spots"
+
+    return f"{max_size} spot{'s' if max_size != 1 else ''} left"
+
+
 def enrich_trip_preview_fields(trip: TripData) -> TripData:
     enriched = cast(TripData, dict(trip))
     text_blob = _trip_text_blob(enriched)
@@ -538,6 +558,10 @@ def enrich_trip_preview_fields(trip: TripData) -> TripData:
     enriched["budget_tier"] = budget_tier
     enriched["budget_label"] = BUDGET_LABELS.get(budget_tier, BUDGET_LABELS["mid"])
     enriched["budget_range_label"] = BUDGET_RANGE_LABELS.get(budget_tier, BUDGET_RANGE_LABELS["mid"])
+    if not str(enriched.get("cost_label", "") or "").strip():
+        enriched["cost_label"] = str(enriched.get("budget_range_label", "") or "").strip() or str(
+            enriched.get("budget_label", "") or ""
+        ).strip() or BUDGET_LABELS["mid"]
 
     difficulty_level = str(enriched.get("difficulty_level", "") or "").strip().lower()
     if difficulty_level not in DIFFICULTY_LABELS:
@@ -553,6 +577,8 @@ def enrich_trip_preview_fields(trip: TripData) -> TripData:
 
     if not str(enriched.get("group_size_label", "") or "").strip():
         enriched["group_size_label"] = _infer_group_size_label(text_blob, trip_type)
+    if not str(enriched.get("spots_left_label", "") or "").strip():
+        enriched["spots_left_label"] = _infer_spots_left_label(str(enriched.get("group_size_label", "") or ""))
 
     if not str(enriched.get("includes_label", "") or "").strip():
         enriched["includes_label"] = (

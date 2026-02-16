@@ -1,3 +1,145 @@
+{% if card_variant == "home-upcoming" %}
+<article class="card card-trip card-trip-home" data-card-type="trip" data-card-id="{{ trip.id|default:'n/a' }}">
+    {% if trip.url %}
+    <a class="trip-card-link-overlay" href="{{ trip.url }}" aria-label="Open {{ trip.title|default:'trip' }} details"></a>
+    {% elif trip.id %}
+    <a class="trip-card-link-overlay" href="/trips/{{ trip.id }}/" aria-label="Open {{ trip.title|default:'trip' }} details"></a>
+    {% endif %}
+
+    <div class="trip-card-media">
+        {% if trip.banner_image_url %}
+        <img class="trip-card-banner trip-card-banner-home" src="{{ trip.banner_image_url }}" alt="{{ trip.title|default:'Trip banner' }}">
+        {% else %}
+        <div class="trip-card-banner trip-card-banner-home trip-card-banner-fallback" aria-hidden="true"></div>
+        {% endif %}
+        <span class="trip-card-type-chip">{{ trip.trip_type_label|default:"Adventure" }}</span>
+
+        {% if user.is_authenticated %}
+        {% if trip.id %}
+        <form method="post" action="{% if trip.is_bookmarked %}{% url 'social:unbookmark' %}{% else %}{% url 'social:bookmark' %}{% endif %}" class="trip-bookmark-icon-form trip-card-interactive">
+            {% csrf_token %}
+            <input type="hidden" name="type" value="trip">
+            <input type="hidden" name="id" value="{{ trip.id }}">
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button
+                class="trip-bookmark-icon-btn {% if trip.is_bookmarked %}is-bookmarked{% endif %}"
+                type="submit"
+                aria-label="{% if trip.is_bookmarked %}Remove bookmark{% else %}Bookmark this trip{% endif %}"
+                title="{% if trip.is_bookmarked %}Remove bookmark{% else %}Bookmark this trip{% endif %}"
+            >
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path
+                        d="M7 3.8h10v16.4L12 17l-5 3.2z"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.95"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    ></path>
+                    {% if trip.is_bookmarked %}
+                    <path d="M9.4 9.6l5.2 5.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M14.6 9.6l-5.2 5.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
+                    {% else %}
+                    <path d="M12 8.9v5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M9.3 11.6h5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
+                    {% endif %}
+                </svg>
+            </button>
+        </form>
+        {% else %}
+        <div class="trip-bookmark-icon-form trip-card-interactive">
+            <button class="trip-bookmark-icon-btn" type="button" disabled aria-label="Bookmark unavailable">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path
+                        d="M7 3.8h10v16.4L12 17l-5 3.2z"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.95"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    ></path>
+                </svg>
+            </button>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="trip-bookmark-icon-form trip-card-interactive">
+            <button
+                class="trip-bookmark-icon-btn js-guest-action"
+                type="button"
+                data-action-label="bookmark this trip"
+                aria-label="Bookmark this trip"
+            >
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path
+                        d="M7 3.8h10v16.4L12 17l-5 3.2z"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.95"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    ></path>
+                    <path d="M12 8.9v5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M9.3 11.6h5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="trip-card-home-body">
+        <h3 class="card-title trip-card-home-title">{{ trip.title|default:"Untitled trip" }}</h3>
+
+        <div class="trip-card-home-row">
+            <div class="trip-card-home-left">
+                <span class="trip-card-inline-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                        <path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"></path>
+                        <circle cx="12" cy="10" r="2.5"></circle>
+                    </svg>
+                </span>
+                <span class="trip-card-home-text">{{ trip.destination|default:"TBD" }}</span>
+            </div>
+        </div>
+
+        <div class="trip-card-home-row">
+            <div class="trip-card-home-left">
+                <span class="trip-card-inline-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                        <rect x="3.5" y="5.2" width="17" height="15.2" rx="2.2"></rect>
+                        <path d="M3.5 9.2h17"></path>
+                        <path d="M8 3.5v3.4"></path>
+                        <path d="M16 3.5v3.4"></path>
+                    </svg>
+                </span>
+                <span class="trip-card-home-text">{{ trip.date_label|default:"Dates announced soon" }}</span>
+            </div>
+            <span class="trip-card-home-right trip-card-cost">{{ trip.cost_label|default:trip.budget_range_label|default:trip.budget_label|default:"$$ Mid-range" }}</span>
+        </div>
+
+        <div class="trip-card-home-row">
+            <div class="trip-card-home-left">
+                <span class="trip-card-inline-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                        <circle cx="8" cy="9" r="2.7"></circle>
+                        <circle cx="16.5" cy="10" r="2.2"></circle>
+                        <path d="M3.8 18c.8-2.3 2.7-3.8 5.2-3.8 2.6 0 4.5 1.5 5.3 3.8"></path>
+                        <path d="M13.4 18c.6-1.6 2-2.7 3.9-2.7 1 0 1.9.3 2.6.8"></path>
+                    </svg>
+                </span>
+                <span class="trip-card-home-text">{{ trip.spots_left_label|default:trip.group_size_label|default:"Limited spots" }}</span>
+            </div>
+            <span class="trip-card-home-right">
+                {% if trip.host_username %}
+                <a class="trip-card-host-link trip-card-interactive" href="/u/{{ trip.host_username }}/">@{{ trip.host_username }}</a>
+                {% else %}
+                <span class="trip-card-host-name">@host</span>
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</article>
+{% else %}
 <article class="card card-trip" data-card-type="trip" data-card-id="{{ trip.id|default:'n/a' }}">
     {% if trip.banner_image_url %}
     <img class="trip-card-banner" src="{{ trip.banner_image_url }}" alt="{{ trip.title|default:'Trip banner' }}">
@@ -85,3 +227,4 @@
         {% endif %}
     </div>
 </article>
+{% endif %}

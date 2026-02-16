@@ -8,6 +8,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from social.models import Bookmark
 from trips.models import Trip
 
 from .models import MemberFeedPreference
@@ -35,15 +36,21 @@ class FeedHomeViewTests(TestCase):
             response,
             "Join community-led trips with like-minded travelers. Discover adventures, make friends, and explore the world together.",
         )
+        self.assertContains(response, "Upcoming trips")
+        self.assertContains(response, "Destinations")
+        self.assertNotContains(response, "<h2>People</h2>")
         self.assertNotContains(response, "Guest home")
 
         top_trip = response.context["trips"][0]
         top_profile = response.context["profiles"][0]
         top_blog = response.context["blogs"][0]
+        top_destination = response.context["destinations"][0]
 
         self.assertEqual(top_trip["host_username"], "mei")
         self.assertEqual(top_profile["username"], "mei")
         self.assertEqual(top_blog["author_username"], "mei")
+        self.assertEqual(top_destination["name"], top_trip["destination"])
+        self.assertEqual(top_destination["trip_count"], 1)
         self.assertEqual(response.context["total_unique_destinations"], 0)
         self.assertEqual(response.context["total_authenticated_users"], 1)
         self.assertEqual(response.context["total_trips_created"], 0)
@@ -56,6 +63,7 @@ class FeedHomeViewTests(TestCase):
         self.assertEqual(response.context["feed_mode"], "guest-trending-live")
         self.assertEqual(response.context["trips"], [])
         self.assertEqual(response.context["blogs"], [])
+        self.assertEqual(response.context["destinations"], [])
         self.assertEqual(response.context["profiles"][0]["username"], "member1")
 
     def test_member_home_uses_personalized_payload_from_preferences(self) -> None:
@@ -86,6 +94,25 @@ class FeedHomeViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["feed_mode"], "member-personalized")
         self.assertIn("Fallback member personalization", response.context["feed_reason"])
+
+    def test_member_home_marks_bookmarked_trip_and_uses_unbookmark_action(self) -> None:
+        self.client.login(username=self.member.username, password=self.password)
+        first_response = self.client.get(reverse("home"))
+        first_trip_id = int(first_response.context["trips"][0]["id"])
+
+        Bookmark.objects.create(
+            member=self.member,
+            target_type=Bookmark.TARGET_TRIP,
+            target_key=str(first_trip_id),
+            target_label="Saved trip",
+            target_url=f"/trips/{first_trip_id}/",
+        )
+
+        second_response = self.client.get(reverse("home"))
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(int(second_response.context["trips"][0]["id"]), first_trip_id)
+        self.assertTrue(bool(second_response.context["trips"][0]["is_bookmarked"]))
+        self.assertContains(second_response, reverse("social:unbookmark"))
 
     def test_home_verbose_query_prints_debug_lines(self) -> None:
         with patch("builtins.print") as mock_print:

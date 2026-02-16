@@ -67,30 +67,82 @@
 
 <section class="section-grid">
     <header class="section-header">
-        <h2>Trips</h2>
+        <h2>Upcoming trips</h2>
         <a href="/trips/">Browse all trips</a>
     </header>
-    <div class="card-grid">
-        {% for trip in trips %}
-        {% include "partials/cards/trip_card.html" with trip=trip %}
-        {% empty %}
-        <div class="empty-state">No trips yet. Create the first trip to seed this section.</div>
-        {% endfor %}
+    {% if trips %}
+    <div class="card-carousel-shell" data-card-carousel>
+        <button
+            class="card-carousel-arrow card-carousel-arrow-prev"
+            type="button"
+            aria-label="Scroll upcoming trips left"
+            aria-controls="homeUpcomingTripsCarousel"
+            data-carousel-prev
+        >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M14.5 5.8L8.3 12l6.2 6.2"></path>
+            </svg>
+        </button>
+        <div id="homeUpcomingTripsCarousel" class="card-carousel" aria-label="Upcoming trips carousel" tabindex="0">
+            {% for trip in trips|slice:":8" %}
+            {% include "partials/cards/trip_card.html" with trip=trip card_variant="home-upcoming" %}
+            {% endfor %}
+        </div>
+        <button
+            class="card-carousel-arrow card-carousel-arrow-next"
+            type="button"
+            aria-label="Scroll upcoming trips right"
+            aria-controls="homeUpcomingTripsCarousel"
+            data-carousel-next
+        >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M9.5 5.8L15.7 12l-6.2 6.2"></path>
+            </svg>
+        </button>
     </div>
+    {% else %}
+    <div class="empty-state">No upcoming trips yet. Create the first trip to seed this section.</div>
+    {% endif %}
 </section>
 
 <section class="section-grid">
     <header class="section-header">
-        <h2>People</h2>
-        <a href="/search/?type=users">Find creators</a>
+        <h2>Destinations</h2>
+        <a href="/search/?type=trips">Explore destinations</a>
     </header>
-    <div class="card-grid">
-        {% for profile in profiles %}
-        {% include "partials/cards/user_card.html" with profile=profile %}
-        {% empty %}
-        <div class="empty-state">No creators yet. User cards will appear here once accounts are active.</div>
-        {% endfor %}
+    {% if destinations %}
+    <div class="card-carousel-shell" data-card-carousel>
+        <button
+            class="card-carousel-arrow card-carousel-arrow-prev"
+            type="button"
+            aria-label="Scroll destinations left"
+            aria-controls="homeDestinationsCarousel"
+            data-carousel-prev
+        >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M14.5 5.8L8.3 12l6.2 6.2"></path>
+            </svg>
+        </button>
+        <div id="homeDestinationsCarousel" class="card-carousel" aria-label="Destinations carousel" tabindex="0">
+            {% for destination in destinations|slice:":8" %}
+            {% include "partials/cards/destination_card.html" with destination=destination %}
+            {% endfor %}
+        </div>
+        <button
+            class="card-carousel-arrow card-carousel-arrow-next"
+            type="button"
+            aria-label="Scroll destinations right"
+            aria-controls="homeDestinationsCarousel"
+            data-carousel-next
+        >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M9.5 5.8L15.7 12l-6.2 6.2"></path>
+            </svg>
+        </button>
     </div>
+    {% else %}
+    <div class="empty-state">No destinations yet. Add trip locations to populate this section.</div>
+    {% endif %}
 </section>
 
 <section class="section-grid">
@@ -98,13 +150,87 @@
         <h2>Blogs</h2>
         <a href="/blogs/">Read all blogs</a>
     </header>
-    <div class="card-grid">
-        {% for blog in blogs %}
-        {% include "partials/cards/blog_card.html" with blog=blog %}
-        {% empty %}
-        <div class="empty-state">No blogs yet. Publish a first post to populate this feed.</div>
-        {% endfor %}
+    {% if blogs %}
+    <div class="card-carousel-shell" data-card-carousel>
+        <button
+            class="card-carousel-arrow card-carousel-arrow-prev"
+            type="button"
+            aria-label="Scroll blogs left"
+            aria-controls="homeBlogsCarousel"
+            data-carousel-prev
+        >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M14.5 5.8L8.3 12l6.2 6.2"></path>
+            </svg>
+        </button>
+        <div id="homeBlogsCarousel" class="card-carousel" aria-label="Blogs carousel" tabindex="0">
+            {% for blog in blogs|slice:":8" %}
+            {% include "partials/cards/blog_card.html" with blog=blog %}
+            {% endfor %}
+        </div>
+        <button
+            class="card-carousel-arrow card-carousel-arrow-next"
+            type="button"
+            aria-label="Scroll blogs right"
+            aria-controls="homeBlogsCarousel"
+            data-carousel-next
+        >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M9.5 5.8L15.7 12l-6.2 6.2"></path>
+            </svg>
+        </button>
     </div>
+    {% else %}
+    <div class="empty-state">No blogs yet. Publish a first post to populate this feed.</div>
+    {% endif %}
 </section>
+{% endblock %}
+
+{% block body_extra %}
+{{ block.super }}
+<script>
+    (function initHomeCarousels() {
+        var carouselShells = document.querySelectorAll("[data-card-carousel]");
+        if (!carouselShells.length) {
+            return;
+        }
+
+        function bindCarousel(shell) {
+            var track = shell.querySelector(".card-carousel");
+            var prevButton = shell.querySelector("[data-carousel-prev]");
+            var nextButton = shell.querySelector("[data-carousel-next]");
+            if (!track || !prevButton || !nextButton) {
+                return;
+            }
+
+            function stepSize() {
+                return Math.max(Math.floor(track.clientWidth * 0.85), 260);
+            }
+
+            function updateState() {
+                var maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+                var atStart = track.scrollLeft <= 2;
+                var atEnd = track.scrollLeft >= maxScrollLeft - 2;
+                prevButton.disabled = atStart;
+                nextButton.disabled = atEnd;
+                shell.classList.toggle("is-static", maxScrollLeft <= 2);
+            }
+
+            prevButton.addEventListener("click", function () {
+                track.scrollBy({ left: -stepSize(), behavior: "smooth" });
+            });
+            nextButton.addEventListener("click", function () {
+                track.scrollBy({ left: stepSize(), behavior: "smooth" });
+            });
+            track.addEventListener("scroll", updateState, { passive: true });
+            window.addEventListener("resize", updateState);
+            updateState();
+        }
+
+        for (var i = 0; i < carouselShells.length; i += 1) {
+            bindCarousel(carouselShells[i]);
+        }
+    })();
+</script>
 {% endblock %}
 
