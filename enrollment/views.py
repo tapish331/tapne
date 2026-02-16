@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, Literal
 from urllib.parse import urlsplit
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -22,6 +22,7 @@ from .models import (
 )
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
+FeedbackLevel = Literal["success", "info", "warning", "error"]
 
 
 def _is_verbose_request(request: HttpRequest) -> bool:
@@ -69,6 +70,54 @@ def _safe_next_url(request: HttpRequest, fallback: str) -> str:
     return fallback
 
 
+def _wants_json_response(request: HttpRequest) -> bool:
+    requested_with = str(request.headers.get("X-Requested-With", "") or "").strip().lower()
+    accept = str(request.headers.get("Accept", "") or "").strip().lower()
+    response_format = str(
+        request.POST.get("response_format") or request.GET.get("response_format") or ""
+    ).strip().lower()
+    return (
+        requested_with == "xmlhttprequest"
+        or "application/json" in accept
+        or response_format == "json"
+    )
+
+
+def _push_feedback_message(request: HttpRequest, *, level: FeedbackLevel, message_text: str) -> None:
+    if level == "success":
+        messages.success(request, message_text)
+    elif level == "warning":
+        messages.warning(request, message_text)
+    elif level == "error":
+        messages.error(request, message_text)
+    else:
+        messages.info(request, message_text)
+
+
+def _build_action_response(
+    request: HttpRequest,
+    *,
+    next_url: str,
+    level: FeedbackLevel,
+    message_text: str,
+    status_code: int = 200,
+    payload: dict[str, object] | None = None,
+) -> HttpResponse:
+    if _wants_json_response(request):
+        response_payload: dict[str, object] = {
+            "ok": level != "error",
+            "level": level,
+            "message": message_text,
+            "next_url": next_url,
+        }
+        if payload:
+            response_payload.update(payload)
+        return JsonResponse(response_payload, status=status_code)
+
+    _push_feedback_message(request, level=level, message_text=message_text)
+    return redirect(next_url)
+
+
 @login_required(login_url="accounts:login")
 @require_POST
 def trip_request_view(request: HttpRequest, trip_id: int) -> HttpResponse:
@@ -77,12 +126,24 @@ def trip_request_view(request: HttpRequest, trip_id: int) -> HttpResponse:
 
     trip = Trip.objects.select_related("host").filter(pk=trip_id).first()
     if trip is None:
-        messages.error(request, "Could not submit join request. Trip was not found.")
+        message_text = "Could not submit join request. Trip was not found."
         _vprint(request, f"Join request failed because trip id={trip_id} was not found")
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=404,
+            payload={
+                "action": "trip-request",
+                "trip_id": trip_id,
+                "outcome": "trip-not-found",
+                "request_id": None,
+            },
+        )
 
     if not bool(getattr(trip, "is_published", False)):
-        messages.error(request, "Could not submit join request because this trip is not published.")
+        message_text = "Could not submit join request because this trip is not published."
         _vprint(
             request,
             (
@@ -91,7 +152,19 @@ def trip_request_view(request: HttpRequest, trip_id: int) -> HttpResponse:
                 )
             ),
         )
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=400,
+            payload={
+                "action": "trip-request",
+                "trip_id": trip_id,
+                "outcome": "trip-unpublished",
+                "request_id": None,
+            },
+        )
 
     request_row, outcome = submit_join_request(
         member=request.user,
@@ -100,17 +173,23 @@ def trip_request_view(request: HttpRequest, trip_id: int) -> HttpResponse:
     )
 
     if outcome == "created-pending":
-        messages.success(request, "Join request sent to the host.")
+        level: FeedbackLevel = "success"
+        message_text = "Join request sent to the host."
     elif outcome == "already-pending":
-        messages.info(request, "You already have a pending join request for this trip.")
+        level = "info"
+        message_text = "You already have a pending join request for this trip."
     elif outcome == "already-approved":
-        messages.success(request, "You are already approved for this trip.")
+        level = "success"
+        message_text = "You are already approved for this trip."
     elif outcome == "reopened-pending":
-        messages.success(request, "Join request re-submitted to the host.")
+        level = "success"
+        message_text = "Join request re-submitted to the host."
     elif outcome == "host-self-request-blocked":
-        messages.info(request, "Hosts cannot submit join requests to their own trips.")
+        level = "info"
+        message_text = "Hosts cannot submit join requests to their own trips."
     else:
-        messages.error(request, "Could not submit join request. Please try again.")
+        level = "error"
+        message_text = "Could not submit join request. Please try again."
 
     _vprint(
         request,
@@ -124,7 +203,20 @@ def trip_request_view(request: HttpRequest, trip_id: int) -> HttpResponse:
             )
         ),
     )
-    return redirect(next_url)
+    return _build_action_response(
+        request,
+        next_url=next_url,
+        level=level,
+        message_text=message_text,
+        payload={
+            "action": "trip-request",
+            "trip_id": trip_id,
+            "outcome": outcome,
+            "request_id": request_row.pk if request_row is not None else None,
+            "is_pending": outcome in {"created-pending", "already-pending", "reopened-pending"},
+            "is_approved": outcome == "already-approved",
+        },
+    )
 
 
 @login_required(login_url="accounts:login")

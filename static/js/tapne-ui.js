@@ -777,9 +777,542 @@
         vLog("Closed auth modal.");
     }
 
+    function pathFromUrl(urlValue) {
+        try {
+            var url = new URL(urlValue || "", window.location.origin);
+            return url.pathname || "/";
+        } catch (_error) {
+            return "";
+        }
+    }
+
+    function parseFollowActionFromForm(form) {
+        if (!(form instanceof HTMLFormElement)) {
+            return null;
+        }
+
+        var actionPath = pathFromUrl(form.getAttribute("action") || form.action || "");
+        var match = actionPath.match(/^\/social\/(follow|unfollow)\/([^/]+)\/?$/i);
+        if (!match) {
+            return null;
+        }
+
+        var rawUsername = "";
+        try {
+            rawUsername = decodeURIComponent(match[2] || "");
+        } catch (_error) {
+            rawUsername = String(match[2] || "");
+        }
+        var normalizedUsername = normalizeFlag(rawUsername).replace(/^@+/, "");
+        if (!normalizedUsername) {
+            return null;
+        }
+
+        return {
+            action: normalizeFlag(match[1]),
+            username: normalizedUsername
+        };
+    }
+
+    function parseBookmarkActionFromForm(form) {
+        if (!(form instanceof HTMLFormElement)) {
+            return null;
+        }
+
+        var actionPath = pathFromUrl(form.getAttribute("action") || form.action || "");
+        var match = actionPath.match(/^\/social\/(bookmark|unbookmark)\/?$/i);
+        if (!match) {
+            return null;
+        }
+        return {
+            action: normalizeFlag(match[1])
+        };
+    }
+
+    function parseTripRequestActionFromForm(form) {
+        if (!(form instanceof HTMLFormElement)) {
+            return null;
+        }
+
+        var actionPath = pathFromUrl(form.getAttribute("action") || form.action || "");
+        var match = actionPath.match(/^\/enroll\/trips\/(\d+)\/request\/?$/i);
+        if (!match) {
+            return null;
+        }
+        return {
+            tripId: String(match[1] || "")
+        };
+    }
+
+    function normalizeBookmarkType(typeValue) {
+        var normalizedType = normalizeFlag(typeValue);
+        if (normalizedType === "trip" || normalizedType === "user" || normalizedType === "blog") {
+            return normalizedType;
+        }
+        return "";
+    }
+
+    function normalizeBookmarkKey(typeValue, keyValue) {
+        var targetType = normalizeBookmarkType(typeValue);
+        var rawKey = String(keyValue || "").trim();
+        if (!targetType || !rawKey) {
+            return "";
+        }
+
+        if (targetType === "trip") {
+            if (!/^\d+$/.test(rawKey)) {
+                return "";
+            }
+            return String(parseInt(rawKey, 10));
+        }
+        if (targetType === "user") {
+            return normalizeFlag(rawKey.replace(/^@+/, ""));
+        }
+        return normalizeFlag(rawKey);
+    }
+
+    function readBookmarkIdentity(form) {
+        if (!(form instanceof HTMLFormElement)) {
+            return null;
+        }
+
+        var typeInput = form.querySelector("input[name='type']");
+        var idInput = form.querySelector("input[name='id']");
+        var rawType = "";
+        var rawId = "";
+        if (typeInput instanceof HTMLInputElement) {
+            rawType = typeInput.value || "";
+        }
+        if (idInput instanceof HTMLInputElement) {
+            rawId = idInput.value || "";
+        }
+
+        var normalizedType = normalizeBookmarkType(rawType);
+        var normalizedKey = normalizeBookmarkKey(normalizedType, rawId);
+        if (!normalizedType || !normalizedKey) {
+            return null;
+        }
+
+        return {
+            targetType: normalizedType,
+            targetKey: normalizedKey,
+            idInput: idInput instanceof HTMLInputElement ? idInput : null
+        };
+    }
+
+    function firstSubmitControl(form) {
+        if (!(form instanceof HTMLFormElement)) {
+            return null;
+        }
+        var control = form.querySelector("button[type='submit'], input[type='submit']");
+        if (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) {
+            return control;
+        }
+        return null;
+    }
+
+    function setSubmitControlLabel(control, labelValue) {
+        var label = String(labelValue || "").trim();
+        if (!label) {
+            return;
+        }
+        if (control instanceof HTMLButtonElement) {
+            control.textContent = label;
+        } else if (control instanceof HTMLInputElement) {
+            control.value = label;
+        }
+    }
+
+    function shouldHandleAsAsyncActionForm(form) {
+        if (!(form instanceof HTMLFormElement)) {
+            return false;
+        }
+
+        var methodValue = normalizeFlag(form.getAttribute("method") || form.method || "get");
+        if (methodValue !== "post") {
+            return false;
+        }
+
+        return (
+            parseFollowActionFromForm(form) !== null ||
+            parseBookmarkActionFromForm(form) !== null ||
+            parseTripRequestActionFromForm(form) !== null
+        );
+    }
+
+    function setAsyncFormBusy(form, isBusy) {
+        if (!(form instanceof HTMLFormElement)) {
+            return;
+        }
+
+        var controls = Array.prototype.slice.call(
+            form.querySelectorAll("button[type='submit'], input[type='submit']")
+        );
+        if (isBusy) {
+            form.setAttribute("data-async-pending", "1");
+            controls.forEach(function disableControl(control) {
+                if (!(control instanceof HTMLButtonElement || control instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                var wasDisabled = control.hasAttribute("disabled");
+                control.setAttribute("data-async-was-disabled", wasDisabled ? "1" : "0");
+                control.setAttribute("disabled", "disabled");
+            });
+            return;
+        }
+
+        form.removeAttribute("data-async-pending");
+        controls.forEach(function restoreControl(control) {
+            if (!(control instanceof HTMLButtonElement || control instanceof HTMLInputElement)) {
+                return;
+            }
+
+            var shouldStayDisabled = control.getAttribute("data-async-was-disabled") === "1";
+            var isForceDisabled = control.getAttribute("data-async-force-disabled") === "1";
+            control.removeAttribute("data-async-was-disabled");
+            if (shouldStayDisabled || isForceDisabled) {
+                control.setAttribute("disabled", "disabled");
+            } else {
+                control.removeAttribute("disabled");
+            }
+        });
+    }
+
+    var asyncToastStack = null;
+
+    function ensureAsyncToastStack() {
+        if (asyncToastStack instanceof HTMLElement && document.body.contains(asyncToastStack)) {
+            return asyncToastStack;
+        }
+
+        asyncToastStack = document.createElement("section");
+        asyncToastStack.className = "flash-list flash-list-floating";
+        asyncToastStack.setAttribute("aria-label", "Action notifications");
+        asyncToastStack.setAttribute("aria-live", "polite");
+        asyncToastStack.setAttribute("aria-atomic", "false");
+        asyncToastStack.hidden = true;
+        document.body.appendChild(asyncToastStack);
+        return asyncToastStack;
+    }
+
+    function showAsyncToast(levelValue, messageValue) {
+        var messageText = String(messageValue || "").trim();
+        if (!messageText) {
+            return;
+        }
+
+        var normalizedLevel = normalizeFlag(levelValue);
+        if (["success", "info", "warning", "error"].indexOf(normalizedLevel) < 0) {
+            normalizedLevel = "info";
+        }
+
+        var stack = ensureAsyncToastStack();
+        var toast = document.createElement("div");
+        toast.className = "flash flash-" + normalizedLevel + " flash-toast";
+        toast.textContent = messageText;
+        toast.setAttribute("role", normalizedLevel === "error" ? "alert" : "status");
+        stack.hidden = false;
+        stack.appendChild(toast);
+
+        window.requestAnimationFrame(function showToast() {
+            toast.classList.add("is-visible");
+        });
+
+        window.setTimeout(function hideToast() {
+            toast.classList.add("is-exit");
+            window.setTimeout(function removeToastNode() {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+                if (stack.childElementCount === 0) {
+                    stack.hidden = true;
+                }
+            }, 220);
+        }, 4200);
+    }
+
+    function updateFollowForms(payload) {
+        var targetUsername = normalizeFlag(payload && payload.target_username).replace(/^@+/, "");
+        if (!targetUsername) {
+            return;
+        }
+
+        var isFollowing = !!(payload && payload.is_following);
+        var fallbackAction = (
+            (isFollowing ? "/social/unfollow/" : "/social/follow/") +
+            encodeURIComponent(targetUsername) +
+            "/"
+        );
+        var nextActionUrl = normalizePath(
+            String((payload && payload.next_action_url) || ""),
+            fallbackAction
+        );
+
+        Array.prototype.slice.call(document.querySelectorAll("form"))
+            .forEach(function syncFollowForm(form) {
+                if (!(form instanceof HTMLFormElement)) {
+                    return;
+                }
+                var parsed = parseFollowActionFromForm(form);
+                if (!parsed || parsed.username !== targetUsername) {
+                    return;
+                }
+
+                form.setAttribute("action", nextActionUrl);
+                var submitControl = firstSubmitControl(form);
+                if (!submitControl) {
+                    return;
+                }
+                var nextLabel = isFollowing ? "Unfollow" : "Follow";
+                setSubmitControlLabel(submitControl, nextLabel);
+                submitControl.setAttribute("aria-label", nextLabel);
+                submitControl.setAttribute("title", nextLabel);
+            });
+    }
+
+    function updateBookmarkForms(payload, sourceForm) {
+        var targetType = normalizeBookmarkType(payload && payload.target_type);
+        var targetKey = normalizeBookmarkKey(targetType, payload && payload.target_key);
+        if (!targetType || !targetKey) {
+            return;
+        }
+
+        var isBookmarked = !!(payload && payload.is_bookmarked);
+        var fallbackAction = isBookmarked ? "/social/unbookmark/" : "/social/bookmark/";
+        var nextActionUrl = normalizePath(
+            String((payload && payload.next_action_url) || ""),
+            fallbackAction
+        );
+
+        Array.prototype.slice.call(document.querySelectorAll("form"))
+            .forEach(function syncBookmarkForm(form) {
+                if (!(form instanceof HTMLFormElement)) {
+                    return;
+                }
+
+                if (!parseBookmarkActionFromForm(form)) {
+                    return;
+                }
+
+                var identity = readBookmarkIdentity(form);
+                if (!identity) {
+                    return;
+                }
+                if (identity.targetType !== targetType || identity.targetKey !== targetKey) {
+                    return;
+                }
+
+                form.setAttribute("action", nextActionUrl);
+                if (identity.idInput) {
+                    identity.idInput.value = targetKey;
+                }
+
+                var submitControl = firstSubmitControl(form);
+                if (!submitControl) {
+                    return;
+                }
+
+                if (submitControl.classList.contains("trip-bookmark-icon-btn")) {
+                    submitControl.classList.toggle("is-bookmarked", isBookmarked);
+                    var iconLabel = isBookmarked ? "Remove bookmark" : "Bookmark this trip";
+                    submitControl.setAttribute("aria-label", iconLabel);
+                    submitControl.setAttribute("title", iconLabel);
+                    return;
+                }
+
+                var currentLabel = "";
+                if (submitControl instanceof HTMLButtonElement) {
+                    currentLabel = submitControl.textContent || "";
+                } else if (submitControl instanceof HTMLInputElement) {
+                    currentLabel = submitControl.value || "";
+                }
+
+                var normalizedCurrentLabel = normalizeFlag(currentLabel);
+                var nextLabel = isBookmarked ? "Remove bookmark" : "Bookmark";
+                if (!isBookmarked && normalizedCurrentLabel.indexOf("profile") >= 0) {
+                    nextLabel = "Bookmark profile";
+                }
+                setSubmitControlLabel(submitControl, nextLabel);
+                submitControl.setAttribute("aria-label", nextLabel);
+                submitControl.setAttribute("title", nextLabel);
+            });
+
+        if (
+            payload &&
+            payload.action === "unbookmark" &&
+            payload.outcome === "removed" &&
+            sourceForm instanceof HTMLFormElement &&
+            window.location.pathname.indexOf("/social/bookmarks/") === 0
+        ) {
+            var listItem = sourceForm.closest(".card-grid > div");
+            if (listItem instanceof HTMLElement) {
+                listItem.remove();
+            }
+        }
+    }
+
+    function tripRequestUiForOutcome(outcomeValue) {
+        var outcome = normalizeFlag(outcomeValue);
+        if (outcome === "created-pending" || outcome === "already-pending" || outcome === "reopened-pending") {
+            return { label: "Request sent", disable: true };
+        }
+        if (outcome === "already-approved") {
+            return { label: "Already approved", disable: true };
+        }
+        if (outcome === "host-self-request-blocked") {
+            return { label: "Unavailable", disable: true };
+        }
+        return null;
+    }
+
+    function updateTripRequestForms(payload) {
+        var tripId = String((payload && payload.trip_id) || "").trim();
+        if (!tripId) {
+            return;
+        }
+
+        var ui = tripRequestUiForOutcome(payload && payload.outcome);
+        if (!ui) {
+            return;
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll("form"))
+            .forEach(function syncTripRequestForm(form) {
+                if (!(form instanceof HTMLFormElement)) {
+                    return;
+                }
+
+                var parsed = parseTripRequestActionFromForm(form);
+                if (!parsed || parsed.tripId !== tripId) {
+                    return;
+                }
+
+                var submitControl = firstSubmitControl(form);
+                if (!submitControl) {
+                    return;
+                }
+                setSubmitControlLabel(submitControl, ui.label);
+                submitControl.setAttribute("aria-label", ui.label);
+                submitControl.setAttribute("title", ui.label);
+                if (ui.disable) {
+                    submitControl.setAttribute("data-async-force-disabled", "1");
+                    submitControl.setAttribute("disabled", "disabled");
+                } else {
+                    submitControl.removeAttribute("data-async-force-disabled");
+                }
+            });
+    }
+
+    function parseJsonResponse(response) {
+        var contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+        if (contentType.indexOf("application/json") < 0) {
+            return Promise.resolve(null);
+        }
+        return response.json().catch(function onJsonParseError() {
+            return null;
+        });
+    }
+
+    function applyAsyncActionPayload(form, response, payload) {
+        if (!payload || typeof payload !== "object") {
+            if (response && response.url) {
+                window.location.assign(response.url);
+                return;
+            }
+            window.location.reload();
+            return;
+        }
+
+        var level = normalizeFlag(payload.level);
+        if (!level) {
+            level = payload.ok === false ? "error" : "info";
+        }
+
+        if (payload.message) {
+            showAsyncToast(level, payload.message);
+        }
+
+        if (payload.ok !== true) {
+            return;
+        }
+
+        if (payload.action === "follow" || payload.action === "unfollow") {
+            updateFollowForms(payload);
+            return;
+        }
+
+        if (payload.action === "bookmark" || payload.action === "unbookmark") {
+            updateBookmarkForms(payload, form);
+            return;
+        }
+
+        if (payload.action === "trip-request") {
+            updateTripRequestForms(payload);
+        }
+    }
+
+    function submitAsyncActionForm(form) {
+        if (!(form instanceof HTMLFormElement)) {
+            return;
+        }
+
+        if (form.getAttribute("data-async-pending") === "1") {
+            return;
+        }
+
+        var actionUrl = form.getAttribute("action") || form.action || window.location.href;
+        var csrfToken = readCookieValue("csrftoken");
+        var requestHeaders = {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+        };
+        if (csrfToken) {
+            requestHeaders["X-CSRFToken"] = csrfToken;
+        }
+
+        setAsyncFormBusy(form, true);
+        window.fetch(actionUrl, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: requestHeaders,
+            body: new window.FormData(form)
+        }).then(function onFetchResponse(response) {
+            return parseJsonResponse(response).then(function onParsedPayload(payload) {
+                return {
+                    response: response,
+                    payload: payload
+                };
+            });
+        }).then(function onFetchResolved(result) {
+            applyAsyncActionPayload(form, result.response, result.payload);
+        }).catch(function onFetchError(error) {
+            vLog("Async action submission failed.", String(error));
+            form.submit();
+        }).finally(function onFetchSettled() {
+            setAsyncFormBusy(form, false);
+        });
+    }
+
+    function initializeAsyncStateForms() {
+        document.addEventListener("submit", function onAsyncFormSubmit(event) {
+            var submittedForm = event.target;
+            if (!(submittedForm instanceof HTMLFormElement)) {
+                return;
+            }
+            if (!shouldHandleAsAsyncActionForm(submittedForm)) {
+                return;
+            }
+
+            event.preventDefault();
+            submitAsyncActionForm(submittedForm);
+        });
+    }
+
     initializeThemeControls();
     initializeMemberMenu();
     initializeNavbarSearchDocking();
+    initializeAsyncStateForms();
 
     if (authModal) {
         authModal.addEventListener("click", function onModalClick(event) {

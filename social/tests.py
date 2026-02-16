@@ -116,6 +116,31 @@ class SocialViewsTests(TestCase):
             ).exists()
         )
 
+    def test_follow_post_ajax_returns_json_payload(self) -> None:
+        self.client.login(username=self.member.username, password=self.password)
+
+        response = self.client.post(
+            reverse("social:follow", kwargs={"username": self.target.username}),
+            {"next": reverse("public-profile", kwargs={"username": self.target.username})},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["action"], "follow")
+        self.assertEqual(payload["outcome"], "followed")
+        self.assertTrue(payload["is_following"])
+        self.assertEqual(payload["next_action"], "unfollow")
+        self.assertEqual(payload["target_username"], self.target.username)
+        self.assertTrue(
+            FollowRelation.objects.filter(
+                follower=self.member,
+                following=self.target,
+            ).exists()
+        )
+
     def test_follow_self_is_blocked(self) -> None:
         self.client.login(username=self.member.username, password=self.password)
 
@@ -200,6 +225,39 @@ class SocialViewsTests(TestCase):
             Bookmark.objects.filter(member=self.member, target_type="blog").count(),
             1,
         )
+
+    def test_bookmark_and_unbookmark_ajax_return_json_payload(self) -> None:
+        self.client.login(username=self.member.username, password=self.password)
+
+        bookmark_response = self.client.post(
+            reverse("social:bookmark"),
+            {"type": "trip", "id": str(self.trip.pk), "next": reverse("social:bookmarks")},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(bookmark_response.status_code, 200)
+        bookmark_payload = bookmark_response.json()
+        self.assertTrue(bookmark_payload["ok"])
+        self.assertEqual(bookmark_payload["action"], "bookmark")
+        self.assertEqual(bookmark_payload["outcome"], "bookmarked")
+        self.assertEqual(bookmark_payload["target_type"], "trip")
+        self.assertEqual(bookmark_payload["target_key"], str(self.trip.pk))
+        self.assertTrue(bookmark_payload["is_bookmarked"])
+
+        unbookmark_response = self.client.post(
+            reverse("social:unbookmark"),
+            {"type": "trip", "id": str(self.trip.pk), "next": reverse("social:bookmarks")},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(unbookmark_response.status_code, 200)
+        unbookmark_payload = unbookmark_response.json()
+        self.assertTrue(unbookmark_payload["ok"])
+        self.assertEqual(unbookmark_payload["action"], "unbookmark")
+        self.assertEqual(unbookmark_payload["outcome"], "removed")
+        self.assertEqual(unbookmark_payload["target_type"], "trip")
+        self.assertEqual(unbookmark_payload["target_key"], str(self.trip.pk))
+        self.assertFalse(unbookmark_payload["is_bookmarked"])
 
     def test_unbookmark_removes_row(self) -> None:
         Bookmark.objects.create(

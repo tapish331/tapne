@@ -568,6 +568,35 @@ code {
     border-left-color: var(--text-2);
 }
 
+.flash-list-floating {
+    bottom: 1rem;
+    left: 1rem;
+    margin: 0;
+    max-width: min(30rem, calc(100vw - 2rem));
+    pointer-events: none;
+    position: fixed;
+    z-index: 120;
+}
+
+.flash-toast {
+    opacity: 0;
+    pointer-events: auto;
+    transform: translateY(10px);
+    transition:
+        opacity var(--ease-standard),
+        transform var(--ease-standard);
+}
+
+.flash-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.flash-toast.is-exit {
+    opacity: 0;
+    transform: translateY(8px);
+}
+
 .hero {
     margin-bottom: 1.8rem;
     padding: var(--space-5);

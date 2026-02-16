@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, Literal
 from urllib.parse import urlsplit
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -25,6 +25,7 @@ from .models import (
 
 UserModel = get_user_model()
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
+FeedbackLevel = Literal["success", "info", "warning", "error"]
 
 
 def _is_verbose_request(request: HttpRequest) -> bool:
@@ -72,6 +73,54 @@ def _safe_next_url(request: HttpRequest, fallback: str) -> str:
     return fallback
 
 
+def _wants_json_response(request: HttpRequest) -> bool:
+    requested_with = str(request.headers.get("X-Requested-With", "") or "").strip().lower()
+    accept = str(request.headers.get("Accept", "") or "").strip().lower()
+    response_format = str(
+        request.POST.get("response_format") or request.GET.get("response_format") or ""
+    ).strip().lower()
+    return (
+        requested_with == "xmlhttprequest"
+        or "application/json" in accept
+        or response_format == "json"
+    )
+
+
+def _push_feedback_message(request: HttpRequest, *, level: FeedbackLevel, message_text: str) -> None:
+    if level == "success":
+        messages.success(request, message_text)
+    elif level == "warning":
+        messages.warning(request, message_text)
+    elif level == "error":
+        messages.error(request, message_text)
+    else:
+        messages.info(request, message_text)
+
+
+def _build_action_response(
+    request: HttpRequest,
+    *,
+    next_url: str,
+    level: FeedbackLevel,
+    message_text: str,
+    status_code: int = 200,
+    payload: dict[str, object] | None = None,
+) -> HttpResponse:
+    if _wants_json_response(request):
+        response_payload: dict[str, object] = {
+            "ok": level != "error",
+            "level": level,
+            "message": message_text,
+            "next_url": next_url,
+        }
+        if payload:
+            response_payload.update(payload)
+        return JsonResponse(response_payload, status=status_code)
+
+    _push_feedback_message(request, level=level, message_text=message_text)
+    return redirect(next_url)
+
+
 @login_required(login_url="accounts:login")
 @require_POST
 def follow_user_view(request: HttpRequest, username: str) -> HttpResponse:
@@ -81,14 +130,38 @@ def follow_user_view(request: HttpRequest, username: str) -> HttpResponse:
 
     target_user = UserModel.objects.filter(username__iexact=lookup_username).first()
     if target_user is None:
-        messages.error(request, f"Could not follow @{lookup_username}. User was not found.")
+        message_text = f"Could not follow @{lookup_username}. User was not found."
         _vprint(request, f"Follow failed because target user '{lookup_username}' was not found")
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=404,
+            payload={
+                "action": "follow",
+                "outcome": "target-not-found",
+                "target_username": lookup_username,
+                "is_following": False,
+            },
+        )
 
     if int(getattr(target_user, "pk", 0) or 0) == int(getattr(request.user, "pk", 0) or 0):
-        messages.info(request, "You cannot follow your own profile.")
+        message_text = "You cannot follow your own profile."
         _vprint(request, f"Blocked self-follow attempt for @{lookup_username}")
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="info",
+            message_text=message_text,
+            status_code=400,
+            payload={
+                "action": "follow",
+                "outcome": "self-follow-blocked",
+                "target_username": lookup_username,
+                "is_following": False,
+            },
+        )
 
     relation, created = FollowRelation.objects.get_or_create(
         follower=request.user,
@@ -97,9 +170,13 @@ def follow_user_view(request: HttpRequest, username: str) -> HttpResponse:
     sync_member_follow_usernames(request.user)
 
     if created:
-        messages.success(request, f"You are now following @{target_user.username}.")
+        level: FeedbackLevel = "success"
+        message_text = f"You are now following @{target_user.username}."
+        outcome = "followed"
     else:
-        messages.info(request, f"You are already following @{target_user.username}.")
+        level = "info"
+        message_text = f"You are already following @{target_user.username}."
+        outcome = "already-following"
 
     _vprint(
         request,
@@ -113,7 +190,20 @@ def follow_user_view(request: HttpRequest, username: str) -> HttpResponse:
             )
         ),
     )
-    return redirect(next_url)
+    return _build_action_response(
+        request,
+        next_url=next_url,
+        level=level,
+        message_text=message_text,
+        payload={
+            "action": "follow",
+            "outcome": outcome,
+            "target_username": target_user.username,
+            "is_following": True,
+            "next_action": "unfollow",
+            "next_action_url": reverse("social:unfollow", kwargs={"username": target_user.username}),
+        },
+    )
 
 
 @login_required(login_url="accounts:login")
@@ -125,9 +215,21 @@ def unfollow_user_view(request: HttpRequest, username: str) -> HttpResponse:
 
     target_user = UserModel.objects.filter(username__iexact=lookup_username).first()
     if target_user is None:
-        messages.error(request, f"Could not unfollow @{lookup_username}. User was not found.")
+        message_text = f"Could not unfollow @{lookup_username}. User was not found."
         _vprint(request, f"Unfollow failed because target user '{lookup_username}' was not found")
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=404,
+            payload={
+                "action": "unfollow",
+                "outcome": "target-not-found",
+                "target_username": lookup_username,
+                "is_following": False,
+            },
+        )
 
     deleted_count, _ = FollowRelation.objects.filter(
         follower=request.user,
@@ -136,9 +238,13 @@ def unfollow_user_view(request: HttpRequest, username: str) -> HttpResponse:
     sync_member_follow_usernames(request.user)
 
     if deleted_count:
-        messages.success(request, f"You unfollowed @{target_user.username}.")
+        level: FeedbackLevel = "success"
+        message_text = f"You unfollowed @{target_user.username}."
+        outcome = "unfollowed"
     else:
-        messages.info(request, f"You are not currently following @{target_user.username}.")
+        level = "info"
+        message_text = f"You are not currently following @{target_user.username}."
+        outcome = "already-not-following"
 
     _vprint(
         request,
@@ -151,7 +257,20 @@ def unfollow_user_view(request: HttpRequest, username: str) -> HttpResponse:
             )
         ),
     )
-    return redirect(next_url)
+    return _build_action_response(
+        request,
+        next_url=next_url,
+        level=level,
+        message_text=message_text,
+        payload={
+            "action": "unfollow",
+            "outcome": outcome,
+            "target_username": target_user.username,
+            "is_following": False,
+            "next_action": "follow",
+            "next_action_url": reverse("social:follow", kwargs={"username": target_user.username}),
+        },
+    )
 
 
 @login_required(login_url="accounts:login")
@@ -163,13 +282,25 @@ def bookmark_view(request: HttpRequest) -> HttpResponse:
 
     target_type = normalize_bookmark_target_type(raw_target_type)
     if target_type is None:
-        messages.error(request, "Unsupported bookmark type. Use trip, user, or blog.")
+        message_text = "Unsupported bookmark type. Use trip, user, or blog."
         _vprint(request, f"Bookmark failed due to unsupported type='{raw_target_type}'")
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=400,
+            payload={
+                "action": "bookmark",
+                "outcome": "invalid-type",
+                "target_type": str(raw_target_type or ""),
+                "is_bookmarked": False,
+            },
+        )
 
     target = resolve_bookmark_target(target_type, raw_target_id)
     if target is None:
-        messages.error(request, "Could not bookmark that item because it was not found.")
+        message_text = "Could not bookmark that item because it was not found."
         _vprint(
             request,
             (
@@ -180,7 +311,20 @@ def bookmark_view(request: HttpRequest) -> HttpResponse:
                 )
             ),
         )
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=404,
+            payload={
+                "action": "bookmark",
+                "outcome": "target-not-found",
+                "target_type": target_type,
+                "target_id": str(raw_target_id or ""),
+                "is_bookmarked": False,
+            },
+        )
 
     bookmark, created = Bookmark.objects.get_or_create(
         member=request.user,
@@ -204,9 +348,13 @@ def bookmark_view(request: HttpRequest) -> HttpResponse:
             bookmark.save(update_fields=["target_label", "target_url", "updated_at"])
 
     if created:
-        messages.success(request, "Saved to bookmarks.")
+        level: FeedbackLevel = "success"
+        message_text = "Saved to bookmarks."
+        outcome = "bookmarked"
     else:
-        messages.info(request, "That item is already in your bookmarks.")
+        level = "info"
+        message_text = "That item is already in your bookmarks."
+        outcome = "already-bookmarked"
 
     _vprint(
         request,
@@ -220,7 +368,23 @@ def bookmark_view(request: HttpRequest) -> HttpResponse:
             )
         ),
     )
-    return redirect(next_url)
+    return _build_action_response(
+        request,
+        next_url=next_url,
+        level=level,
+        message_text=message_text,
+        payload={
+            "action": "bookmark",
+            "outcome": outcome,
+            "target_type": target.target_type,
+            "target_key": target.target_key,
+            "target_label": target.target_label,
+            "target_url": target.target_url,
+            "is_bookmarked": True,
+            "next_action": "unbookmark",
+            "next_action_url": reverse("social:unbookmark"),
+        },
+    )
 
 
 @login_required(login_url="accounts:login")
@@ -232,13 +396,25 @@ def unbookmark_view(request: HttpRequest) -> HttpResponse:
 
     target_type = normalize_bookmark_target_type(raw_target_type)
     if target_type is None:
-        messages.error(request, "Unsupported bookmark type. Use trip, user, or blog.")
+        message_text = "Unsupported bookmark type. Use trip, user, or blog."
         _vprint(request, f"Unbookmark failed due to unsupported type='{raw_target_type}'")
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=400,
+            payload={
+                "action": "unbookmark",
+                "outcome": "invalid-type",
+                "target_type": str(raw_target_type or ""),
+                "is_bookmarked": False,
+            },
+        )
 
     target_key = canonicalize_bookmark_key_for_delete(target_type, raw_target_id)
     if target_key is None:
-        messages.error(request, "Could not remove bookmark. Invalid target identifier.")
+        message_text = "Could not remove bookmark. Invalid target identifier."
         _vprint(
             request,
             (
@@ -249,7 +425,20 @@ def unbookmark_view(request: HttpRequest) -> HttpResponse:
                 )
             ),
         )
-        return redirect(next_url)
+        return _build_action_response(
+            request,
+            next_url=next_url,
+            level="error",
+            message_text=message_text,
+            status_code=400,
+            payload={
+                "action": "unbookmark",
+                "outcome": "invalid-target-key",
+                "target_type": target_type,
+                "target_id": str(raw_target_id or ""),
+                "is_bookmarked": False,
+            },
+        )
 
     deleted_count, _ = Bookmark.objects.filter(
         member=request.user,
@@ -258,9 +447,13 @@ def unbookmark_view(request: HttpRequest) -> HttpResponse:
     ).delete()
 
     if deleted_count:
-        messages.success(request, "Removed from bookmarks.")
+        level: FeedbackLevel = "success"
+        message_text = "Removed from bookmarks."
+        outcome = "removed"
     else:
-        messages.info(request, "That bookmark was already removed.")
+        level = "info"
+        message_text = "That bookmark was already removed."
+        outcome = "already-removed"
 
     _vprint(
         request,
@@ -274,7 +467,21 @@ def unbookmark_view(request: HttpRequest) -> HttpResponse:
             )
         ),
     )
-    return redirect(next_url)
+    return _build_action_response(
+        request,
+        next_url=next_url,
+        level=level,
+        message_text=message_text,
+        payload={
+            "action": "unbookmark",
+            "outcome": outcome,
+            "target_type": target_type,
+            "target_key": target_key,
+            "is_bookmarked": False,
+            "next_action": "bookmark",
+            "next_action_url": reverse("social:bookmark"),
+        },
+    )
 
 
 @login_required(login_url="accounts:login")

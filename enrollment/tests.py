@@ -101,6 +101,30 @@ class EnrollmentViewsTests(TestCase):
         self.assertEqual(row.status, EnrollmentRequest.STATUS_PENDING)
         self.assertEqual(row.message, "I can help with logistics checkpoints.")
 
+    def test_trip_request_ajax_returns_json_payload(self) -> None:
+        self.client.login(username=self.member.username, password=self.password)
+
+        response = self.client.post(
+            reverse("enrollment:trip-request", kwargs={"trip_id": self.trip.pk}),
+            {
+                "message": "Can share transport checkpoints.",
+                "next": reverse("trips:detail", kwargs={"trip_id": self.trip.pk}),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["action"], "trip-request")
+        self.assertEqual(payload["trip_id"], self.trip.pk)
+        self.assertEqual(payload["outcome"], "created-pending")
+        self.assertTrue(payload["is_pending"])
+        self.assertFalse(payload["is_approved"])
+        row = EnrollmentRequest.objects.get(trip=self.trip, requester=self.member)
+        self.assertEqual(payload["request_id"], row.pk)
+
     def test_duplicate_pending_request_is_idempotent(self) -> None:
         EnrollmentRequest.objects.create(
             trip=self.trip,
@@ -173,6 +197,22 @@ class EnrollmentViewsTests(TestCase):
                 requester=self.member,
             ).exists()
         )
+
+    def test_trip_request_ajax_unpublished_trip_returns_json_error(self) -> None:
+        self.client.login(username=self.member.username, password=self.password)
+        response = self.client.post(
+            reverse("enrollment:trip-request", kwargs={"trip_id": self.unpublished_trip.pk}),
+            {"next": reverse("trips:list")},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["action"], "trip-request")
+        self.assertEqual(payload["trip_id"], self.unpublished_trip.pk)
+        self.assertEqual(payload["outcome"], "trip-unpublished")
 
     def test_hosting_inbox_requires_login(self) -> None:
         response = self.client.get(reverse("enrollment:hosting-inbox"))
