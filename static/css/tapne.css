@@ -1081,9 +1081,17 @@ code {
 }
 
 .trip-bookmark-icon-btn svg {
-    fill: currentColor;
     height: 0.95rem;
     width: 0.95rem;
+}
+
+.trip-bookmark-icon-btn .trip-bookmark-shape {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.95;
+    transition: fill var(--ease-standard);
 }
 
 .trip-bookmark-icon-btn:hover {
@@ -1100,6 +1108,10 @@ code {
     );
     border-color: rgba(var(--warning-rgb), 0.72);
     box-shadow: 0 10px 20px rgba(var(--warning-rgb), 0.32);
+}
+
+.trip-bookmark-icon-btn.is-bookmarked .trip-bookmark-shape {
+    fill: currentColor;
 }
 
 .trip-bookmark-icon-btn.is-bookmarked:hover {

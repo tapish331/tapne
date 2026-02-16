@@ -29,6 +29,7 @@
             >
                 <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                     <path
+                        class="trip-bookmark-shape"
                         d="M7 3.8h10v16.4L12 17l-5 3.2z"
                         fill="none"
                         stroke="currentColor"
@@ -36,13 +37,6 @@
                         stroke-linecap="round"
                         stroke-linejoin="round"
                     ></path>
-                    {% if trip.is_bookmarked %}
-                    <path d="M9.4 9.6l5.2 5.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
-                    <path d="M14.6 9.6l-5.2 5.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
-                    {% else %}
-                    <path d="M12 8.9v5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
-                    <path d="M9.3 11.6h5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
-                    {% endif %}
                 </svg>
             </button>
         </form>
@@ -51,6 +45,7 @@
             <button class="trip-bookmark-icon-btn" type="button" disabled aria-label="Bookmark unavailable">
                 <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                     <path
+                        class="trip-bookmark-shape"
                         d="M7 3.8h10v16.4L12 17l-5 3.2z"
                         fill="none"
                         stroke="currentColor"
@@ -72,6 +67,7 @@
             >
                 <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                     <path
+                        class="trip-bookmark-shape"
                         d="M7 3.8h10v16.4L12 17l-5 3.2z"
                         fill="none"
                         stroke="currentColor"
@@ -79,8 +75,6 @@
                         stroke-linecap="round"
                         stroke-linejoin="round"
                     ></path>
-                    <path d="M12 8.9v5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
-                    <path d="M9.3 11.6h5.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>
                 </svg>
             </button>
         </div>
