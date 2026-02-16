@@ -27,6 +27,7 @@ class DestinationData(TypedDict):
     featured_trip_title: str
     featured_trip_url: str
     featured_trip_date_label: str
+    featured_trip_banner_image_url: str
     search_url: str
 
 
@@ -111,12 +112,19 @@ def _destination_rows_from_trips(
     limit: int = HOME_SECTION_LIMIT,
 ) -> list[DestinationData]:
     rows_by_key: dict[str, DestinationData] = {}
+    featured_score_by_key: dict[str, int] = {}
     ordered_keys: list[str] = []
 
     for trip in trips:
         destination_name = str(trip.get("destination", "") or "").strip()
         if not destination_name:
             continue
+
+        try:
+            trip_traffic_score = int(trip.get("traffic_score", 0) or 0)
+        except (TypeError, ValueError):
+            trip_traffic_score = 0
+        trip_banner_image_url = str(trip.get("banner_image_url", "") or "").strip()
 
         destination_key = destination_name.lower()
         if destination_key not in rows_by_key:
@@ -127,10 +135,22 @@ def _destination_rows_from_trips(
                 "featured_trip_title": str(trip.get("title", "") or "").strip() or "Upcoming trip",
                 "featured_trip_url": str(trip.get("url", "") or "").strip(),
                 "featured_trip_date_label": str(trip.get("date_label", "") or "").strip() or "Dates announced soon",
+                "featured_trip_banner_image_url": trip_banner_image_url,
                 "search_url": f"/search/?type=trips&q={quote_plus(destination_name)}",
             }
             rows_by_key[destination_key] = row
+            featured_score_by_key[destination_key] = trip_traffic_score
             ordered_keys.append(destination_key)
+        elif trip_traffic_score > featured_score_by_key[destination_key]:
+            rows_by_key[destination_key]["featured_trip_title"] = (
+                str(trip.get("title", "") or "").strip() or "Upcoming trip"
+            )
+            rows_by_key[destination_key]["featured_trip_url"] = str(trip.get("url", "") or "").strip()
+            rows_by_key[destination_key]["featured_trip_date_label"] = (
+                str(trip.get("date_label", "") or "").strip() or "Dates announced soon"
+            )
+            rows_by_key[destination_key]["featured_trip_banner_image_url"] = trip_banner_image_url
+            featured_score_by_key[destination_key] = trip_traffic_score
 
         rows_by_key[destination_key]["trip_count"] += 1
 
@@ -183,16 +203,19 @@ def home(request: HttpRequest) -> HttpResponse:
     viewer_state = "member" if request.user.is_authenticated else "guest"
     _vprint(request, f"Rendering home feed for viewer_state={viewer_state}")
 
-    payload = build_home_payload_for_user(request.user, limit_per_section=HOME_SECTION_LIMIT)
+    payload = build_home_payload_for_user(
+        request.user,
+        limit_per_section=None,
+        include_profiles=False,
+    )
     _vprint(
         request,
         (
-            "Feed mode={mode}; reason={reason}; counts trips={trip_count}, profiles={profile_count}, blogs={blog_count}"
+            "Feed mode={mode}; reason={reason}; counts trips={trip_count}, blogs={blog_count}"
             .format(
                 mode=payload["mode"],
                 reason=payload["reason"],
                 trip_count=len(payload["trips"]),
-                profile_count=len(payload["profiles"]),
                 blog_count=len(payload["blogs"]),
             )
         ),
@@ -200,15 +223,16 @@ def home(request: HttpRequest) -> HttpResponse:
 
     upcoming_trips = _annotate_bookmark_state_for_trips(
         request.user,
-        _upcoming_trip_rows(payload["trips"]),
+        _upcoming_trip_rows(payload["trips"], limit=HOME_SECTION_LIMIT),
     )
     destinations = _destination_rows_from_trips(upcoming_trips)
+    top_blogs = payload["blogs"][:HOME_SECTION_LIMIT]
 
     context: dict[str, object] = {
         "trips": upcoming_trips,
         "destinations": destinations,
         "profiles": payload["profiles"],
-        "blogs": payload["blogs"],
+        "blogs": top_blogs,
         "feed_mode": payload["mode"],
         "feed_reason": payload["reason"],
         **_home_totals(),

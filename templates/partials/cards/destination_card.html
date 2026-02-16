@@ -1,31 +1,30 @@
 <article class="card card-destination" data-card-type="destination" data-card-id="{{ destination.key|default:'n/a' }}">
-    <header class="card-header">
-        <p class="card-kicker">Destination</p>
-        <h3 class="card-title">{{ destination.name|default:"TBD destination" }}</h3>
-    </header>
-    <p class="card-description">
-        {% if destination.trip_count == 1 %}
-        1 upcoming trip currently highlighted here.
-        {% else %}
-        {{ destination.trip_count|default:"0" }} upcoming trips currently highlighted here.
-        {% endif %}
-    </p>
-    <dl class="card-meta-grid">
-        <div>
-            <dt>Featured trip</dt>
-            <dd>{{ destination.featured_trip_title|default:"Trip details coming soon" }}</dd>
-        </div>
-        <div>
-            <dt>Next date</dt>
-            <dd>{{ destination.featured_trip_date_label|default:"Dates announced soon" }}</dd>
-        </div>
-    </dl>
-    <div class="card-actions">
-        <a class="btn btn-secondary" href="{{ destination.search_url|default:'/trips/' }}">Explore trips</a>
-        {% if destination.featured_trip_url %}
-        <a class="btn btn-primary" href="{{ destination.featured_trip_url }}">View featured trip</a>
-        {% else %}
-        <button class="btn btn-primary" type="button" disabled>View featured trip</button>
-        {% endif %}
+    {% with destination_link=destination.search_url|default:destination.featured_trip_url|default:'' %}
+    {% if destination_link %}
+    <a
+        class="destination-card-link-overlay"
+        href="{{ destination_link }}"
+        aria-label="Explore trips in {{ destination.name|default:'this destination' }}"
+    ></a>
+    {% endif %}
+    {% endwith %}
+    {% if destination.featured_trip_banner_image_url %}
+    <img
+        class="destination-card-banner"
+        src="{{ destination.featured_trip_banner_image_url }}"
+        alt="{{ destination.name|default:'Destination' }}"
+    >
+    {% else %}
+    <div class="destination-card-banner destination-card-banner-fallback" aria-hidden="true"></div>
+    {% endif %}
+    <div class="destination-card-overlay">
+        <h3 class="destination-card-title">{{ destination.name|default:"TBD destination" }}</h3>
+        <p class="destination-card-count">
+            {% if destination.trip_count == 1 %}
+            1 upcoming trip
+            {% else %}
+            {{ destination.trip_count|default:"0" }} upcoming trips
+            {% endif %}
+        </p>
     </div>
 </article>

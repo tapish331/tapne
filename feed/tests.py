@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from social.models import Bookmark
 from trips.models import Trip
@@ -42,15 +44,14 @@ class FeedHomeViewTests(TestCase):
         self.assertNotContains(response, "Guest home")
 
         top_trip = response.context["trips"][0]
-        top_profile = response.context["profiles"][0]
         top_blog = response.context["blogs"][0]
         top_destination = response.context["destinations"][0]
 
         self.assertEqual(top_trip["host_username"], "mei")
-        self.assertEqual(top_profile["username"], "mei")
         self.assertEqual(top_blog["author_username"], "mei")
         self.assertEqual(top_destination["name"], top_trip["destination"])
         self.assertEqual(top_destination["trip_count"], 1)
+        self.assertEqual(response.context["profiles"], [])
         self.assertEqual(response.context["total_unique_destinations"], 0)
         self.assertEqual(response.context["total_authenticated_users"], 1)
         self.assertEqual(response.context["total_trips_created"], 0)
@@ -64,7 +65,7 @@ class FeedHomeViewTests(TestCase):
         self.assertEqual(response.context["trips"], [])
         self.assertEqual(response.context["blogs"], [])
         self.assertEqual(response.context["destinations"], [])
-        self.assertEqual(response.context["profiles"][0]["username"], "member1")
+        self.assertEqual(response.context["profiles"], [])
 
     def test_member_home_uses_personalized_payload_from_preferences(self) -> None:
         MemberFeedPreference.objects.create(
@@ -142,6 +143,43 @@ class FeedHomeViewTests(TestCase):
         self.assertEqual(response.context["total_unique_destinations"], 2)
         self.assertEqual(response.context["total_authenticated_users"], 1)
         self.assertEqual(response.context["total_trips_created"], 3)
+
+    def test_home_destination_cards_link_to_destination_search(self) -> None:
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        first_destination = response.context["destinations"][0]
+        escaped_search_url = str(first_destination["search_url"]).replace("&", "&amp;")
+        self.assertContains(response, f'href="{escaped_search_url}"')
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_home_filters_out_past_trips_before_limiting_upcoming_section(self) -> None:
+        now = timezone.now()
+        for index in range(8):
+            Trip.objects.create(
+                host=self.member,
+                title=f"Past trip {index + 1}",
+                destination="Lisbon",
+                starts_at=now - timedelta(days=index + 1),
+                traffic_score=500 + index,
+            )
+
+        future_trip_ids: list[int] = []
+        for index in range(3):
+            future_trip = Trip.objects.create(
+                host=self.member,
+                title=f"Future trip {index + 1}",
+                destination="Sevilla",
+                starts_at=now + timedelta(days=index + 1),
+                traffic_score=10 + index,
+            )
+            future_trip_ids.append(int(future_trip.pk))
+
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        rendered_trip_ids = [int(trip["id"]) for trip in response.context["trips"]]
+        self.assertEqual(sorted(rendered_trip_ids), sorted(future_trip_ids))
 
 
 class FeedBootstrapCommandTests(TestCase):

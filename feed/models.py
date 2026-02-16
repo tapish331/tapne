@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import datetime
 import re
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, NotRequired, TypeVar, TypedDict, cast
 
 from django.apps import apps
 from django.conf import settings
@@ -656,6 +656,7 @@ def get_blog_by_slug(slug: str) -> BlogData | None:
 
 
 UserModel = get_user_model()
+RowT = TypeVar("RowT")
 
 
 def _resolve_model(app_label: str, model_name: str) -> type[Any] | None:
@@ -863,10 +864,28 @@ def _live_blog_rows() -> list[BlogData]:
     return live_rows
 
 
-def _catalog_candidates() -> tuple[list[TripData], list[ProfileData], list[BlogData], str]:
+def _limit_rows(rows: list[RowT], *, limit: int | None) -> list[RowT]:
+    if limit is None:
+        return list(rows)
+    try:
+        effective_limit = int(limit)
+    except (TypeError, ValueError):
+        effective_limit = 0
+    if effective_limit <= 0:
+        return []
+    return rows[:effective_limit]
+
+
+def _catalog_candidates(
+    *,
+    include_profiles: bool = True,
+) -> tuple[list[TripData], list[ProfileData], list[BlogData], str]:
     if demo_catalog_enabled():
-        return get_demo_trips(), get_demo_profiles(), get_demo_blogs(), "demo-catalog"
-    return _live_trip_rows(), _live_profile_rows(), _live_blog_rows(), "live-catalog"
+        demo_profiles = get_demo_profiles() if include_profiles else []
+        return get_demo_trips(), demo_profiles, get_demo_blogs(), "demo-catalog"
+
+    live_profiles = _live_profile_rows() if include_profiles else []
+    return _live_trip_rows(), live_profiles, _live_blog_rows(), "live-catalog"
 
 
 def search_trips(query: str) -> list[TripData]:
@@ -893,18 +912,26 @@ def search_blogs(query: str) -> list[BlogData]:
     ]
 
 
-def build_guest_home_payload(limit_per_section: int = 6) -> HomeFeedPayload:
-    trip_candidates, profile_candidates, blog_candidates, source = _catalog_candidates()
+def build_guest_home_payload(
+    limit_per_section: int | None = 6,
+    *,
+    include_profiles: bool = True,
+) -> HomeFeedPayload:
+    trip_candidates, profile_candidates, blog_candidates, source = _catalog_candidates(
+        include_profiles=include_profiles
+    )
     sorted_trips = sorted(
         trip_candidates,
         key=lambda trip: int(trip.get("traffic_score", 0)),
         reverse=True,
     )
-    sorted_profiles = sorted(
-        profile_candidates,
-        key=lambda profile: int(profile.get("followers_count", 0)),
-        reverse=True,
-    )
+    sorted_profiles: list[ProfileData] = []
+    if include_profiles:
+        sorted_profiles = sorted(
+            profile_candidates,
+            key=lambda profile: int(profile.get("followers_count", 0)),
+            reverse=True,
+        )
     sorted_blogs = sorted(
         blog_candidates,
         key=lambda blog: int(blog.get("reads", 0)),
@@ -917,16 +944,23 @@ def build_guest_home_payload(limit_per_section: int = 6) -> HomeFeedPayload:
         reason = "Traffic-ranked live catalog for guests."
 
     return {
-        "trips": sorted_trips[:limit_per_section],
-        "profiles": sorted_profiles[:limit_per_section],
-        "blogs": sorted_blogs[:limit_per_section],
+        "trips": _limit_rows(sorted_trips, limit=limit_per_section),
+        "profiles": _limit_rows(sorted_profiles, limit=limit_per_section),
+        "blogs": _limit_rows(sorted_blogs, limit=limit_per_section),
         "mode": mode,
         "reason": reason,
     }
 
 
-def build_member_home_payload(user: object, limit_per_section: int = 6) -> HomeFeedPayload:
-    trip_candidates, profile_candidates, blog_candidates, source = _catalog_candidates()
+def build_member_home_payload(
+    user: object,
+    limit_per_section: int | None = 6,
+    *,
+    include_profiles: bool = True,
+) -> HomeFeedPayload:
+    trip_candidates, profile_candidates, blog_candidates, source = _catalog_candidates(
+        include_profiles=include_profiles
+    )
     followed_usernames, interest_keywords, has_saved_preference = _member_preference_sets(user)
     viewer_username = str(getattr(user, "username", "")).strip().lower()
 
@@ -980,7 +1014,9 @@ def build_member_home_payload(user: object, limit_per_section: int = 6) -> HomeF
         return score
 
     sorted_trips = sorted(trip_candidates, key=trip_rank_score, reverse=True)
-    sorted_profiles = sorted(profile_candidates, key=profile_rank_score, reverse=True)
+    sorted_profiles: list[ProfileData] = []
+    if include_profiles:
+        sorted_profiles = sorted(profile_candidates, key=profile_rank_score, reverse=True)
     sorted_blogs = sorted(blog_candidates, key=blog_rank_score, reverse=True)
 
     reason = "Followed creators + like-minded topic recommendations."
@@ -990,15 +1026,27 @@ def build_member_home_payload(user: object, limit_per_section: int = 6) -> HomeF
         reason = f"{reason} (live catalog)"
 
     return {
-        "trips": sorted_trips[:limit_per_section],
-        "profiles": sorted_profiles[:limit_per_section],
-        "blogs": sorted_blogs[:limit_per_section],
+        "trips": _limit_rows(sorted_trips, limit=limit_per_section),
+        "profiles": _limit_rows(sorted_profiles, limit=limit_per_section),
+        "blogs": _limit_rows(sorted_blogs, limit=limit_per_section),
         "mode": "member-personalized" if source == "demo-catalog" else "member-personalized-live",
         "reason": reason,
     }
 
 
-def build_home_payload_for_user(user: object, limit_per_section: int = 6) -> HomeFeedPayload:
+def build_home_payload_for_user(
+    user: object,
+    limit_per_section: int | None = 6,
+    *,
+    include_profiles: bool = True,
+) -> HomeFeedPayload:
     if bool(getattr(user, "is_authenticated", False)):
-        return build_member_home_payload(user, limit_per_section=limit_per_section)
-    return build_guest_home_payload(limit_per_section=limit_per_section)
+        return build_member_home_payload(
+            user,
+            limit_per_section=limit_per_section,
+            include_profiles=include_profiles,
+        )
+    return build_guest_home_payload(
+        limit_per_section=limit_per_section,
+        include_profiles=include_profiles,
+    )

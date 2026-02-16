@@ -882,8 +882,76 @@ code {
     background: linear-gradient(90deg, rgba(var(--support-rgb), 0.96), rgba(var(--support-rgb), 0.15));
 }
 
+.card-destination {
+    display: block;
+    min-height: 220px;
+    overflow: hidden;
+    padding: 0;
+}
+
 .card-destination::before {
-    background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.92), rgba(var(--support-rgb), 0.32));
+    display: none;
+}
+
+.destination-card-banner {
+    display: block;
+    height: 220px;
+    object-fit: cover;
+    transform: scale(1);
+    transition: transform var(--ease-float);
+    width: 100%;
+}
+
+.destination-card-banner-fallback {
+    background:
+        radial-gradient(circle at 22% 14%, rgba(var(--accent-rgb), 0.34), transparent 54%),
+        linear-gradient(150deg, rgba(var(--support-rgb), 0.26), rgba(var(--accent-rgb), 0.68));
+}
+
+.destination-card-link-overlay {
+    inset: 0;
+    position: absolute;
+    z-index: 2;
+}
+
+.destination-card-link-overlay:focus-visible {
+    border-radius: inherit;
+    outline: 2px solid rgba(var(--accent-rgb), 0.88);
+    outline-offset: -2px;
+}
+
+.destination-card-overlay {
+    align-content: end;
+    background: linear-gradient(180deg, rgba(8, 14, 24, 0.1) 26%, rgba(4, 7, 13, 0.84) 100%);
+    color: var(--text-inverse);
+    display: grid;
+    gap: 0.32rem;
+    inset: 0;
+    padding: 1rem;
+    pointer-events: none;
+    position: absolute;
+    z-index: 3;
+}
+
+.destination-card-title {
+    color: #fff;
+    font-size: clamp(1.35rem, 2.9vw, 1.95rem);
+    line-height: 1.06;
+    text-shadow: 0 3px 16px rgba(0, 0, 0, 0.48);
+}
+
+.destination-card-count {
+    color: rgba(255, 255, 255, 0.93);
+    font-family: var(--font-ui);
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.42);
+}
+
+.card-destination:hover .destination-card-banner,
+.card-destination:focus-within .destination-card-banner {
+    transform: scale(1.06);
 }
 
 .trip-card-banner {
