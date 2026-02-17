@@ -95,6 +95,20 @@
                 <span class="trip-card-home-text">{{ trip.destination|default:"TBD" }}</span>
             </div>
         </div>
+        {% with trip_description=trip.description|default:"" %}
+        {% if trip_description %}
+        <p class="trip-card-home-description">
+            {{ trip_description|truncatechars:150 }}
+            {% if trip_description|length > 150 %}
+            {% if trip.url %}
+            <a class="trip-card-home-read-more trip-card-interactive" href="{{ trip.url }}">Read more</a>
+            {% elif trip.id %}
+            <a class="trip-card-home-read-more trip-card-interactive" href="/trips/{{ trip.id }}/">Read more</a>
+            {% endif %}
+            {% endif %}
+        </p>
+        {% endif %}
+        {% endwith %}
 
         <div class="trip-card-home-row">
             <div class="trip-card-home-left">

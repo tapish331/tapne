@@ -9,6 +9,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import Truncator
 
 from social.models import Bookmark
 from trips.models import Trip
@@ -180,6 +181,32 @@ class FeedHomeViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         rendered_trip_ids = [int(trip["id"]) for trip in response.context["trips"]]
         self.assertEqual(sorted(rendered_trip_ids), sorted(future_trip_ids))
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_home_upcoming_trip_card_shows_truncated_description_with_read_more_link(self) -> None:
+        now = timezone.now()
+        description = (
+            "This host-written trip description includes route planning notes, food stops, and local activity context. "
+            "It is intentionally long so the homepage card displays a preview with a read more link to the details page."
+        )
+        trip = Trip.objects.create(
+            host=self.member,
+            title="Description preview trip",
+            summary="Summary should not be used when description exists.",
+            description=description,
+            destination="Lisbon",
+            starts_at=now + timedelta(days=2),
+            traffic_score=200,
+        )
+
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, Truncator(description).chars(150))
+        self.assertContains(response, 'class="trip-card-home-read-more trip-card-interactive"')
+        self.assertContains(response, "Read more")
+        self.assertContains(response, f'href="/trips/{trip.pk}/"')
+        self.assertNotContains(response, description)
 
 
 class FeedBootstrapCommandTests(TestCase):

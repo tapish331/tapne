@@ -1189,6 +1189,28 @@ code {
     overflow-wrap: anywhere;
 }
 
+.trip-card-home-description {
+    color: var(--text-2);
+    font-family: var(--font-body);
+    font-size: 0.86rem;
+    line-height: 1.42;
+    margin: -0.1rem 0 0.12rem;
+    overflow-wrap: anywhere;
+}
+
+.trip-card-home-read-more {
+    color: var(--accent-ink);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-left: 0.24rem;
+    white-space: nowrap;
+}
+
+.trip-card-home-read-more:hover {
+    color: var(--accent-strong);
+}
+
 .trip-card-home-right {
     color: var(--text-2);
     font-family: var(--font-ui);
