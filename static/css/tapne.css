@@ -822,6 +822,11 @@ code {
 .card-carousel > .card {
     flex: 0 0 clamp(248px, 30vw, 340px);
     scroll-snap-align: start;
+    box-shadow: none;
+}
+
+.card-carousel > .card:hover {
+    box-shadow: none;
 }
 
 .card-carousel-shell {
