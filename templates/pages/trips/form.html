@@ -29,20 +29,15 @@
         <span class="trip-progress-fill" data-trip-progress-fill></span>
     </div>
     <div class="trip-progress-actions">
-        <button class="btn btn-primary" type="submit" form="trip-creation-form" name="form_action" value="submit">
-            <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Create trip" }}
-        </button>
         <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="save_draft">
             <span class="button-logo" aria-hidden="true">💾</span>Save Draft
         </button>
         <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="preview">
             <span class="button-logo" aria-hidden="true">👀</span>Preview
         </button>
-        {% if form_mode == "edit" and trip %}
-        <a class="btn btn-secondary" href="/trips/{{ trip.id }}/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
-        {% else %}
-        <a class="btn btn-secondary" href="/trips/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
-        {% endif %}
+        <button class="btn btn-primary" type="submit" form="trip-creation-form" name="form_action" value="submit">
+            <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Publish" }}
+        </button>
     </div>
 </section>
 
@@ -82,38 +77,24 @@
                 <h2><span class="section-logo" aria-hidden="true">🧳</span>Basic Trip Overview</h2>
                 <p>Give a short exciting overview. This is what people see first.</p>
             </header>
+            <div class="form-field">
+                <label for="{{ form.title.id_for_label }}">Trip Title <span class="required-star">*</span></label>
+                {{ form.title }}
+                <p class="detail-meta">{{ form.title.help_text }}</p>
+                {% for error in form.title.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+            </div>
             <div class="trip-form-grid trip-form-grid-2">
-                <div class="form-field">
-                    <label for="{{ form.title.id_for_label }}">Trip Title <span class="required-star">*</span></label>
-                    {{ form.title }}
-                    <p class="detail-meta">{{ form.title.help_text }}</p>
-                    {% for error in form.title.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
-                </div>
                 <div class="form-field">
                     <label for="{{ form.destination.id_for_label }}">Destination <span class="required-star">*</span></label>
                     {{ form.destination }}
                     <p class="detail-meta">{{ form.destination.help_text }}</p>
                     {% for error in form.destination.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
                 </div>
-            </div>
-            <div class="trip-form-grid trip-form-grid-2">
                 <div class="form-field">
                     <label for="{{ form.trip_type.id_for_label }}">Trip Category <span class="required-star">*</span></label>
                     {{ form.trip_type }}
                     {% for error in form.trip_type.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
                 </div>
-                <div class="form-field">
-                    <label for="{{ form.summary.id_for_label }}">Trip Summary <span class="required-star">*</span></label>
-                    {{ form.summary }}
-                    <p class="detail-meta">{{ form.summary.help_text }}</p>
-                    {% for error in form.summary.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
-                </div>
-            </div>
-            <div class="form-field">
-                <label for="{{ form.description.id_for_label }}">Long-form Description</label>
-                {{ form.description }}
-                <p class="detail-meta">{{ form.description.help_text }}</p>
-                {% for error in form.description.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
             <div class="trip-form-grid trip-form-grid-3">
                 <div class="form-field">
@@ -145,6 +126,24 @@
                     {% for error in form.minimum_seats.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
                 </div>
             </div>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.currency.id_for_label }}">Currency</label>
+                    {{ form.currency }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.total_trip_price.id_for_label }}">Trip Cost <span class="required-star">*</span></label>
+                    {{ form.total_trip_price }}
+                    {% for error in form.total_trip_price.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="{{ form.summary.id_for_label }}">Trip Summary <span class="required-star">*</span></label>
+                {{ form.summary }}
+                <p class="detail-meta">{{ form.summary.help_text }}</p>
+                {% for error in form.summary.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                {% for error in form.description.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+            </div>
         </article>
 
         <article class="trip-form-section" id="trip-section-media" data-index-label="Hero and Media" data-section-required="true">
@@ -175,71 +174,6 @@
                     {{ form.video_link }}
                     <p class="detail-meta">{{ form.video_link.help_text }}</p>
                     {% for error in form.video_link.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
-                </div>
-            </div>
-        </article>
-
-        <article class="trip-form-section" id="trip-section-pricing" data-index-label="Pricing and Financial Breakdown" data-section-required="true">
-            <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">💸</span>Pricing and Financial Breakdown</h2>
-                <p>Be transparent about costs. Trust starts with clear pricing.</p>
-            </header>
-            <div class="trip-form-grid trip-form-grid-4">
-                <div class="form-field">
-                    <label for="{{ form.currency.id_for_label }}">Currency</label>
-                    {{ form.currency }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.total_trip_price.id_for_label }}">Total Trip Price <span class="required-star">*</span></label>
-                    {{ form.total_trip_price }}
-                    {% for error in form.total_trip_price.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.price_per_person.id_for_label }}">Price Per Person</label>
-                    {{ form.price_per_person }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.early_bird_price.id_for_label }}">Early Bird Price</label>
-                    {{ form.early_bird_price }}
-                    {% for error in form.early_bird_price.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
-                </div>
-            </div>
-            <div class="form-field">
-                <label class="inline-checkbox-label" for="{{ form.has_early_bird_discount.id_for_label }}">
-                    {{ form.has_early_bird_discount }} Offer a discount for early sign-ups
-                </label>
-            </div>
-            <div class="form-field">
-                <label for="{{ form.payment_terms.id_for_label }}">Payment Terms</label>
-                {{ form.payment_terms }}
-            </div>
-            <div class="form-field">
-                <label>Extra Costs Not Included</label>
-                {{ form.extra_costs_not_included_choices }}
-                <label for="{{ form.extra_costs_not_included_custom.id_for_label }}">Additional custom items</label>
-                {{ form.extra_costs_not_included_custom }}
-                <p class="detail-meta">Flights, local transfers, personal expenses, add-ons, excluded meals, optional activities.</p>
-            </div>
-            <div class="trip-form-grid trip-form-grid-5">
-                <div class="form-field">
-                    <label for="{{ form.cost_breakdown_accommodation.id_for_label }}">Accommodation</label>
-                    {{ form.cost_breakdown_accommodation }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.cost_breakdown_transportation.id_for_label }}">Transportation</label>
-                    {{ form.cost_breakdown_transportation }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.cost_breakdown_activities.id_for_label }}">Activities</label>
-                    {{ form.cost_breakdown_activities }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.cost_breakdown_guide.id_for_label }}">Guide</label>
-                    {{ form.cost_breakdown_guide }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.cost_breakdown_miscellaneous.id_for_label }}">Miscellaneous</label>
-                    {{ form.cost_breakdown_miscellaneous }}
                 </div>
             </div>
         </article>
@@ -456,21 +390,16 @@
             </div>
         </article>
 
-        <div class="inline-actions">
-            <button class="btn btn-primary" type="submit" name="form_action" value="submit">
-                <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Create trip" }}
-            </button>
+        <div class="inline-actions trip-form-bottom-actions">
             <button class="btn btn-secondary" type="submit" name="form_action" value="save_draft">
                 <span class="button-logo" aria-hidden="true">💾</span>Save Draft
             </button>
             <button class="btn btn-secondary" type="submit" name="form_action" value="preview">
                 <span class="button-logo" aria-hidden="true">👀</span>Preview
             </button>
-            {% if form_mode == "edit" and trip %}
-            <a class="btn btn-secondary" href="/trips/{{ trip.id }}/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
-            {% else %}
-            <a class="btn btn-secondary" href="/trips/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
-            {% endif %}
+            <button class="btn btn-primary" type="submit" name="form_action" value="submit">
+                <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Publish" }}
+            </button>
         </div>
         </form>
     </div>

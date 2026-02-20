@@ -1629,6 +1629,10 @@ code {
     padding: 0.48rem 0.78rem;
 }
 
+.trip-form-bottom-actions {
+    justify-content: flex-end;
+}
+
 .trip-form-layout {
     align-items: start;
     display: grid;

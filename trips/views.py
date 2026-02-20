@@ -410,7 +410,7 @@ def trip_create_view(request: HttpRequest) -> HttpResponse:
         "form": form,
         "form_mode": "create",
         "page_title": "Create trip",
-        "submit_label": "Create trip",
+        "submit_label": "Publish",
         "form_timezone_label": timezone.get_current_timezone_name(),
         "current_banner_preview_url": _safe_file_url_with_fallback(
             getattr(form.instance, "banner_image", None),
