@@ -27,6 +27,7 @@ from media.models import (
     MediaTargetPayload,
     build_media_attachment_map_for_targets,
     build_media_payload_for_target,
+    submit_media_upload,
 )
 from reviews.models import build_reviews_payload_for_target
 
@@ -43,6 +44,14 @@ from .models import (
 )
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
+FORM_ACTION_SUBMIT: Final[str] = "submit"
+FORM_ACTION_SAVE_DRAFT: Final[str] = "save_draft"
+FORM_ACTION_PREVIEW: Final[str] = "preview"
+TRIP_FORM_ACTIONS: Final[set[str]] = {
+    FORM_ACTION_SUBMIT,
+    FORM_ACTION_SAVE_DRAFT,
+    FORM_ACTION_PREVIEW,
+}
 
 
 def _is_verbose_request(request: HttpRequest) -> bool:
@@ -79,6 +88,13 @@ def _safe_file_name(file_field: object) -> str:
         return str(getattr(file_field, "name", "") or "").strip()
     except Exception:
         return ""
+
+
+def _trip_form_action(request: HttpRequest) -> str:
+    candidate = str(request.POST.get("form_action", "") or "").strip().lower()
+    if candidate in TRIP_FORM_ACTIONS:
+        return candidate
+    return FORM_ACTION_SUBMIT
 
 
 @require_http_methods(["GET"])
@@ -325,13 +341,47 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def trip_create_view(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
-        form = TripForm(request.POST, request.FILES)
+        form_action = _trip_form_action(request)
+        form = TripForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             trip = form.save(commit=False)
             trip.host = request.user
+            if form_action in {FORM_ACTION_SAVE_DRAFT, FORM_ACTION_PREVIEW}:
+                trip.is_published = False
             trip.save()
 
-            messages.success(request, "Trip created.")
+            gallery_uploads = request.FILES.getlist("gallery_images")
+            gallery_upload_success = 0
+            gallery_upload_failed = 0
+            for uploaded_file in gallery_uploads:
+                _asset, _attachment, outcome, _target = submit_media_upload(
+                    member=request.user,
+                    target_type="trip",
+                    target_id=trip.pk,
+                    uploaded_file=uploaded_file,
+                    caption="",
+                )
+                if outcome in {"created", "attached-existing", "already-attached"}:
+                    gallery_upload_success += 1
+                else:
+                    gallery_upload_failed += 1
+
+            if form_action == FORM_ACTION_SAVE_DRAFT:
+                messages.success(request, "Draft saved.")
+            elif form_action == FORM_ACTION_PREVIEW:
+                messages.info(request, "Preview mode: review your trip before publishing.")
+            else:
+                messages.success(request, "Trip created.")
+            if gallery_upload_success > 0:
+                messages.success(request, f"Uploaded {gallery_upload_success} gallery image(s).")
+            if gallery_upload_failed > 0:
+                messages.warning(request, f"{gallery_upload_failed} gallery upload(s) failed validation.")
+            if form_action == FORM_ACTION_SAVE_DRAFT:
+                _vprint(request, f"Saved trip draft id={trip.pk} for @{request.user.username}")
+                return redirect(reverse("trips:edit", kwargs={"trip_id": trip.pk}))
+            if form_action == FORM_ACTION_PREVIEW:
+                _vprint(request, f"Previewing trip draft id={trip.pk} for @{request.user.username}")
+                return redirect(reverse("trips:detail", kwargs={"trip_id": trip.pk}))
             _vprint(request, f"Created trip id={trip.pk} for @{request.user.username}")
             return redirect(reverse("trips:detail", kwargs={"trip_id": trip.pk}))
 
@@ -343,7 +393,17 @@ def trip_create_view(request: HttpRequest) -> HttpResponse:
             second=0,
             microsecond=0,
         )
-        form = TripForm(initial={"starts_at": suggested_start, "is_published": True})
+        suggested_end = suggested_start + timedelta(days=2)
+        suggested_booking_close = suggested_start - timedelta(days=3)
+        form = TripForm(
+            initial={
+                "starts_at": suggested_start,
+                "ends_at": suggested_end,
+                "booking_closes_at": suggested_booking_close,
+                "is_published": True,
+            },
+            user=request.user,
+        )
         _vprint(request, f"Rendered trip create form for @{request.user.username}")
 
     context: dict[str, object] = {
@@ -369,11 +429,29 @@ def trip_create_view(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def trip_edit_view(request: HttpRequest, trip_id: int) -> HttpResponse:
     trip = get_object_or_404(Trip, pk=trip_id, host=request.user)
+    original_is_published = bool(trip.is_published)
 
     if request.method == "POST":
-        form = TripForm(request.POST, request.FILES, instance=trip)
+        form_action = _trip_form_action(request)
+        form = TripForm(request.POST, request.FILES, instance=trip, user=request.user)
         if form.is_valid():
-            form.save()
+            edited_trip = form.save(commit=False)
+            if form_action == FORM_ACTION_SAVE_DRAFT:
+                edited_trip.is_published = False
+            elif form_action == FORM_ACTION_PREVIEW:
+                # Preview should not accidentally publish or unpublish an existing trip.
+                edited_trip.is_published = original_is_published
+            edited_trip.save()
+
+            if form_action == FORM_ACTION_SAVE_DRAFT:
+                messages.success(request, "Draft saved.")
+                _vprint(request, f"Saved trip draft id={trip.pk} for @{request.user.username}")
+                return redirect(reverse("trips:edit", kwargs={"trip_id": trip.pk}))
+            if form_action == FORM_ACTION_PREVIEW:
+                messages.info(request, "Preview mode: review your trip before publishing.")
+                _vprint(request, f"Previewing trip id={trip.pk} for @{request.user.username}")
+                return redirect(reverse("trips:detail", kwargs={"trip_id": trip.pk}))
+
             messages.success(request, "Trip updated.")
             _vprint(request, f"Updated trip id={trip.pk} for @{request.user.username}")
             return redirect(reverse("trips:detail", kwargs={"trip_id": trip.pk}))
@@ -381,7 +459,7 @@ def trip_edit_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         messages.error(request, "Please fix the highlighted fields.")
         _vprint(request, f"Trip edit failed for id={trip_id} due to form validation errors")
     else:
-        form = TripForm(instance=trip)
+        form = TripForm(instance=trip, user=request.user)
         _vprint(request, f"Rendered trip edit form for id={trip_id} and @{request.user.username}")
 
     context: dict[str, object] = {

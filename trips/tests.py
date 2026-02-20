@@ -4,6 +4,7 @@ import os
 import tempfile
 from datetime import datetime, timedelta
 from io import StringIO
+from typing import cast
 from unittest.mock import PropertyMock, patch
 
 from django.contrib.auth import get_user_model
@@ -38,9 +39,89 @@ def _media_file_path(media_root: str, relative_name: str) -> str:
     return os.path.join(media_root, relative_name.replace("/", os.sep))
 
 
+def _trip_create_payload(
+    *,
+    starts_at: datetime,
+    ends_at: datetime,
+    title: str = "Created trip",
+    include_banner: bool = True,
+    is_published: bool = True,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "title": title,
+        "summary": "Created summary",
+        "description": "Created detail",
+        "destination": "Athens, Greece",
+        "trip_type": "city",
+        "budget_tier": "budget",
+        "difficulty_level": "easy",
+        "pace_level": "relaxed",
+        "group_size_label": "4-6 travelers",
+        "includes_label": "Host planning support and local coordination.",
+        "starts_at": _datetime_local(starts_at),
+        "ends_at": _datetime_local(ends_at),
+        "booking_closes_at": _datetime_local(starts_at - timedelta(days=2)),
+        "total_seats": "8",
+        "minimum_seats": "4",
+        "currency": "INR",
+        "total_trip_price": "12000.00",
+        "price_per_person": "1500.00",
+        "has_early_bird_discount": "",
+        "payment_terms": "50% upfront and 50% seven days before departure.",
+        "cost_breakdown_accommodation": "4000",
+        "cost_breakdown_transportation": "2500",
+        "cost_breakdown_activities": "2000",
+        "cost_breakdown_guide": "1500",
+        "cost_breakdown_miscellaneous": "2000",
+        "extra_costs_not_included_choices": ["Flights", "Personal Expenses"],
+        "extra_costs_not_included_custom": "Visa fees",
+        "highlights_payload": "[\"Sunrise city walk\", \"Hidden local food route\"]",
+        "included_items_payload": "[\"Hotel stay\", \"Guided city pass\"]",
+        "not_included_items_payload": "[\"Flights\", \"Travel insurance\"]",
+        "things_to_carry_payload": "[\"Government ID\", \"Comfortable shoes\"]",
+        "itinerary_days_payload": (
+            "[{\"is_flexible\": false, \"title\": \"Arrival day\", \"description\": \"Check-in and city warm-up\", "
+            "\"stay\": \"Boutique hotel\", \"meals\": \"Dinner\", \"activities\": \"Old town walk\"}]"
+        ),
+        "faqs_payload": (
+            "[{\"question\": \"Is airport pickup included?\", \"answer\": \"No, but host support is provided.\"}]"
+        ),
+        "approximate_flight_cost": "INR 5000 - INR 8000",
+        "optional_activities_cost": "INR 1000 - INR 2500",
+        "buffer_budget_suggestion": "INR 3000",
+        "personal_shopping_estimate": "INR 2000",
+        "experience_level_required": "beginner",
+        "fitness_level_required": "low",
+        "suitable_for_choices": ["Solo Travelers", "Friends", "All Genders"],
+        "trip_vibe_choices": ["Explorer"],
+        "gender_preference": "",
+        "age_preference": "22-35",
+        "code_of_conduct": "Respect group timings and local culture.",
+        "cancellation_policy": "Full refund up to 10 days before departure.",
+        "medical_declaration_required": "on",
+        "emergency_contact_required": "on",
+        "contact_preference": "in_app",
+        "co_hosts": "cohost_a, cohost_b",
+    }
+    if is_published:
+        payload["is_published"] = "on"
+    if include_banner:
+        payload["banner_image"] = SimpleUploadedFile(
+            "hero-banner.gif",
+            _tiny_gif_bytes(),
+            content_type="image/gif",
+        )
+    return payload
+
+
 class TripViewsTests(TestCase):
     def setUp(self) -> None:
         self.password = "TripsPass!123456"
+        self.media_tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.media_tempdir.cleanup)
+        self.media_override = override_settings(MEDIA_ROOT=self.media_tempdir.name)
+        self.media_override.enable()
+        self.addCleanup(self.media_override.disable)
         self.host_user = UserModel.objects.create_user(
             username="host-user",
             email="host-user@example.com",
@@ -153,25 +234,12 @@ class TripViewsTests(TestCase):
         self.client.login(username=self.member_user.username, password=self.password)
         starts_at = timezone.now() + timedelta(days=10)
         ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(starts_at=starts_at, ends_at=ends_at, title="Created trip")
+        payload["traffic_score"] = "999999"
 
         response = self.client.post(
             reverse("trips:create"),
-            {
-                "title": "Created trip",
-                "summary": "Created summary",
-                "description": "Created detail",
-                "destination": "Athens",
-                "trip_type": "city",
-                "budget_tier": "budget",
-                "difficulty_level": "easy",
-                "pace_level": "relaxed",
-                "group_size_label": "4-6 travelers",
-                "includes_label": "Host planning support and local coordination.",
-                "starts_at": _datetime_local(starts_at),
-                "ends_at": _datetime_local(ends_at),
-                "traffic_score": "999999",
-                "is_published": "on",
-            },
+            payload,
         )
 
         created_trip = Trip.objects.get(title="Created trip")
@@ -183,57 +251,80 @@ class TripViewsTests(TestCase):
         self.assertEqual(created_trip.pace_level, "relaxed")
         self.assertEqual(created_trip.group_size_label, "4-6 travelers")
         self.assertEqual(created_trip.traffic_score, 0)
+        self.assertEqual(created_trip.total_seats, 8)
+        self.assertEqual(created_trip.minimum_seats, 4)
+        created_highlights = created_trip.highlights
+        created_itinerary = cast(list[dict[str, object]], created_trip.itinerary_days)
+        self.assertEqual(created_highlights, ["Sunrise city walk", "Hidden local food route"])
+        self.assertEqual(len(created_itinerary), 1)
+        self.assertEqual(created_itinerary[0]["title"], "Arrival day")
+
+    def test_trip_create_form_shows_save_draft_and_preview_actions(self) -> None:
+        self.client.login(username=self.member_user.username, password=self.password)
+        response = self.client.get(reverse("trips:create"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "trip-progress-actions")
+        self.assertContains(response, "Save Draft")
+        self.assertContains(response, "Preview")
+
+    def test_trip_create_save_draft_action_saves_unpublished_and_redirects_edit(self) -> None:
+        self.client.login(username=self.member_user.username, password=self.password)
+        starts_at = timezone.now() + timedelta(days=10)
+        ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(starts_at=starts_at, ends_at=ends_at, title="Save draft action trip")
+        payload["form_action"] = "save_draft"
+
+        response = self.client.post(
+            reverse("trips:create"),
+            payload,
+        )
+
+        created_trip = Trip.objects.get(title="Save draft action trip")
+        self.assertFalse(created_trip.is_published)
+        self.assertRedirects(response, reverse("trips:edit", kwargs={"trip_id": created_trip.pk}))
+
+    def test_trip_create_preview_action_saves_unpublished_and_redirects_detail(self) -> None:
+        self.client.login(username=self.member_user.username, password=self.password)
+        starts_at = timezone.now() + timedelta(days=10)
+        ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(starts_at=starts_at, ends_at=ends_at, title="Preview action trip")
+        payload["form_action"] = "preview"
+
+        response = self.client.post(
+            reverse("trips:create"),
+            payload,
+        )
+
+        created_trip = Trip.objects.get(title="Preview action trip")
+        self.assertFalse(created_trip.is_published)
+        self.assertRedirects(response, reverse("trips:detail", kwargs={"trip_id": created_trip.pk}))
 
     def test_trip_create_invalid_date_order_returns_form_error(self) -> None:
         self.client.login(username=self.member_user.username, password=self.password)
         starts_at = timezone.now() + timedelta(days=10)
         ends_at = starts_at - timedelta(days=1)
+        payload = _trip_create_payload(starts_at=starts_at, ends_at=ends_at, title="Date invalid trip")
 
         response = self.client.post(
             reverse("trips:create"),
-            {
-                "title": "Date invalid trip",
-                "summary": "Created summary",
-                "description": "Created detail",
-                "destination": "Athens",
-                "trip_type": "city",
-                "budget_tier": "budget",
-                "difficulty_level": "easy",
-                "pace_level": "relaxed",
-                "group_size_label": "4-6 travelers",
-                "includes_label": "Host planning support and local coordination.",
-                "starts_at": _datetime_local(starts_at),
-                "ends_at": _datetime_local(ends_at),
-                "is_published": "on",
-            },
+            payload,
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "End time must be after the start time.")
+        self.assertContains(response, "End date must be after start date.")
         self.assertFalse(Trip.objects.filter(title="Date invalid trip").exists())
 
     def test_trip_create_rejects_description_above_limit(self) -> None:
         self.client.login(username=self.member_user.username, password=self.password)
         starts_at = timezone.now() + timedelta(days=10)
         ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(starts_at=starts_at, ends_at=ends_at, title="Description too long")
+        payload["description"] = "x" * 4001
 
         response = self.client.post(
             reverse("trips:create"),
-            {
-                "title": "Description too long",
-                "summary": "Created summary",
-                "description": "x" * 4001,
-                "destination": "Athens",
-                "trip_type": "city",
-                "budget_tier": "budget",
-                "difficulty_level": "easy",
-                "pace_level": "relaxed",
-                "group_size_label": "4-6 travelers",
-                "includes_label": "Host planning support and local coordination.",
-                "starts_at": _datetime_local(starts_at),
-                "ends_at": _datetime_local(ends_at),
-                "is_published": "on",
-            },
+            payload,
         )
 
         self.assertEqual(response.status_code, 200)
@@ -249,67 +340,42 @@ class TripViewsTests(TestCase):
         self.assertTrue(str(response.context["form_timezone_label"]))
         self.assertContains(response, "Date/time fields use")
 
-    def test_trip_create_without_upload_uses_default_banner_for_trip_type(self) -> None:
+    def test_trip_create_without_hero_image_returns_validation_error(self) -> None:
         self.client.login(username=self.member_user.username, password=self.password)
         starts_at = timezone.now() + timedelta(days=10)
         ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(
+            starts_at=starts_at,
+            ends_at=ends_at,
+            title="Default banner trip",
+            include_banner=False,
+        )
 
         response = self.client.post(
             reverse("trips:create"),
-            {
-                "title": "Default banner trip",
-                "summary": "Created summary",
-                "description": "Created detail",
-                "destination": "Athens",
-                "trip_type": "desert",
-                "budget_tier": "budget",
-                "difficulty_level": "easy",
-                "pace_level": "relaxed",
-                "group_size_label": "4-6 travelers",
-                "includes_label": "Host planning support and local coordination.",
-                "starts_at": _datetime_local(starts_at),
-                "ends_at": _datetime_local(ends_at),
-                "is_published": "on",
-            },
+            payload,
         )
 
-        created_trip = Trip.objects.get(title="Default banner trip")
-        self.assertRedirects(response, reverse("trips:detail", kwargs={"trip_id": created_trip.pk}))
-        self.assertFalse(bool(created_trip.banner_image))
-
-        detail_response = self.client.get(reverse("trips:detail", kwargs={"trip_id": created_trip.pk}))
-        self.assertEqual(detail_response.status_code, 200)
-        banner_url = str(detail_response.context["trip"].get("banner_image_url", "") or "")
-        self.assertIn("/static/img/trip-banners/desert.svg", banner_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This field is required.")
+        self.assertFalse(Trip.objects.filter(title="Default banner trip").exists())
 
     def test_trip_create_uploaded_banner_overrides_default_banner(self) -> None:
         self.client.login(username=self.member_user.username, password=self.password)
         starts_at = timezone.now() + timedelta(days=10)
         ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(starts_at=starts_at, ends_at=ends_at, title="Uploaded banner trip")
+        payload["trip_type"] = "desert"
+        payload["banner_image"] = SimpleUploadedFile(
+            "cute-banner.gif",
+            _tiny_gif_bytes(),
+            content_type="image/gif",
+        )
 
         with tempfile.TemporaryDirectory() as temp_media_root, override_settings(MEDIA_ROOT=temp_media_root):
             response = self.client.post(
                 reverse("trips:create"),
-                {
-                    "title": "Uploaded banner trip",
-                    "summary": "Created summary",
-                    "description": "Created detail",
-                    "destination": "Athens",
-                    "trip_type": "desert",
-                    "budget_tier": "budget",
-                    "difficulty_level": "easy",
-                    "pace_level": "relaxed",
-                    "group_size_label": "4-6 travelers",
-                    "includes_label": "Host planning support and local coordination.",
-                    "starts_at": _datetime_local(starts_at),
-                    "ends_at": _datetime_local(ends_at),
-                    "is_published": "on",
-                    "banner_image": SimpleUploadedFile(
-                        "cute-banner.gif",
-                        _tiny_gif_bytes(),
-                        content_type="image/gif",
-                    ),
-                },
+                payload,
             )
 
             created_trip = Trip.objects.get(title="Uploaded banner trip")
@@ -353,6 +419,83 @@ class TripViewsTests(TestCase):
         self.assertContains(response, "Save changes")
         self.assertContains(response, "Current banner file: trip_banners/fake.webp")
         self.assertContains(response, reverse("trips:banner", kwargs={"trip_id": trip.pk}))
+
+    def test_trip_edit_save_draft_action_unpublishes_and_redirects_edit(self) -> None:
+        trip = Trip.objects.create(
+            host=self.host_user,
+            title="Editable draft action trip",
+            summary="s",
+            description="d",
+            destination="Prague",
+            starts_at=timezone.now() + timedelta(days=4),
+            trip_type="city",
+            budget_tier="mid",
+            difficulty_level="moderate",
+            pace_level="balanced",
+            group_size_label="6-10 travelers",
+            includes_label="Host planning support.",
+            is_published=True,
+        )
+
+        self.client.login(username=self.host_user.username, password=self.password)
+        starts_at = timezone.now() + timedelta(days=8)
+        ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(
+            starts_at=starts_at,
+            ends_at=ends_at,
+            title="Editable draft action trip",
+            include_banner=False,
+        )
+        payload["form_action"] = "save_draft"
+        payload["summary"] = "Edited in save draft mode"
+
+        response = self.client.post(
+            reverse("trips:edit", kwargs={"trip_id": trip.pk}),
+            payload,
+        )
+
+        trip.refresh_from_db()
+        self.assertFalse(trip.is_published)
+        self.assertEqual(trip.summary, "Edited in save draft mode")
+        self.assertRedirects(response, reverse("trips:edit", kwargs={"trip_id": trip.pk}))
+
+    def test_trip_edit_preview_action_keeps_existing_publish_state(self) -> None:
+        trip = Trip.objects.create(
+            host=self.host_user,
+            title="Editable preview action trip",
+            summary="s",
+            description="d",
+            destination="Prague",
+            starts_at=timezone.now() + timedelta(days=4),
+            trip_type="city",
+            budget_tier="mid",
+            difficulty_level="moderate",
+            pace_level="balanced",
+            group_size_label="6-10 travelers",
+            includes_label="Host planning support.",
+            is_published=False,
+        )
+
+        self.client.login(username=self.host_user.username, password=self.password)
+        starts_at = timezone.now() + timedelta(days=8)
+        ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(
+            starts_at=starts_at,
+            ends_at=ends_at,
+            title="Editable preview action trip",
+            include_banner=False,
+            is_published=True,
+        )
+        payload["form_action"] = "preview"
+
+        response = self.client.post(
+            reverse("trips:edit", kwargs={"trip_id": trip.pk}),
+            payload,
+        )
+
+        trip.refresh_from_db()
+        self.assertFalse(trip.is_published)
+        self.assertRedirects(response, reverse("trips:detail", kwargs={"trip_id": trip.pk}))
 
     def test_trip_detail_falls_back_to_banner_proxy_when_banner_url_resolution_fails(self) -> None:
         trip = Trip.objects.create(
@@ -630,23 +773,16 @@ class TripViewsTests(TestCase):
         self.client.login(username=self.member_user.username, password=self.password)
         starts_at = timezone.now() + timedelta(days=10)
         ends_at = starts_at + timedelta(days=2)
+        payload = _trip_create_payload(
+            starts_at=starts_at,
+            ends_at=ends_at,
+            title="Draft only trip",
+            is_published=False,
+        )
 
         response = self.client.post(
             reverse("trips:create"),
-            {
-                "title": "Draft only trip",
-                "summary": "Created summary",
-                "description": "Created detail",
-                "destination": "Athens",
-                "trip_type": "city",
-                "budget_tier": "budget",
-                "difficulty_level": "easy",
-                "pace_level": "relaxed",
-                "group_size_label": "4-6 travelers",
-                "includes_label": "Host planning support and local coordination.",
-                "starts_at": _datetime_local(starts_at),
-                "ends_at": _datetime_local(ends_at),
-            },
+            payload,
         )
 
         created_trip = Trip.objects.get(title="Draft only trip")

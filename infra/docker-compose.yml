@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: infra/Dockerfile.web
+    image: ${WEB_IMAGE_REF:-tapne-local-web:latest}
     restart: unless-stopped
     env_file:
       - ./.env

@@ -1537,9 +1537,323 @@ code {
     gap: 0.9rem;
 }
 
+.trip-creation-form {
+    gap: 1.2rem;
+}
+
+.trip-progress-shell {
+    backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--surface-1) 84%, transparent);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 0.45rem;
+    margin-bottom: 0.95rem;
+    padding: 0.58rem 0.72rem 0.66rem;
+    position: sticky;
+    top: var(--trip-progress-top, 5.4rem);
+    z-index: 35;
+}
+
+.trip-progress-meta {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.38rem 0.62rem;
+    justify-content: space-between;
+}
+
+.trip-progress-title {
+    color: var(--text-2);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.trip-progress-summary {
+    align-items: baseline;
+    display: inline-flex;
+    gap: 0.48rem;
+}
+
+.trip-progress-percent {
+    color: var(--accent-ink);
+    font-family: var(--font-display);
+    font-size: 1.08rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.trip-progress-sections {
+    color: var(--text-3);
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.trip-progress-track {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    display: block;
+    height: 0.7rem;
+    overflow: hidden;
+    position: relative;
+}
+
+.trip-progress-fill {
+    background:
+        linear-gradient(90deg, rgba(var(--accent-rgb), 0.72), rgba(var(--accent-rgb), 0.95)),
+        linear-gradient(90deg, var(--accent), var(--accent-strong));
+    border-radius: inherit;
+    display: block;
+    height: 100%;
+    transition: width var(--ease-float);
+    width: 0;
+}
+
+.trip-progress-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.42rem;
+    justify-content: flex-end;
+}
+
+.trip-progress-actions .btn {
+    font-size: 0.8rem;
+    min-height: 2rem;
+    padding: 0.48rem 0.78rem;
+}
+
+.trip-form-layout {
+    align-items: start;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+}
+
+.trip-form-index {
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.8rem;
+    position: sticky;
+    top: calc(var(--trip-progress-top, 5.4rem) + var(--trip-progress-height, 3rem) + 0.5rem);
+}
+
+.trip-form-index-title {
+    color: var(--text-2);
+    font-family: var(--font-ui);
+    font-size: 0.84rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.trip-form-index-list {
+    display: grid;
+    gap: 0.3rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.trip-form-index-link {
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    color: var(--text-2);
+    display: flex;
+    align-items: center;
+    gap: 0.42rem;
+    font-family: var(--font-ui);
+    font-size: 0.84rem;
+    font-weight: 600;
+    line-height: 1.35;
+    padding: 0.35rem 0.48rem;
+    text-decoration: none;
+    transition:
+        background var(--ease-standard),
+        border-color var(--ease-standard),
+        color var(--ease-standard);
+}
+
+.trip-form-index-logo {
+    display: inline-block;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.trip-form-index-link-text {
+    line-height: 1.35;
+}
+
+.trip-form-index-link:hover {
+    background: var(--surface-2);
+    border-color: var(--line);
+}
+
+.trip-form-index-link.is-active {
+    background: var(--accent-soft);
+    border-color: rgba(var(--accent-rgb), 0.35);
+    color: var(--accent-ink);
+}
+
+.trip-form-section {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.85rem;
+}
+
+.trip-form-section.is-collapsed > :not(.trip-form-section-header) {
+    display: none;
+}
+
+.trip-form-section-header {
+    align-items: start;
+    column-gap: 0.8rem;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0.1rem 0.2rem;
+    border-radius: var(--radius-xs);
+    row-gap: 0.3rem;
+    transition: background var(--ease-standard);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.trip-form-section-header.is-collapsible:hover {
+    background: var(--surface-2);
+}
+
+.trip-form-section-header.is-collapsible:focus-visible {
+    outline: 2px solid rgba(var(--accent-rgb), 0.82);
+    outline-offset: 2px;
+}
+
+.trip-form-section-header h2 {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.55rem;
+    margin: 0.25rem 0;
+}
+
+.trip-form-section-header p {
+    margin: 0;
+}
+
+.trip-form-section-header > :not(.trip-section-notation) {
+    grid-column: 1;
+}
+
+.trip-section-notation {
+    align-self: start;
+    color: var(--accent-ink);
+    font-family: var(--font-ui);
+    font-size: 1.6rem;
+    font-weight: 800;
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    line-height: 1;
+    min-width: 1.2ch;
+    text-align: right;
+}
+
+.section-logo {
+    align-items: center;
+    background:
+        radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 62%),
+        linear-gradient(145deg, var(--accent-soft), var(--accent-soft-strong));
+    border: 1px solid rgba(var(--accent-rgb), 0.34);
+    border-radius: 999px;
+    box-shadow: 0 6px 12px rgba(var(--accent-rgb), 0.2);
+    display: inline-flex;
+    font-size: 1.05rem;
+    height: 1.95rem;
+    justify-content: center;
+    line-height: 1;
+    width: 1.95rem;
+}
+
+.button-logo {
+    display: inline-flex;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.required-star {
+    color: var(--danger);
+    font-weight: 800;
+    margin-left: 0.15rem;
+}
+
+.trip-form-grid {
+    display: grid;
+    align-items: start;
+    gap: 0.6rem;
+}
+
+.trip-form-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trip-form-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.trip-form-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.trip-form-grid-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.dynamic-list-builder,
+.dynamic-day-builder,
+.dynamic-faq-builder {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.dynamic-list-items,
+.dynamic-day-items,
+.dynamic-faq-items {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.dynamic-list-row,
+.dynamic-day-row,
+.dynamic-faq-row {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xs);
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.6rem;
+}
+
+.text-danger {
+    color: var(--danger);
+}
+
 .form-field {
     display: grid;
     gap: 0.36rem;
+}
+
+.trip-form-grid > .form-field {
+    min-width: 0;
 }
 
 .trip-form-banner-preview {
@@ -1884,7 +2198,45 @@ body.modal-open {
     }
 }
 
+@media (max-width: 1240px) {
+    .trip-form-grid-5 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 1020px) {
+    .trip-progress-shell {
+        top: var(--trip-progress-top, 6.2rem);
+    }
+
+    .trip-form-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .trip-form-index {
+        position: static;
+    }
+
+    .trip-form-index-nav {
+        overflow-x: auto;
+    }
+
+    .trip-form-index-list {
+        display: flex;
+        gap: 0.45rem;
+        min-width: max-content;
+        padding-bottom: 0.2rem;
+    }
+
+    .trip-form-index-link {
+        white-space: nowrap;
+    }
+
+    .trip-form-grid-4,
+    .trip-form-grid-5 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .header-inner {
         align-items: start;
         grid-template-columns: 1fr;
@@ -1990,6 +2342,17 @@ body.modal-open {
     .auth-links .btn,
     .auth-links form {
         flex: 1 1 100%;
+    }
+
+    .trip-form-grid-2,
+    .trip-form-grid-3,
+    .trip-form-grid-4,
+    .trip-form-grid-5 {
+        grid-template-columns: 1fr;
+    }
+
+    .trip-progress-actions .btn {
+        flex: 1 1 calc(50% - 0.3rem);
     }
 
     .auth-modal-panel {

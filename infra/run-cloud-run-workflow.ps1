@@ -11,7 +11,11 @@
     5) infra/deploy-cloud-run.ps1
 
   This orchestrator keeps one shared image tag across check/push/deploy and
-  sets deploy to -BuildAndPushImage:$false so step 3 is the single push step.
+  avoids duplicate builds by:
+    - building once during setup-faithful-local
+    - running check-cloud-run-web-image with --no-build
+    - running push-web-image-to-artifact with -NoBuild
+    - setting deploy to -BuildAndPushImage:$false so step 3 is the single push step
 
 .EXAMPLE
   pwsh -File infra/run-cloud-run-workflow.ps1 -Verbose
@@ -194,6 +198,7 @@ $domainScript = Join-Path $scriptDirectory "setup-custom-domain.ps1"
 $deployScript = Join-Path $scriptDirectory "deploy-cloud-run.ps1"
 
 $setupArgs = @(
+    "-WebImageRef", $localImageRef
 )
 if (-not $EnableAutoStartDocker) {
     $setupArgs += "-NoAutoStartDocker"
@@ -203,6 +208,7 @@ if ($isVerbose) {
 }
 
 $checkArgs = @(
+    "--no-build",
     "--image", $localImageRef,
     "--artifact-image", $artifactImageRef,
     "--service", $ServiceName,
@@ -218,6 +224,7 @@ $pushArgs = @(
     "-Repository", $Repository,
     "-ImageName", $ImageName,
     "-ImageTag", $ImageTag,
+    "-NoBuild",
     "-SkipAuthLogin:$([bool]$SkipAuthLogin)"
 )
 if ($isVerbose) {

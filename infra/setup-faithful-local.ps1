@@ -24,6 +24,9 @@
 .PARAMETER InfraOnly
   Starts only infrastructure services (db, minio, redis) and skips web.
 
+.PARAMETER WebImageRef
+  Optional explicit Docker image reference for the web service build/tag.
+
 .PARAMETER HealthTimeoutSeconds
   Maximum time to wait for service health before failing.
 
@@ -45,6 +48,7 @@ param(
     [switch]$NoBuild,
     [switch]$ForceEnv,
     [switch]$InfraOnly,
+    [string]$WebImageRef = "",
     [ValidateRange(30, 1800)]
     [int]$HealthTimeoutSeconds = 180,
     [switch]$AutoStartDocker,
@@ -75,8 +79,8 @@ if ($NoAutoStartDocker) {
 }
 
 Write-Verbose (
-    "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; HealthTimeoutSeconds={4}; AutoStartDocker={5}" -f
-    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $HealthTimeoutSeconds, $EnableAutoStartDocker
+    "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; WebImageRef={4}; HealthTimeoutSeconds={5}; AutoStartDocker={6}" -f
+    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $WebImageRef, $HealthTimeoutSeconds, $EnableAutoStartDocker
 )
 
 function Write-Step {
@@ -854,6 +858,11 @@ $composeBaseArgs = @(
     "--env-file", $envFilePath,
     "-f", $composeFilePath
 )
+
+if (-not [string]::IsNullOrWhiteSpace($WebImageRef)) {
+    $env:WEB_IMAGE_REF = $WebImageRef.Trim()
+    Write-Verbose ("Using WEB_IMAGE_REF override: {0}" -f $env:WEB_IMAGE_REF)
+}
 
 if ($InfraOnly) {
     Write-Step "InfraOnly cleanup"

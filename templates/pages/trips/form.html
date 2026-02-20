@@ -1,17 +1,72 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}tapne | {{ page_title|default:"Trip form" }}{% endblock %}
 
+{% block head_extra %}
+{{ block.super }}
+<script src="{% static 'js/trip-form-builders.js' %}" defer></script>
+{% endblock %}
+
 {% block content %}
+<section class="trip-progress-shell" data-trip-progress-shell>
+    <div class="trip-progress-meta">
+        <p class="trip-progress-title">Trip Creation Progress</p>
+        <p class="trip-progress-summary">
+            <span class="trip-progress-percent" data-trip-progress-percent>0%</span>
+            <span class="trip-progress-sections" data-trip-progress-sections>0 / 0 sections</span>
+        </p>
+    </div>
+    <div
+        class="trip-progress-track"
+        role="progressbar"
+        aria-label="Trip creation completion percentage"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+        data-trip-progress-track
+    >
+        <span class="trip-progress-fill" data-trip-progress-fill></span>
+    </div>
+    <div class="trip-progress-actions">
+        <button class="btn btn-primary" type="submit" form="trip-creation-form" name="form_action" value="submit">
+            <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Create trip" }}
+        </button>
+        <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="save_draft">
+            <span class="button-logo" aria-hidden="true">💾</span>Save Draft
+        </button>
+        <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="preview">
+            <span class="button-logo" aria-hidden="true">👀</span>Preview
+        </button>
+        {% if form_mode == "edit" and trip %}
+        <a class="btn btn-secondary" href="/trips/{{ trip.id }}/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
+        {% else %}
+        <a class="btn btn-secondary" href="/trips/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
+        {% endif %}
+    </div>
+</section>
+
 <section class="hero hero-compact">
     <p class="eyebrow">Trips</p>
     <h1>{{ page_title|default:"Trip form" }}</h1>
-    <p>These fields are stored in PostgreSQL and drive trip list/detail, filters, and search results.</p>
+    <p>Complete each section carefully. This flow controls the trip card, itinerary trust, and booking quality.</p>
 </section>
 
 <section class="section-grid">
-    <form method="post" class="form-stack" enctype="multipart/form-data">
+    <div class="trip-form-layout">
+        <aside class="trip-form-index" aria-label="Trip section index">
+            <p class="trip-form-index-title">Sections</p>
+            <nav class="trip-form-index-nav" data-trip-section-index></nav>
+        </aside>
+        <form method="post" class="form-stack trip-creation-form" id="trip-creation-form" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
+        {{ form.highlights_payload }}
+        {{ form.included_items_payload }}
+        {{ form.not_included_items_payload }}
+        {{ form.things_to_carry_payload }}
+        {{ form.itinerary_days_payload }}
+        {{ form.faqs_payload }}
+
         <p class="detail-meta">Date/time fields use {{ form_timezone_label|default:"UTC" }}.</p>
 
         {% if form.non_field_errors %}
@@ -22,44 +77,402 @@
         </div>
         {% endif %}
 
-        {% for field in form %}
-        <div class="form-field">
-            {% if field.field.widget.input_type == "checkbox" %}
-            <label class="inline-checkbox-label" for="{{ field.id_for_label }}">
-                {{ field }} {{ field.label }}
-            </label>
-            {% else %}
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% endif %}
-            {% if field.help_text %}
-            <p class="detail-meta">{{ field.help_text }}</p>
-            {% endif %}
-            {% if field.name == "banner_image" and current_banner_name %}
-            <p class="detail-meta">Current banner file: {{ current_banner_name }}</p>
-            <p class="detail-meta">"No file selected" is expected until you choose a replacement file.</p>
-            {% endif %}
-            {% if field.name == "banner_image" and current_banner_preview_url %}
-            <img class="trip-form-banner-preview" src="{{ current_banner_preview_url }}" alt="Current trip banner image">
-            {% endif %}
-            {% if field.errors %}
-            <div class="flash flash-error">
-                {% for error in field.errors %}
-                <p>{{ error }}</p>
-                {% endfor %}
+        <article class="trip-form-section" id="trip-section-overview" data-index-label="Basic Trip Overview" data-section-required="true">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🧳</span>Basic Trip Overview</h2>
+                <p>Give a short exciting overview. This is what people see first.</p>
+            </header>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.title.id_for_label }}">Trip Title <span class="required-star">*</span></label>
+                    {{ form.title }}
+                    <p class="detail-meta">{{ form.title.help_text }}</p>
+                    {% for error in form.title.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.destination.id_for_label }}">Destination <span class="required-star">*</span></label>
+                    {{ form.destination }}
+                    <p class="detail-meta">{{ form.destination.help_text }}</p>
+                    {% for error in form.destination.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
             </div>
-            {% endif %}
-        </div>
-        {% endfor %}
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.trip_type.id_for_label }}">Trip Category <span class="required-star">*</span></label>
+                    {{ form.trip_type }}
+                    {% for error in form.trip_type.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.summary.id_for_label }}">Trip Summary <span class="required-star">*</span></label>
+                    {{ form.summary }}
+                    <p class="detail-meta">{{ form.summary.help_text }}</p>
+                    {% for error in form.summary.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="{{ form.description.id_for_label }}">Long-form Description</label>
+                {{ form.description }}
+                <p class="detail-meta">{{ form.description.help_text }}</p>
+                {% for error in form.description.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+            </div>
+            <div class="trip-form-grid trip-form-grid-3">
+                <div class="form-field">
+                    <label for="{{ form.starts_at.id_for_label }}">Start Date <span class="required-star">*</span></label>
+                    {{ form.starts_at }}
+                    {% for error in form.starts_at.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.ends_at.id_for_label }}">End Date <span class="required-star">*</span></label>
+                    {{ form.ends_at }}
+                    {% for error in form.ends_at.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.booking_closes_at.id_for_label }}">Booking Closes</label>
+                    {{ form.booking_closes_at }}
+                    {% for error in form.booking_closes_at.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.total_seats.id_for_label }}">Total Seats <span class="required-star">*</span></label>
+                    {{ form.total_seats }}
+                    {% for error in form.total_seats.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.minimum_seats.id_for_label }}">Minimum Seats</label>
+                    {{ form.minimum_seats }}
+                    <p class="detail-meta">{{ form.minimum_seats.help_text }}</p>
+                    {% for error in form.minimum_seats.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-media" data-index-label="Hero and Media" data-section-required="true">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">📸</span>Hero and Media</h2>
+                <p>Stunning visuals make your trip stand out.</p>
+            </header>
+            <div class="form-field">
+                <label for="{{ form.banner_image.id_for_label }}">Hero Image <span class="required-star">*</span></label>
+                {{ form.banner_image }}
+                <p class="detail-meta">{{ form.banner_image.help_text }}</p>
+                {% if current_banner_name %}
+                <p class="detail-meta">Current banner file: {{ current_banner_name }}</p>
+                {% endif %}
+                {% if current_banner_preview_url %}
+                <img class="trip-form-banner-preview" src="{{ current_banner_preview_url }}" alt="Current trip hero image">
+                {% endif %}
+                {% for error in form.banner_image.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+            </div>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.gallery_images.id_for_label }}">Gallery Images</label>
+                    {{ form.gallery_images }}
+                    <p class="detail-meta">{{ form.gallery_images.help_text }}</p>
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.video_link.id_for_label }}">Video Link</label>
+                    {{ form.video_link }}
+                    <p class="detail-meta">{{ form.video_link.help_text }}</p>
+                    {% for error in form.video_link.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-pricing" data-index-label="Pricing and Financial Breakdown" data-section-required="true">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">💸</span>Pricing and Financial Breakdown</h2>
+                <p>Be transparent about costs. Trust starts with clear pricing.</p>
+            </header>
+            <div class="trip-form-grid trip-form-grid-4">
+                <div class="form-field">
+                    <label for="{{ form.currency.id_for_label }}">Currency</label>
+                    {{ form.currency }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.total_trip_price.id_for_label }}">Total Trip Price <span class="required-star">*</span></label>
+                    {{ form.total_trip_price }}
+                    {% for error in form.total_trip_price.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.price_per_person.id_for_label }}">Price Per Person</label>
+                    {{ form.price_per_person }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.early_bird_price.id_for_label }}">Early Bird Price</label>
+                    {{ form.early_bird_price }}
+                    {% for error in form.early_bird_price.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+            <div class="form-field">
+                <label class="inline-checkbox-label" for="{{ form.has_early_bird_discount.id_for_label }}">
+                    {{ form.has_early_bird_discount }} Offer a discount for early sign-ups
+                </label>
+            </div>
+            <div class="form-field">
+                <label for="{{ form.payment_terms.id_for_label }}">Payment Terms</label>
+                {{ form.payment_terms }}
+            </div>
+            <div class="form-field">
+                <label>Extra Costs Not Included</label>
+                {{ form.extra_costs_not_included_choices }}
+                <label for="{{ form.extra_costs_not_included_custom.id_for_label }}">Additional custom items</label>
+                {{ form.extra_costs_not_included_custom }}
+                <p class="detail-meta">Flights, local transfers, personal expenses, add-ons, excluded meals, optional activities.</p>
+            </div>
+            <div class="trip-form-grid trip-form-grid-5">
+                <div class="form-field">
+                    <label for="{{ form.cost_breakdown_accommodation.id_for_label }}">Accommodation</label>
+                    {{ form.cost_breakdown_accommodation }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.cost_breakdown_transportation.id_for_label }}">Transportation</label>
+                    {{ form.cost_breakdown_transportation }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.cost_breakdown_activities.id_for_label }}">Activities</label>
+                    {{ form.cost_breakdown_activities }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.cost_breakdown_guide.id_for_label }}">Guide</label>
+                    {{ form.cost_breakdown_guide }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.cost_breakdown_miscellaneous.id_for_label }}">Miscellaneous</label>
+                    {{ form.cost_breakdown_miscellaneous }}
+                </div>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-highlights" data-index-label="Highlights">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">✨</span>Highlights</h2>
+            </header>
+            <div
+                class="dynamic-list-builder"
+                data-list-builder
+                data-target-input-id="{{ form.highlights_payload.id_for_label }}"
+                data-item-label="Highlight"
+                data-item-example="e.g. Hidden waterfall trek at sunrise"
+            >
+                <div class="dynamic-list-items" data-list-items></div>
+                <button class="btn btn-secondary" type="button" data-list-add>+ Add Highlight</button>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-itinerary" data-index-label="Detailed Itinerary">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🗺️</span>Detailed Itinerary</h2>
+            </header>
+            <div class="dynamic-day-builder" data-day-builder data-target-input-id="{{ form.itinerary_days_payload.id_for_label }}">
+                <div class="dynamic-day-items" data-day-items></div>
+                <button class="btn btn-secondary" type="button" data-day-add>+ Add Day</button>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-included" data-index-label="What's Included">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">✅</span>What's Included</h2>
+            </header>
+            <div class="form-field">
+                <label for="{{ form.includes_label.id_for_label }}">Included summary label</label>
+                {{ form.includes_label }}
+                {% for error in form.includes_label.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+            </div>
+            <div
+                class="dynamic-list-builder"
+                data-list-builder
+                data-target-input-id="{{ form.included_items_payload.id_for_label }}"
+                data-item-label="Included item"
+                data-item-example="e.g. 2-night boutique stay"
+            >
+                <div class="dynamic-list-items" data-list-items></div>
+                <button class="btn btn-secondary" type="button" data-list-add>+ Add Item</button>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-not-included" data-index-label="What's Not Included">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🚫</span>What's Not Included</h2>
+            </header>
+            <div
+                class="dynamic-list-builder"
+                data-list-builder
+                data-target-input-id="{{ form.not_included_items_payload.id_for_label }}"
+                data-item-label="Not included item"
+                data-item-example="e.g. International flights"
+            >
+                <div class="dynamic-list-items" data-list-items></div>
+                <button class="btn btn-secondary" type="button" data-list-add>+ Add Item</button>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-extras" data-index-label="Extra Spend">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🛍️</span>Extra Things Participants Might Spend On</h2>
+            </header>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.approximate_flight_cost.id_for_label }}">Approximate Flight Cost</label>
+                    {{ form.approximate_flight_cost }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.optional_activities_cost.id_for_label }}">Optional Activities Cost</label>
+                    {{ form.optional_activities_cost }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.buffer_budget_suggestion.id_for_label }}">Buffer Budget Suggestion</label>
+                    {{ form.buffer_budget_suggestion }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.personal_shopping_estimate.id_for_label }}">Personal Shopping Estimate</label>
+                    {{ form.personal_shopping_estimate }}
+                </div>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-carry" data-index-label="Things to Carry">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🎒</span>Things to Carry</h2>
+            </header>
+            <div
+                class="dynamic-list-builder"
+                data-list-builder
+                data-target-input-id="{{ form.things_to_carry_payload.id_for_label }}"
+                data-item-label="Carry item"
+                data-item-example="e.g. Light rain jacket"
+            >
+                <div class="dynamic-list-items" data-list-items></div>
+                <button class="btn btn-secondary" type="button" data-list-add>+ Add Item</button>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-social" data-index-label="Social Context">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🤝</span>Trip Experience and Social Context</h2>
+            </header>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.experience_level_required.id_for_label }}">Experience Level Required</label>
+                    {{ form.experience_level_required }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.fitness_level_required.id_for_label }}">Fitness Level Required</label>
+                    {{ form.fitness_level_required }}
+                </div>
+            </div>
+            <div class="form-field">
+                <label>Suitable For</label>
+                {{ form.suitable_for_choices }}
+            </div>
+            <div class="form-field">
+                <label>Trip Vibe</label>
+                {{ form.trip_vibe_choices }}
+            </div>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.gender_preference.id_for_label }}">Gender Preference</label>
+                    {{ form.gender_preference }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.age_preference.id_for_label }}">Age Preference</label>
+                    {{ form.age_preference }}
+                </div>
+            </div>
+            <div class="trip-form-grid trip-form-grid-4">
+                <div class="form-field">
+                    <label for="{{ form.budget_tier.id_for_label }}">Budget Tier</label>
+                    {{ form.budget_tier }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.difficulty_level.id_for_label }}">Difficulty</label>
+                    {{ form.difficulty_level }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.pace_level.id_for_label }}">Pace</label>
+                    {{ form.pace_level }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.group_size_label.id_for_label }}">Group Size</label>
+                    {{ form.group_size_label }}
+                </div>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-safety" data-index-label="Safety and Policies">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🛡️</span>Safety and Policies</h2>
+            </header>
+            <div class="form-field">
+                <label for="{{ form.code_of_conduct.id_for_label }}">Code of Conduct</label>
+                {{ form.code_of_conduct }}
+            </div>
+            <div class="form-field">
+                <label for="{{ form.cancellation_policy.id_for_label }}">Cancellation Policy</label>
+                {{ form.cancellation_policy }}
+            </div>
+            <div class="form-field">
+                <label class="inline-checkbox-label" for="{{ form.medical_declaration_required.id_for_label }}">
+                    {{ form.medical_declaration_required }} Medical Declaration Required?
+                </label>
+            </div>
+            <div class="form-field">
+                <label class="inline-checkbox-label" for="{{ form.emergency_contact_required.id_for_label }}">
+                    {{ form.emergency_contact_required }} Emergency Contact Required?
+                </label>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-faqs" data-index-label="FAQs">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">💬</span>FAQs</h2>
+            </header>
+            <div class="dynamic-faq-builder" data-faq-builder data-target-input-id="{{ form.faqs_payload.id_for_label }}">
+                <div class="dynamic-faq-items" data-faq-items></div>
+                <button class="btn btn-secondary" type="button" data-faq-add>+ Add FAQ</button>
+            </div>
+        </article>
+
+        <article class="trip-form-section" id="trip-section-host" data-index-label="Host Information">
+            <header class="trip-form-section-header">
+                <h2><span class="section-logo" aria-hidden="true">🧑‍💼</span>Host Information</h2>
+            </header>
+            <p class="detail-meta">Host account: @{{ request.user.username }}{% if request.user.email %} - {{ request.user.email }}{% endif %}</p>
+            <div class="trip-form-grid trip-form-grid-2">
+                <div class="form-field">
+                    <label for="{{ form.contact_preference.id_for_label }}">Contact Preference</label>
+                    {{ form.contact_preference }}
+                </div>
+                <div class="form-field">
+                    <label for="{{ form.co_hosts.id_for_label }}">Co-hosts</label>
+                    {{ form.co_hosts }}
+                    <p class="detail-meta">Comma-separated names or usernames.</p>
+                </div>
+            </div>
+            <div class="form-field">
+                <label class="inline-checkbox-label" for="{{ form.is_published.id_for_label }}">
+                    {{ form.is_published }} Publish immediately
+                </label>
+            </div>
+        </article>
 
         <div class="inline-actions">
-            <button class="btn btn-primary" type="submit">{{ submit_label|default:"Save" }}</button>
+            <button class="btn btn-primary" type="submit" name="form_action" value="submit">
+                <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Create trip" }}
+            </button>
+            <button class="btn btn-secondary" type="submit" name="form_action" value="save_draft">
+                <span class="button-logo" aria-hidden="true">💾</span>Save Draft
+            </button>
+            <button class="btn btn-secondary" type="submit" name="form_action" value="preview">
+                <span class="button-logo" aria-hidden="true">👀</span>Preview
+            </button>
             {% if form_mode == "edit" and trip %}
-            <a class="btn btn-secondary" href="/trips/{{ trip.id }}/">Cancel</a>
+            <a class="btn btn-secondary" href="/trips/{{ trip.id }}/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
             {% else %}
-            <a class="btn btn-secondary" href="/trips/">Cancel</a>
+            <a class="btn btn-secondary" href="/trips/"><span class="button-logo" aria-hidden="true">↩️</span>Cancel</a>
             {% endif %}
         </div>
-    </form>
+        </form>
+    </div>
 </section>
 {% endblock %}

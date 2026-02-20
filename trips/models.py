@@ -49,6 +49,20 @@ class TripMinePayload(TypedDict):
     reason: str
 
 
+class TripItineraryDay(TypedDict):
+    is_flexible: bool
+    title: str
+    description: str
+    stay: str
+    meals: str
+    activities: str
+
+
+class TripFaqItem(TypedDict):
+    question: str
+    answer: str
+
+
 TRIP_TYPE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("food-culture", "Food & Culture"),
     ("trekking", "Trekking"),
@@ -79,6 +93,87 @@ GROUP_SIZE_LABEL_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("8-12 travelers", "8-12 travelers"),
     ("10-14 travelers", "10-14 travelers"),
 )
+EXPERIENCE_LEVEL_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("beginner", "Beginner"),
+    ("intermediate", "Intermediate"),
+    ("advanced", "Advanced"),
+)
+FITNESS_LEVEL_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("low", "Low"),
+    ("moderate", "Moderate"),
+    ("high", "High"),
+)
+CONTACT_PREFERENCE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("in_app", "In-app messages"),
+    ("email", "Email"),
+    ("phone", "Phone call"),
+    ("whatsapp", "WhatsApp"),
+)
+
+
+def _normalize_string_list(raw_values: object, *, max_length: int = 280) -> list[str]:
+    if not isinstance(raw_values, list):
+        return []
+
+    cleaned: list[str] = []
+    for item in cast(list[object], raw_values):
+        value = " ".join(str(item or "").strip().split())
+        if not value:
+            continue
+        cleaned.append(value[:max_length])
+    return cleaned
+
+
+def _normalize_itinerary_days(raw_days: object) -> list[TripItineraryDay]:
+    if not isinstance(raw_days, list):
+        return []
+
+    normalized_days: list[TripItineraryDay] = []
+    for raw_day in cast(list[object], raw_days):
+        if not isinstance(raw_day, Mapping):
+            continue
+        day_data = cast(Mapping[str, object], raw_day)
+
+        title = " ".join(str(day_data.get("title", "") or "").strip().split())[:180]
+        description = str(day_data.get("description", "") or "").strip()[:2000]
+        stay = " ".join(str(day_data.get("stay", "") or "").strip().split())[:180]
+        meals = " ".join(str(day_data.get("meals", "") or "").strip().split())[:180]
+        activities = " ".join(str(day_data.get("activities", "") or "").strip().split())[:280]
+        is_flexible = bool(day_data.get("is_flexible", False))
+
+        if not any((title, description, stay, meals, activities)):
+            continue
+
+        normalized_days.append(
+            {
+                "is_flexible": bool(is_flexible),
+                "title": title,
+                "description": description,
+                "stay": stay,
+                "meals": meals,
+                "activities": activities,
+            }
+        )
+    return normalized_days
+
+
+def _normalize_faqs(raw_faqs: object) -> list[TripFaqItem]:
+    if not isinstance(raw_faqs, list):
+        return []
+
+    normalized_faqs: list[TripFaqItem] = []
+    for raw_faq in cast(list[object], raw_faqs):
+        if not isinstance(raw_faq, Mapping):
+            continue
+        faq_data = cast(Mapping[str, object], raw_faq)
+
+        question = " ".join(str(faq_data.get("question", "") or "").strip().split())[:280]
+        answer = str(faq_data.get("answer", "") or "").strip()[:2000]
+        if not question and not answer:
+            continue
+
+        normalized_faqs.append({"question": question, "answer": answer})
+    return normalized_faqs
 
 class Trip(models.Model):
     """
@@ -87,7 +182,6 @@ class Trip(models.Model):
     This model intentionally keeps shape close to the README contract so other
     apps (for example search) can read live rows without extra adapters.
     """
-
     host = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -104,6 +198,44 @@ class Trip(models.Model):
     pace_level = models.CharField(max_length=16, choices=PACE_LEVEL_CHOICES, blank=True, default="")
     group_size_label = models.CharField(max_length=32, choices=GROUP_SIZE_LABEL_CHOICES, blank=True, default="")
     includes_label = models.CharField(max_length=280, blank=True, default="")
+    booking_closes_at = models.DateTimeField(blank=True, null=True)
+    total_seats = models.PositiveIntegerField(blank=True, null=True)
+    minimum_seats = models.PositiveIntegerField(blank=True, null=True)
+    video_link = models.URLField(max_length=500, blank=True)
+    currency = models.CharField(max_length=8, blank=True, default="INR")
+    total_trip_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    price_per_person = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    early_bird_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    has_early_bird_discount = models.BooleanField(default=False)
+    payment_terms = models.TextField(blank=True, default="")
+    extra_costs_not_included = cast(list[str], models.JSONField(default=list, blank=True))
+    cost_breakdown_accommodation = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    cost_breakdown_transportation = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    cost_breakdown_activities = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    cost_breakdown_guide = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    cost_breakdown_miscellaneous = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    highlights = cast(list[str], models.JSONField(default=list, blank=True))
+    itinerary_days = cast(list[TripItineraryDay], models.JSONField(default=list, blank=True))
+    included_items = cast(list[str], models.JSONField(default=list, blank=True))
+    not_included_items = cast(list[str], models.JSONField(default=list, blank=True))
+    things_to_carry = cast(list[str], models.JSONField(default=list, blank=True))
+    approximate_flight_cost = models.CharField(max_length=120, blank=True, default="")
+    optional_activities_cost = models.CharField(max_length=120, blank=True, default="")
+    buffer_budget_suggestion = models.CharField(max_length=120, blank=True, default="")
+    personal_shopping_estimate = models.CharField(max_length=120, blank=True, default="")
+    experience_level_required = models.CharField(max_length=32, choices=EXPERIENCE_LEVEL_CHOICES, blank=True, default="")
+    fitness_level_required = models.CharField(max_length=32, choices=FITNESS_LEVEL_CHOICES, blank=True, default="")
+    suitable_for = cast(list[str], models.JSONField(default=list, blank=True))
+    trip_vibe = cast(list[str], models.JSONField(default=list, blank=True))
+    gender_preference = models.CharField(max_length=64, blank=True, default="")
+    age_preference = models.CharField(max_length=64, blank=True, default="")
+    code_of_conduct = models.TextField(blank=True, default="")
+    cancellation_policy = models.TextField(blank=True, default="")
+    medical_declaration_required = models.BooleanField(default=False)
+    emergency_contact_required = models.BooleanField(default=True)
+    faqs = cast(list[TripFaqItem], models.JSONField(default=list, blank=True))
+    contact_preference = models.CharField(max_length=32, choices=CONTACT_PREFERENCE_CHOICES, blank=True, default="in_app")
+    co_hosts = models.CharField(max_length=280, blank=True, default="")
     starts_at = models.DateTimeField(default=timezone.now, db_index=True)
     ends_at = models.DateTimeField(blank=True, null=True)
     traffic_score = models.PositiveIntegerField(default=0)
@@ -127,14 +259,56 @@ class Trip(models.Model):
         self.summary = str(self.summary or "").strip()
         self.description = str(self.description or "").strip()
         self.destination = str(self.destination or "").strip()
+        self.video_link = str(self.video_link or "").strip()
+        self.currency = str(self.currency or "INR").strip().upper() or "INR"
         self.trip_type = str(self.trip_type or "").strip().lower()
         self.budget_tier = str(self.budget_tier or "").strip().lower()
         self.difficulty_level = str(self.difficulty_level or "").strip().lower()
         self.pace_level = str(self.pace_level or "").strip().lower()
         self.group_size_label = str(self.group_size_label or "").strip()
         self.includes_label = str(self.includes_label or "").strip()
+        self.payment_terms = str(self.payment_terms or "").strip()
+        self.approximate_flight_cost = " ".join(str(self.approximate_flight_cost or "").strip().split())
+        self.optional_activities_cost = " ".join(str(self.optional_activities_cost or "").strip().split())
+        self.buffer_budget_suggestion = " ".join(str(self.buffer_budget_suggestion or "").strip().split())
+        self.personal_shopping_estimate = " ".join(str(self.personal_shopping_estimate or "").strip().split())
+        self.experience_level_required = str(self.experience_level_required or "").strip().lower()
+        self.fitness_level_required = str(self.fitness_level_required or "").strip().lower()
+        self.gender_preference = " ".join(str(self.gender_preference or "").strip().split())
+        self.age_preference = " ".join(str(self.age_preference or "").strip().split())
+        self.code_of_conduct = str(self.code_of_conduct or "").strip()
+        self.cancellation_policy = str(self.cancellation_policy or "").strip()
+        self.contact_preference = str(self.contact_preference or "in_app").strip().lower() or "in_app"
+        self.co_hosts = " ".join(str(self.co_hosts or "").strip().split())
+        self.extra_costs_not_included = _normalize_string_list(self.extra_costs_not_included)
+        self.highlights = _normalize_string_list(self.highlights)
+        self.included_items = _normalize_string_list(self.included_items)
+        self.not_included_items = _normalize_string_list(self.not_included_items)
+        self.things_to_carry = _normalize_string_list(self.things_to_carry)
+        self.suitable_for = _normalize_string_list(self.suitable_for, max_length=80)
+        self.trip_vibe = _normalize_string_list(self.trip_vibe, max_length=80)
+        self.itinerary_days = _normalize_itinerary_days(self.itinerary_days)
+        self.faqs = _normalize_faqs(self.faqs)
+
         if self.ends_at and self.starts_at and self.ends_at < self.starts_at:
             raise ValidationError({"ends_at": "End time must be after the start time."})
+        if self.booking_closes_at and self.starts_at and self.booking_closes_at > self.starts_at:
+            raise ValidationError({"booking_closes_at": "Booking close time must be before the trip start."})
+        if self.total_seats is not None and self.total_seats <= 0:
+            raise ValidationError({"total_seats": "Total seats must be greater than zero."})
+        if self.minimum_seats is not None and self.minimum_seats <= 0:
+            raise ValidationError({"minimum_seats": "Minimum seats must be greater than zero."})
+        if self.total_seats is not None and self.minimum_seats is not None and self.minimum_seats > self.total_seats:
+            raise ValidationError({"minimum_seats": "Minimum seats cannot exceed total seats."})
+        if self.has_early_bird_discount and self.early_bird_price is None:
+            raise ValidationError({"early_bird_price": "Provide an early-bird price when discount is enabled."})
+        if (
+            self.has_early_bird_discount
+            and self.total_trip_price is not None
+            and self.early_bird_price is not None
+            and self.early_bird_price > self.total_trip_price
+        ):
+            raise ValidationError({"early_bird_price": "Early-bird price cannot exceed total trip price."})
 
     def get_absolute_url(self) -> str:
         return f"/trips/{self.pk}/"
@@ -178,7 +352,6 @@ class Trip(models.Model):
         if self.ends_at is not None:
             trip_data["ends_at"] = self.ends_at
         return trip_data
-
 
 MINE_TABS: Final[tuple[str, ...]] = ("upcoming", "hosting", "past", "saved")
 TRIP_DURATION_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
