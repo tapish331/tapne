@@ -151,30 +151,62 @@
                 <h2><span class="section-logo" aria-hidden="true">📸</span>Hero and Media</h2>
                 <p>Stunning visuals make your trip stand out.</p>
             </header>
-            <div class="form-field">
+            <div class="form-field" data-media-upload="hero">
                 <label for="{{ form.banner_image.id_for_label }}">Hero Image <span class="required-star">*</span></label>
-                {{ form.banner_image }}
+                {{ form.banner_image.as_widget }}
+                <div
+                    class="media-hero-dropzone"
+                    data-media-hero-dropzone
+                    data-input-id="{{ form.banner_image.id_for_label }}"
+                    role="button"
+                    tabindex="0"
+                    aria-label="Upload hero image"
+                >
+                    <img
+                        class="media-hero-preview"
+                        data-media-hero-preview
+                        alt="Hero image preview"
+                        {% if current_banner_preview_url %}src="{{ current_banner_preview_url }}"{% else %}hidden{% endif %}
+                    >
+                    <div class="media-dropzone-placeholder" data-media-hero-placeholder {% if current_banner_preview_url %}hidden{% endif %}>
+                        <strong>Click to upload or drag and drop</strong>
+                        <span>Recommended: 1600 x 900 (JPG, PNG, WEBP)</span>
+                    </div>
+                </div>
                 <p class="detail-meta">{{ form.banner_image.help_text }}</p>
                 {% if current_banner_name %}
                 <p class="detail-meta">Current banner file: {{ current_banner_name }}</p>
                 {% endif %}
-                {% if current_banner_preview_url %}
-                <img class="trip-form-banner-preview" src="{{ current_banner_preview_url }}" alt="Current trip hero image">
-                {% endif %}
                 {% for error in form.banner_image.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
-            <div class="trip-form-grid trip-form-grid-2">
-                <div class="form-field">
-                    <label for="{{ form.gallery_images.id_for_label }}">Gallery Images</label>
-                    {{ form.gallery_images }}
-                    <p class="detail-meta">{{ form.gallery_images.help_text }}</p>
+            <div class="form-field" data-media-upload="gallery">
+                <label for="{{ form.gallery_images.id_for_label }}">Gallery Images</label>
+                {{ form.gallery_images.as_widget }}
+                <div class="media-gallery-grid" data-media-gallery-dropzone data-input-id="{{ form.gallery_images.id_for_label }}">
+                    <button class="media-gallery-slot" type="button" data-media-gallery-slot="0" aria-label="Upload gallery image 1">
+                        <img class="media-gallery-preview" data-media-gallery-preview hidden alt="Gallery image preview 1">
+                        <span class="media-gallery-placeholder" data-media-gallery-placeholder>Drop / click image</span>
+                    </button>
+                    <button class="media-gallery-slot" type="button" data-media-gallery-slot="1" aria-label="Upload gallery image 2">
+                        <img class="media-gallery-preview" data-media-gallery-preview hidden alt="Gallery image preview 2">
+                        <span class="media-gallery-placeholder" data-media-gallery-placeholder>Drop / click image</span>
+                    </button>
+                    <button class="media-gallery-slot" type="button" data-media-gallery-slot="2" aria-label="Upload gallery image 3">
+                        <img class="media-gallery-preview" data-media-gallery-preview hidden alt="Gallery image preview 3">
+                        <span class="media-gallery-placeholder" data-media-gallery-placeholder>Drop / click image</span>
+                    </button>
+                    <button class="media-gallery-slot" type="button" data-media-gallery-slot="3" aria-label="Upload gallery image 4">
+                        <img class="media-gallery-preview" data-media-gallery-preview hidden alt="Gallery image preview 4">
+                        <span class="media-gallery-placeholder" data-media-gallery-placeholder>Drop / click image</span>
+                    </button>
                 </div>
-                <div class="form-field">
-                    <label for="{{ form.video_link.id_for_label }}">Video Link</label>
-                    {{ form.video_link }}
-                    <p class="detail-meta">{{ form.video_link.help_text }}</p>
-                    {% for error in form.video_link.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
-                </div>
+                <p class="detail-meta">{{ form.gallery_images.help_text }}</p>
+            </div>
+            <div class="form-field">
+                <label for="{{ form.video_link.id_for_label }}">Video Link</label>
+                {{ form.video_link }}
+                <p class="detail-meta">{{ form.video_link.help_text }}</p>
+                {% for error in form.video_link.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
         </article>
 
