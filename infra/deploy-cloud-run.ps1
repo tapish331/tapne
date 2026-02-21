@@ -117,6 +117,8 @@ param(
     [string[]]$MonitoringNotificationChannels = @(),
 
     [bool]$BuildAndPushImage = $true,
+    [bool]$DisableBuildAttestations = $true,
+    [bool]$DisableContainerVulnerabilityScanning = $true,
     [bool]$AutoFixGcsDependency = $true,
     [bool]$AllowUnauthenticated = $true,
 
@@ -1494,8 +1496,8 @@ if ($null -ne $gcloudCmdCandidate) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; SkipMigrations={6}; RunBootstrapRuntime={7}; SkipSmokeTest={8}; PrivateCloudSqlIp={9}; CloudRunConcurrency={10}; CloudRunIngress={11}; GcsSignedUrls={12}; ConfigureMonitoring={13}; DjangoAllowedHosts={14}; CsrfTrustedOrigins={15}; CanonicalHost={16}; SmokeBaseUrl={17}; UptimeCheckHost={18}; UptimeCheckPath={19}" -f
-    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $CanonicalHost, $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
+    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; DisableBuildAttestations={6}; DisableContainerVulnerabilityScanning={7}; SkipMigrations={8}; RunBootstrapRuntime={9}; SkipSmokeTest={10}; PrivateCloudSqlIp={11}; CloudRunConcurrency={12}; CloudRunIngress={13}; GcsSignedUrls={14}; ConfigureMonitoring={15}; DjangoAllowedHosts={16}; CsrfTrustedOrigins={17}; CanonicalHost={18}; SmokeBaseUrl={19}; UptimeCheckHost={20}; UptimeCheckPath={21}" -f
+    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $CanonicalHost, $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
 )
 
 Write-Step "Preflight checks"
@@ -1927,6 +1929,8 @@ if ($BuildAndPushImage) {
         -Repository $Repository `
         -ImageName $ImageName `
         -ImageTag $ImageTag `
+        -DisableBuildAttestations $DisableBuildAttestations `
+        -DisableContainerVulnerabilityScanning $DisableContainerVulnerabilityScanning `
         -SkipAuthLogin:$SkipAuthLogin `
         -Verbose:$($VerbosePreference -eq "Continue")
 

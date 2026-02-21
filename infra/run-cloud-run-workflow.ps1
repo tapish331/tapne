@@ -60,6 +60,8 @@ param(
     [switch]$SkipAuthLogin,
     [switch]$SkipMigrations,
     [switch]$SkipSmokeTest,
+    [bool]$DisableBuildAttestations = $true,
+    [bool]$DisableContainerVulnerabilityScanning = $true,
     [switch]$AutoStartDocker,
     [switch]$NoAutoStartDocker,
 
@@ -198,7 +200,8 @@ $domainScript = Join-Path $scriptDirectory "setup-custom-domain.ps1"
 $deployScript = Join-Path $scriptDirectory "deploy-cloud-run.ps1"
 
 $setupArgs = @(
-    "-WebImageRef", $localImageRef
+    "-WebImageRef", $localImageRef,
+    "-DisableBuildAttestations:$DisableBuildAttestations"
 )
 if (-not $EnableAutoStartDocker) {
     $setupArgs += "-NoAutoStartDocker"
@@ -225,6 +228,8 @@ $pushArgs = @(
     "-ImageName", $ImageName,
     "-ImageTag", $ImageTag,
     "-NoBuild",
+    "-DisableBuildAttestations:$DisableBuildAttestations",
+    "-DisableContainerVulnerabilityScanning:$DisableContainerVulnerabilityScanning",
     "-SkipAuthLogin:$([bool]$SkipAuthLogin)"
 )
 if ($isVerbose) {
@@ -254,6 +259,7 @@ $deployArgs = @(
     "-SkipAuthLogin:$([bool]$SkipAuthLogin)",
     "-SkipMigrations:$([bool]$SkipMigrations)",
     "-SkipSmokeTest:$([bool]$SkipSmokeTest)",
+    "-DisableContainerVulnerabilityScanning:$DisableContainerVulnerabilityScanning",
     "-CloudRunIngress", "internal-and-cloud-load-balancing",
     "-DjangoAllowedHosts", $djangoAllowedHosts,
     "-CsrfTrustedOrigins", $csrfTrustedOrigins,
@@ -266,8 +272,8 @@ if ($isVerbose) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}" -f
-    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker
+    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}; DisableBuildAttestations={12}; DisableContainerVulnerabilityScanning={13}" -f
+    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning
 )
 
 $startTime = Get-Date

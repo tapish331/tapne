@@ -30,6 +30,10 @@
 .PARAMETER HealthTimeoutSeconds
   Maximum time to wait for service health before failing.
 
+.PARAMETER DisableBuildAttestations
+  Disables default BuildKit provenance/SBOM attestations during local image
+  builds to avoid extra pushed manifest digests.
+
 .PARAMETER AutoStartDocker
   Attempts to start Docker Desktop if the daemon is not reachable (enabled by default).
 
@@ -51,6 +55,7 @@ param(
     [string]$WebImageRef = "",
     [ValidateRange(30, 1800)]
     [int]$HealthTimeoutSeconds = 180,
+    [bool]$DisableBuildAttestations = $true,
     [switch]$AutoStartDocker,
     [switch]$NoAutoStartDocker,
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -79,8 +84,8 @@ if ($NoAutoStartDocker) {
 }
 
 Write-Verbose (
-    "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; WebImageRef={4}; HealthTimeoutSeconds={5}; AutoStartDocker={6}" -f
-    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $WebImageRef, $HealthTimeoutSeconds, $EnableAutoStartDocker
+    "Run options => GenerateOnly={0}; NoBuild={1}; ForceEnv={2}; InfraOnly={3}; WebImageRef={4}; HealthTimeoutSeconds={5}; AutoStartDocker={6}; DisableBuildAttestations={7}" -f
+    $GenerateOnly, $NoBuild, $ForceEnv, $InfraOnly, $WebImageRef, $HealthTimeoutSeconds, $EnableAutoStartDocker, $DisableBuildAttestations
 )
 
 function Write-Step {
@@ -97,6 +102,20 @@ function Write-Ok {
 function Test-CommandExists {
     param([string]$CommandName)
     return [bool](Get-Command $CommandName -ErrorAction SilentlyContinue)
+}
+
+function Set-DockerBuildAttestationDefaults {
+    param([bool]$DisableBuildAttestations)
+
+    if (-not $DisableBuildAttestations) {
+        Write-Verbose "Build attestations are enabled for local docker compose builds."
+        return
+    }
+
+    # BuildKit can emit provenance/SBOM attestations as extra registry digests.
+    # Set the default to disabled for cost-controlled local build/push workflows.
+    $env:BUILDX_NO_DEFAULT_ATTESTATIONS = "1"
+    Write-Verbose "Set BUILDX_NO_DEFAULT_ATTESTATIONS=1 for this script run."
 }
 
 function Test-DockerDaemonReachable {
@@ -872,6 +891,10 @@ if ($InfraOnly) {
     catch {
         Write-Verbose "No web container needed cleanup."
     }
+}
+
+if (-not $NoBuild) {
+    Set-DockerBuildAttestationDefaults -DisableBuildAttestations:$DisableBuildAttestations
 }
 
 Write-Step "Starting local stack"

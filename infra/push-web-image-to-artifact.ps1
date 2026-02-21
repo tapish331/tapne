@@ -9,10 +9,11 @@
     3) Sets the active gcloud project
     4) Enables artifactregistry.googleapis.com
     5) Ensures the Docker repository exists (creates it if missing)
-    6) Configures Docker auth for REGION-docker.pkg.dev
-    7) Builds the local web image (unless -NoBuild)
-    8) Tags and pushes to Artifact Registry
-    9) Verifies manifest contains linux/amd64 (best effort)
+    6) Ensures containerscanning.googleapis.com is disabled (default)
+    7) Configures Docker auth for REGION-docker.pkg.dev
+    8) Builds the local web image (unless -NoBuild)
+    9) Tags and pushes to Artifact Registry
+    10) Verifies manifest contains linux/amd64 (best effort)
 
   Pushing the same remote tag replaces the previous tag target (normal registry behavior).
 
@@ -39,6 +40,14 @@
 
 .PARAMETER BuildContext
   Docker build context path, relative to repo root by default.
+
+.PARAMETER DisableBuildAttestations
+  Disables default BuildKit provenance/SBOM attestations to keep pushes to a
+  single runnable image manifest digest when possible.
+
+.PARAMETER DisableContainerVulnerabilityScanning
+  Disables containerscanning.googleapis.com for the project before pushing so
+  automatic vulnerability scanning does not create billable scan activity.
 
 .PARAMETER NoBuild
   Skip docker build and push an existing local image.
@@ -85,6 +94,9 @@ param(
 
     [ValidateNotNullOrEmpty()]
     [string]$BuildContext = ".",
+
+    [bool]$DisableBuildAttestations = $true,
+    [bool]$DisableContainerVulnerabilityScanning = $true,
 
     [switch]$NoBuild,
     [switch]$SkipAuthLogin,
@@ -244,9 +256,130 @@ function Invoke-Required {
     }
 }
 
+function Get-DockerBuildAttestationArgs {
+    param([bool]$DisableBuildAttestations)
+
+    $attestationArgs = New-Object System.Collections.Generic.List[string]
+    if (-not $DisableBuildAttestations) {
+        Write-Verbose "Build attestations are enabled for docker build."
+        return @($attestationArgs)
+    }
+
+    # BuildKit can emit extra OCI attestations (provenance/SBOM) as additional
+    # digests in Artifact Registry; disable them by default for cost control.
+    $env:BUILDX_NO_DEFAULT_ATTESTATIONS = "1"
+    Write-Verbose "Set BUILDX_NO_DEFAULT_ATTESTATIONS=1 for this script run."
+
+    $buildHelp = Invoke-External -FilePath "docker" -Arguments @("build", "--help") -TimeoutSeconds 30
+    if ($buildHelp.ExitCode -eq 0) {
+        $helpText = ($buildHelp.Output -join [Environment]::NewLine)
+        if ($helpText -match "(?m)^\s*--provenance\b") {
+            [void]$attestationArgs.Add("--provenance=false")
+        }
+        if ($helpText -match "(?m)^\s*--sbom\b") {
+            [void]$attestationArgs.Add("--sbom=false")
+        }
+    }
+    else {
+        Write-Verbose "Could not query docker build help; using BUILDX_NO_DEFAULT_ATTESTATIONS only."
+    }
+
+    if ($attestationArgs.Count -gt 0) {
+        Write-Verbose ("Applying docker build attestation flags: {0}" -f ($attestationArgs -join " "))
+    }
+    else {
+        Write-Verbose "No explicit docker build attestation flags supported by this Docker CLI."
+    }
+
+    return @($attestationArgs)
+}
+
+function Set-ContainerScanningState {
+    param(
+        [string]$GcloudCli,
+        [string]$ProjectId,
+        [string]$Region,
+        [string]$Repository,
+        [bool]$DisableContainerVulnerabilityScanning
+    )
+
+    if (-not $DisableContainerVulnerabilityScanning) {
+        Write-Verbose "Container vulnerability scanning disable step skipped (DisableContainerVulnerabilityScanning=false)."
+        return
+    }
+
+    $repoUpdateHelp = Invoke-External -FilePath $GcloudCli -Arguments @("artifacts", "repositories", "update", "--help") -TimeoutSeconds 45
+    $supportsRepoScanningFlag = $false
+    if ($repoUpdateHelp.ExitCode -eq 0) {
+        $repoUpdateHelpText = ($repoUpdateHelp.Output -join [Environment]::NewLine)
+        if ($repoUpdateHelpText -match "(?m)^\s*--disable-vulnerability-scanning\b") {
+            $supportsRepoScanningFlag = $true
+        }
+    }
+
+    if ($supportsRepoScanningFlag) {
+        Invoke-Required -FilePath $GcloudCli -Arguments @(
+            "artifacts", "repositories", "update", $Repository,
+            "--project", $ProjectId,
+            "--location", $Region,
+            "--disable-vulnerability-scanning"
+        ) -FailureMessage "Failed disabling vulnerability scanning on Artifact Registry repository." -TimeoutSeconds 120
+        Write-Ok ("Repository vulnerability scanning disabled: {0}/{1}" -f $Region, $Repository)
+    }
+    else {
+        Write-Verbose "Repository-level vulnerability scanning flags are unavailable in this gcloud version; applying project API disable fallback."
+    }
+
+    $containerScanningService = "containerscanning.googleapis.com"
+    Write-Step "Ensuring Container Registry vulnerability scanning is disabled"
+
+    $enabledServices = Invoke-Required -FilePath $GcloudCli -Arguments @(
+        "services", "list",
+        "--enabled",
+        "--project", $ProjectId,
+        "--filter", ("config.name={0}" -f $containerScanningService),
+        "--format=value(config.name)"
+    ) -FailureMessage "Failed checking enabled services for vulnerability scanning state." -TimeoutSeconds 60 -PassThru
+
+    $isEnabled = @(
+        $enabledServices |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_.Trim().ToLowerInvariant() -eq $containerScanningService }
+    ).Count -gt 0
+
+    if (-not $isEnabled) {
+        Write-Ok "Container Registry vulnerability scanning API is already disabled."
+        return
+    }
+
+    Invoke-Required -FilePath $GcloudCli -Arguments @(
+        "services", "disable", $containerScanningService,
+        "--project", $ProjectId,
+        "--quiet"
+    ) -FailureMessage ("Failed disabling {0}." -f $containerScanningService) -TimeoutSeconds 180
+
+    $enabledServicesAfterDisable = Invoke-Required -FilePath $GcloudCli -Arguments @(
+        "services", "list",
+        "--enabled",
+        "--project", $ProjectId,
+        "--filter", ("config.name={0}" -f $containerScanningService),
+        "--format=value(config.name)"
+    ) -FailureMessage "Failed validating vulnerability scanning API state after disable." -TimeoutSeconds 60 -PassThru
+
+    $isStillEnabled = @(
+        $enabledServicesAfterDisable |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_.Trim().ToLowerInvariant() -eq $containerScanningService }
+    ).Count -gt 0
+
+    if ($isStillEnabled) {
+        throw ("{0} still appears enabled after disable attempt." -f $containerScanningService)
+    }
+
+    Write-Ok "Container Registry vulnerability scanning API disabled for this project."
+}
+
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; Repository={2}; ImageName={3}; ImageTag={4}; LocalImageRef={5}; NoBuild={6}; SkipAuthLogin={7}" -f
-    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $LocalImageRef, $NoBuild, $SkipAuthLogin
+    "Run options => ProjectId={0}; Region={1}; Repository={2}; ImageName={3}; ImageTag={4}; LocalImageRef={5}; NoBuild={6}; SkipAuthLogin={7}; DisableBuildAttestations={8}; DisableContainerVulnerabilityScanning={9}" -f
+    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $LocalImageRef, $NoBuild, $SkipAuthLogin, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning
 )
 
 Write-Step "Preflight checks"
@@ -315,6 +448,8 @@ else {
     Write-Ok ("Repository created: {0}" -f $Repository)
 }
 
+Set-ContainerScanningState -GcloudCli $gcloudCli -ProjectId $ProjectId -Region $Region -Repository $Repository -DisableContainerVulnerabilityScanning:$DisableContainerVulnerabilityScanning
+
 Write-Step "Configuring Docker auth helper for Artifact Registry"
 Invoke-Required -FilePath $gcloudCli -Arguments @("auth", "configure-docker", $registryHost, "--quiet") -FailureMessage ("Failed to configure docker auth for {0}." -f $registryHost)
 Write-Ok ("Docker auth configured for {0}" -f $registryHost)
@@ -328,7 +463,9 @@ if (-not (Test-Path -Path $buildContextPath -PathType Container -ErrorAction Sil
 
 if (-not $NoBuild) {
     Write-Step "Building local web image"
-    Invoke-Required -FilePath "docker" -Arguments @("build", "-f", $dockerfilePath, "-t", $LocalImageRef, $buildContextPath) -FailureMessage ("Docker build failed for '{0}'." -f $LocalImageRef)
+    $buildAttestationArgs = @(Get-DockerBuildAttestationArgs -DisableBuildAttestations:$DisableBuildAttestations)
+    $dockerBuildArgs = @("build") + $buildAttestationArgs + @("-f", $dockerfilePath, "-t", $LocalImageRef, $buildContextPath)
+    Invoke-Required -FilePath "docker" -Arguments $dockerBuildArgs -FailureMessage ("Docker build failed for '{0}'." -f $LocalImageRef)
     Write-Ok ("Built local image: {0}" -f $LocalImageRef)
 }
 else {
