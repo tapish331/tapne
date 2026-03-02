@@ -125,6 +125,7 @@ param(
     [string[]]$DjangoAllowedHosts = @(),
     [string[]]$CsrfTrustedOrigins = @(),
     [string]$CanonicalHost = "",
+    [string]$GoogleMapsApiKey = "",
 
     [string]$SmokeBaseUrl = "",
     [string]$SmokeHealthPath = "/runtime/health/",
@@ -185,6 +186,7 @@ $secretNames = @{
     RedisUrl          = "tapne-redis-url"
     CeleryBrokerUrl   = "tapne-celery-broker-url"
     CeleryResultStore = "tapne-celery-result-backend"
+    GoogleMapsApiKey  = "tapne-google-maps-api-key"
 }
 
 $scriptDirectory = Split-Path -Parent $PSCommandPath
@@ -1185,6 +1187,185 @@ function Invoke-GcpApiJson {
     return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $headers -ContentType "application/json" -Body $jsonBody
 }
 
+function Get-GcpProjectNumber {
+    param(
+        [string]$GcloudCli,
+        [string]$Project
+    )
+
+    $result = Invoke-External -FilePath $GcloudCli -Arguments @(
+        "projects", "describe", $Project,
+        "--format=value(projectNumber)"
+    )
+    if ($result.ExitCode -ne 0) {
+        $details = ($result.Output -join [Environment]::NewLine).Trim()
+        if ([string]::IsNullOrWhiteSpace($details)) {
+            throw ("Failed resolving numeric project number for project '{0}'." -f $Project)
+        }
+        throw ("Failed resolving numeric project number for project '{0}'.`n{1}" -f $Project, $details)
+    }
+
+    $projectNumber = ($result.Output | Select-Object -First 1 | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($projectNumber)) {
+        throw ("Failed resolving numeric project number for project '{0}': empty value returned." -f $Project)
+    }
+
+    return $projectNumber
+}
+
+function Find-ApiKeyByDisplayName {
+    param(
+        [string]$ProjectNumber,
+        [string]$AccessToken,
+        [string]$DisplayName
+    )
+
+    $baseUri = "https://apikeys.googleapis.com/v2/projects/{0}/locations/global/keys?pageSize=300" -f $ProjectNumber
+    $uri = $baseUri
+    while (-not [string]::IsNullOrWhiteSpace($uri)) {
+        $response = Invoke-GcpApiJson -Method "GET" -Uri $uri -AccessToken $AccessToken
+        $keys = @()
+        if ($null -ne $response -and $response.PSObject.Properties.Match("keys").Count -gt 0) {
+            $keys = @($response.keys)
+        }
+        foreach ($key in $keys) {
+            if ([string]$key.displayName -eq $DisplayName) {
+                return $key
+            }
+        }
+
+        $nextToken = ""
+        if ($null -ne $response -and $response.PSObject.Properties.Match("nextPageToken").Count -gt 0) {
+            $nextToken = [string]$response.nextPageToken
+        }
+        if ([string]::IsNullOrWhiteSpace($nextToken)) {
+            $uri = $null
+        }
+        else {
+            $uri = "{0}&pageToken={1}" -f $baseUri, ([System.Uri]::EscapeDataString($nextToken))
+        }
+    }
+
+    return $null
+}
+
+function Wait-GcpLongRunningOperation {
+    param(
+        [string]$AccessToken,
+        [string]$OperationName,
+        [int]$TimeoutSeconds = 420,
+        [int]$SleepSeconds = 3
+    )
+
+    $operationPath = $OperationName.Trim()
+    if ([string]::IsNullOrWhiteSpace($operationPath)) {
+        throw "Cannot wait for an empty GCP operation name."
+    }
+
+    $operationUri = ""
+    if ($operationPath.StartsWith("https://", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $operationUri = $operationPath
+    }
+    else {
+        $operationUri = "https://apikeys.googleapis.com/v2/{0}" -f $operationPath.TrimStart("/")
+    }
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $operation = Invoke-GcpApiJson -Method "GET" -Uri $operationUri -AccessToken $AccessToken
+        $isDone = $false
+        if ($null -ne $operation -and $operation.PSObject.Properties.Match("done").Count -gt 0) {
+            $isDone = [bool]$operation.done
+        }
+
+        if ($isDone) {
+            if ($null -ne $operation -and $operation.PSObject.Properties.Match("error").Count -gt 0 -and $null -ne $operation.error) {
+                $errorCode = ""
+                if ($operation.error.PSObject.Properties.Match("code").Count -gt 0) {
+                    $errorCode = [string]$operation.error.code
+                }
+                $errorMessage = ""
+                if ($operation.error.PSObject.Properties.Match("message").Count -gt 0) {
+                    $errorMessage = [string]$operation.error.message
+                }
+                if ([string]::IsNullOrWhiteSpace($errorMessage)) {
+                    $errorMessage = "Operation returned an error."
+                }
+                if (-not [string]::IsNullOrWhiteSpace($errorCode)) {
+                    throw ("GCP operation '{0}' failed (code {1}): {2}" -f $OperationName, $errorCode, $errorMessage)
+                }
+                throw ("GCP operation '{0}' failed: {1}" -f $OperationName, $errorMessage)
+            }
+            return $operation
+        }
+
+        Start-Sleep -Seconds $SleepSeconds
+    }
+
+    throw ("Timed out waiting for GCP operation '{0}' after {1} second(s)." -f $OperationName, $TimeoutSeconds)
+}
+
+function Get-ManagedGoogleMapsApiKey {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$AccessToken,
+        [string]$DisplayName = "Tapne Places Server Key (managed)"
+    )
+
+    $projectNumber = Get-GcpProjectNumber -GcloudCli $GcloudCli -Project $Project
+    $existingKey = Find-ApiKeyByDisplayName -ProjectNumber $projectNumber -AccessToken $AccessToken -DisplayName $DisplayName
+    if ($null -eq $existingKey) {
+        $createPayload = @{
+            displayName  = $DisplayName
+            restrictions = @{
+                apiTargets = @(
+                    @{ service = "places.googleapis.com" },
+                    @{ service = "places-backend.googleapis.com" },
+                    @{ service = "maps-backend.googleapis.com" }
+                )
+            }
+        }
+        $createOperation = Invoke-GcpApiJson -Method "POST" -Uri ("https://apikeys.googleapis.com/v2/projects/{0}/locations/global/keys" -f $projectNumber) -AccessToken $AccessToken -Body $createPayload
+        $operationName = ""
+        if ($null -ne $createOperation -and $createOperation.PSObject.Properties.Match("name").Count -gt 0) {
+            $operationName = [string]$createOperation.name
+        }
+        if ([string]::IsNullOrWhiteSpace($operationName)) {
+            throw "API Keys API did not return an operation name while creating the managed Google Maps key."
+        }
+
+        Write-Info ("Creating managed Google Maps API key '{0}'..." -f $DisplayName)
+        $completedOperation = Wait-GcpLongRunningOperation -AccessToken $AccessToken -OperationName $operationName
+        if ($null -ne $completedOperation -and $completedOperation.PSObject.Properties.Match("response").Count -gt 0) {
+            $existingKey = $completedOperation.response
+        }
+        if ($null -eq $existingKey -or $existingKey.PSObject.Properties.Match("name").Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$existingKey.name)) {
+            $existingKey = Find-ApiKeyByDisplayName -ProjectNumber $projectNumber -AccessToken $AccessToken -DisplayName $DisplayName
+        }
+        if ($null -eq $existingKey -or $existingKey.PSObject.Properties.Match("name").Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$existingKey.name)) {
+            throw "Managed Google Maps API key creation completed, but the key resource could not be resolved."
+        }
+        Write-Ok ("Created managed Google Maps API key: {0}" -f [string]$existingKey.name)
+    }
+    else {
+        Write-Info ("Reusing managed Google Maps API key: {0}" -f [string]$existingKey.name)
+    }
+
+    $keyName = [string]$existingKey.name
+    $keyStringResponse = Invoke-GcpApiJson -Method "GET" -Uri ("https://apikeys.googleapis.com/v2/{0}/keyString" -f $keyName) -AccessToken $AccessToken
+    $keyString = ""
+    if ($null -ne $keyStringResponse -and $keyStringResponse.PSObject.Properties.Match("keyString").Count -gt 0) {
+        $keyString = [string]$keyStringResponse.keyString
+    }
+    $keyString = $keyString.Trim()
+    if ([string]::IsNullOrWhiteSpace($keyString)) {
+        throw ("Managed Google Maps API key '{0}' was resolved, but getKeyString returned an empty value." -f $keyName)
+    }
+
+    return $keyString
+}
+
 function Find-UptimeCheckByDisplayName {
     param(
         [string]$Project,
@@ -1552,6 +1733,10 @@ Invoke-Required -FilePath $gcloudCli -Arguments @(
     "servicenetworking.googleapis.com",
     "iamcredentials.googleapis.com",
     "monitoring.googleapis.com",
+    "apikeys.googleapis.com",
+    "maps-backend.googleapis.com",
+    "places-backend.googleapis.com",
+    "places.googleapis.com",
     "--project", $ProjectId
 ) -FailureMessage "Failed enabling one or more required APIs."
 Write-Ok "Required APIs are enabled."
@@ -1951,6 +2136,7 @@ Invoke-Required -FilePath "docker" -Arguments @(
 Write-Ok "Image import check passed."
 Write-Step "Upserting secrets"
 $existingDjangoSecret = Get-SecretLatestValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.SecretKey
+$existingGoogleMapsApiSecret = Get-SecretLatestValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleMapsApiKey
 if ([string]::IsNullOrWhiteSpace($existingDjangoSecret)) {
     $existingDjangoSecret = (python -c "import secrets; print(secrets.token_urlsafe(48))")
 }
@@ -1999,6 +2185,7 @@ if ($shouldInferCustomDomain) {
 $existingAllowedHosts = ""
 $existingCsrfTrustedOrigins = ""
 $existingCanonicalHost = ""
+$existingGoogleMapsApiKey = ""
 if ($null -ne $existingServiceEnv) {
     if ($existingServiceEnv.ContainsKey("DJANGO_ALLOWED_HOSTS")) {
         $existingAllowedHosts = [string]$existingServiceEnv["DJANGO_ALLOWED_HOSTS"]
@@ -2008,6 +2195,9 @@ if ($null -ne $existingServiceEnv) {
     }
     if ($existingServiceEnv.ContainsKey("CANONICAL_HOST")) {
         $existingCanonicalHost = [string]$existingServiceEnv["CANONICAL_HOST"]
+    }
+    if ($existingServiceEnv.ContainsKey("GOOGLE_MAPS_API_KEY")) {
+        $existingGoogleMapsApiKey = [string]$existingServiceEnv["GOOGLE_MAPS_API_KEY"]
     }
 }
 
@@ -2077,6 +2267,54 @@ else {
     Write-Info "Canonical host redirect is not configured for this deploy run."
 }
 
+$resolvedGoogleMapsApiKey = ""
+$autoProvisionedGoogleMapsApiKey = $false
+if (-not [string]::IsNullOrWhiteSpace($GoogleMapsApiKey)) {
+    $resolvedGoogleMapsApiKey = $GoogleMapsApiKey.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_MAPS_API_KEY)) {
+    $resolvedGoogleMapsApiKey = $env:GOOGLE_MAPS_API_KEY.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_PLACES_API_KEY)) {
+    $resolvedGoogleMapsApiKey = $env:GOOGLE_PLACES_API_KEY.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingGoogleMapsApiSecret)) {
+    $resolvedGoogleMapsApiKey = $existingGoogleMapsApiSecret.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingGoogleMapsApiKey)) {
+    $resolvedGoogleMapsApiKey = $existingGoogleMapsApiKey.Trim()
+}
+if ([string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
+    Write-Info "GOOGLE_MAPS_API_KEY was not provided. Auto-provisioning a managed server key via API Keys API."
+    $apiKeysAccessToken = Get-GcloudAccessToken -GcloudCli $gcloudCli
+    $resolvedGoogleMapsApiKey = Get-ManagedGoogleMapsApiKey -GcloudCli $gcloudCli -Project $ProjectId -AccessToken $apiKeysAccessToken -DisplayName "Tapne Places Server Key (managed)"
+    $autoProvisionedGoogleMapsApiKey = -not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)
+}
+if (-not [string]::IsNullOrWhiteSpace($GoogleMapsApiKey)) {
+    Write-Info "Applying GOOGLE_MAPS_API_KEY from script parameter."
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_MAPS_API_KEY)) {
+    Write-Info "Applying GOOGLE_MAPS_API_KEY from process environment."
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_PLACES_API_KEY)) {
+    Write-Info "Applying GOOGLE_MAPS_API_KEY from GOOGLE_PLACES_API_KEY process environment."
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingGoogleMapsApiSecret)) {
+    Write-Info "Preserving GOOGLE_MAPS_API_KEY from Secret Manager."
+}
+elseif ($autoProvisionedGoogleMapsApiKey) {
+    Write-Info "Applying auto-provisioned managed GOOGLE_MAPS_API_KEY from API Keys API."
+}
+elseif (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
+    Write-Info "Preserving existing GOOGLE_MAPS_API_KEY from the current Cloud Run service."
+}
+else {
+    Write-Info "GOOGLE_MAPS_API_KEY is not set. Destination autocomplete/map will stay disabled."
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleMapsApiKey -SecretValue $resolvedGoogleMapsApiKey
+}
+
 $bootstrapHostCsrfFromServiceUrl = [string]::IsNullOrWhiteSpace($resolvedAllowedHosts) -and [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)
 if ($requestedAllowedHosts.Count -gt 0 -or $requestedCsrfTrustedOrigins.Count -gt 0) {
     Write-Info "Applying DJANGO_ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS from script parameters."
@@ -2130,6 +2368,9 @@ $secretMap = @(
     ("CELERY_BROKER_URL={0}:latest" -f $secretNames.CeleryBrokerUrl),
     ("CELERY_RESULT_BACKEND={0}:latest" -f $secretNames.CeleryResultStore)
 )
+if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
+    $secretMap += ("GOOGLE_MAPS_API_KEY={0}:latest" -f $secretNames.GoogleMapsApiKey)
+}
 
 if (-not $SkipMigrations) {
     Write-Step "Deploying and executing migration job"

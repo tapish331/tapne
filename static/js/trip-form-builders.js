@@ -831,6 +831,536 @@
         });
     }
 
+    function initDestinationPicker(form) {
+        var picker = form.querySelector("[data-destination-picker]");
+        if (!picker) {
+            return;
+        }
+
+        var targetInputId = String(picker.getAttribute("data-target-input-id") || "").trim();
+        var destinationInput = targetInputId ? document.getElementById(targetInputId) : null;
+        if (!destinationInput) {
+            destinationInput = picker.querySelector("[data-destination-input]");
+        }
+        if (!destinationInput) {
+            return;
+        }
+
+        var autocompleteUrl = String(picker.getAttribute("data-autocomplete-url") || "").trim();
+        var detailsUrl = String(picker.getAttribute("data-details-url") || "").trim();
+        var statusNode = picker.querySelector("[data-destination-status]");
+        var suggestionsHost = picker.querySelector("[data-destination-suggestions]");
+        var mapToggle = picker.querySelector("[data-destination-map-toggle]");
+        var mapShell = picker.querySelector("[data-destination-map-shell]");
+        var mapFrame = picker.querySelector("[data-destination-map]");
+        var placeIdInput = picker.querySelector("[data-destination-place-id]");
+        var latitudeInput = picker.querySelector("[data-destination-latitude]");
+        var longitudeInput = picker.querySelector("[data-destination-longitude]");
+
+        var selectedPlaceId = "";
+        var selectedLabel = "";
+        var selectedLatitude = null;
+        var selectedLongitude = null;
+        var selectedViewport = null;
+        var pendingAutocompleteTimer = 0;
+        var latestAutocompleteRequestId = 0;
+        var currentPredictions = [];
+        var activeSuggestionIndex = -1;
+        var sessionToken = "";
+        var blurTimer = 0;
+        var isProgrammaticDestinationUpdate = false;
+
+        function createSessionToken() {
+            if (window.crypto && typeof window.crypto.randomUUID === "function") {
+                return window.crypto.randomUUID();
+            }
+            return "sess-" + String(Date.now()) + "-" + Math.random().toString(36).slice(2, 12);
+        }
+
+        function parseFiniteNumber(rawValue) {
+            var parsed = Number(rawValue);
+            if (!isFinite(parsed)) {
+                return null;
+            }
+            return parsed;
+        }
+
+        function setStatus(text, tone) {
+            if (!statusNode) {
+                return;
+            }
+            statusNode.textContent = String(text || "");
+            statusNode.classList.remove("is-muted", "is-success", "is-error");
+            if (tone === "success") {
+                statusNode.classList.add("is-success");
+                return;
+            }
+            if (tone === "error") {
+                statusNode.classList.add("is-error");
+                return;
+            }
+            statusNode.classList.add("is-muted");
+        }
+
+        function setMapToggleState(isEnabled, titleText) {
+            if (!mapToggle) {
+                return;
+            }
+            mapToggle.disabled = !isEnabled;
+            mapToggle.setAttribute("aria-disabled", mapToggle.disabled ? "true" : "false");
+            if (titleText) {
+                mapToggle.title = titleText;
+                return;
+            }
+            mapToggle.removeAttribute("title");
+        }
+
+        function hideMapPreview() {
+            if (mapShell) {
+                mapShell.hidden = true;
+            }
+            if (mapFrame) {
+                mapFrame.removeAttribute("src");
+            }
+            if (mapToggle) {
+                mapToggle.textContent = "Load map preview";
+            }
+        }
+
+        function hideSuggestions() {
+            if (!suggestionsHost) {
+                return;
+            }
+            suggestionsHost.hidden = true;
+            suggestionsHost.innerHTML = "";
+            currentPredictions = [];
+            activeSuggestionIndex = -1;
+        }
+
+        function formatCoordinate(value) {
+            var numeric = parseFiniteNumber(value);
+            if (numeric === null) {
+                return "";
+            }
+            return String(numeric.toFixed(6));
+        }
+
+        function applyHiddenCoordinates(latitude, longitude) {
+            if (latitudeInput) {
+                latitudeInput.value = formatCoordinate(latitude);
+            }
+            if (longitudeInput) {
+                longitudeInput.value = formatCoordinate(longitude);
+            }
+        }
+
+        function syncPlaceId(placeId) {
+            if (!placeIdInput) {
+                return;
+            }
+            placeIdInput.value = String(placeId || "").trim();
+        }
+
+        function clearPlaceMetadata() {
+            selectedPlaceId = "";
+            selectedLabel = "";
+            selectedLatitude = null;
+            selectedLongitude = null;
+            selectedViewport = null;
+            syncPlaceId("");
+            applyHiddenCoordinates("", "");
+            setMapToggleState(false, "");
+            hideMapPreview();
+            requestProgressRefresh(picker);
+        }
+
+        function debounceAutocomplete(callback, delayMs) {
+            if (pendingAutocompleteTimer) {
+                window.clearTimeout(pendingAutocompleteTimer);
+            }
+            pendingAutocompleteTimer = window.setTimeout(callback, delayMs);
+        }
+
+        function updateSuggestionActiveState() {
+            if (!suggestionsHost) {
+                return;
+            }
+            Array.prototype.slice.call(suggestionsHost.querySelectorAll("[data-destination-prediction]")).forEach(function eachItem(item, index) {
+                item.classList.toggle("is-active", index === activeSuggestionIndex);
+            });
+        }
+
+        function applyPlaceDetails(place) {
+            selectedPlaceId = String(place.place_id || selectedPlaceId || "").trim();
+            selectedLabel = String(place.label || selectedLabel || destinationInput.value || "").trim();
+            selectedLatitude = parseFiniteNumber(place.latitude);
+            selectedLongitude = parseFiniteNumber(place.longitude);
+            selectedViewport = place.viewport && typeof place.viewport === "object" ? place.viewport : null;
+
+            syncPlaceId(selectedPlaceId);
+            applyHiddenCoordinates(selectedLatitude, selectedLongitude);
+
+            if (selectedLabel && destinationInput.value !== selectedLabel) {
+                isProgrammaticDestinationUpdate = true;
+                destinationInput.value = selectedLabel;
+                destinationInput.dispatchEvent(new Event("input", { bubbles: true }));
+                destinationInput.dispatchEvent(new Event("change", { bubbles: true }));
+                isProgrammaticDestinationUpdate = false;
+            }
+
+            if (selectedLatitude === null || selectedLongitude === null) {
+                setMapToggleState(false, "Coordinates are unavailable for this destination.");
+                setStatus("Destination locked, but map preview is unavailable for this place.", "muted");
+                requestProgressRefresh(picker);
+                return;
+            }
+
+            setMapToggleState(true, "");
+            setStatus("Destination locked. Map preview is ready on demand.", "success");
+            requestProgressRefresh(picker);
+        }
+
+        function selectPrediction(prediction) {
+            if (!prediction || typeof prediction !== "object") {
+                return;
+            }
+            selectedPlaceId = String(prediction.place_id || "").trim();
+            selectedLabel = String(prediction.label || "").trim();
+            if (!selectedPlaceId || !selectedLabel) {
+                return;
+            }
+
+            isProgrammaticDestinationUpdate = true;
+            destinationInput.value = selectedLabel;
+            destinationInput.dispatchEvent(new Event("input", { bubbles: true }));
+            destinationInput.dispatchEvent(new Event("change", { bubbles: true }));
+            isProgrammaticDestinationUpdate = false;
+
+            syncPlaceId(selectedPlaceId);
+            applyHiddenCoordinates("", "");
+            selectedLatitude = null;
+            selectedLongitude = null;
+            selectedViewport = null;
+            hideMapPreview();
+            setMapToggleState(false, "Fetching coordinates for this destination.");
+            hideSuggestions();
+            setStatus("Fetching exact coordinates...", "muted");
+            requestProgressRefresh(picker);
+
+            fetch(
+                detailsUrl + "?" + new URLSearchParams({
+                    place_id: selectedPlaceId,
+                    session_token: sessionToken
+                }).toString(),
+                {
+                    method: "GET",
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Accept": "application/json"
+                    }
+                }
+            ).then(function onDetailsResponse(response) {
+                if (response.status === 429) {
+                    throw new Error("rate-limited");
+                }
+                if (!response.ok) {
+                    throw new Error("details-unavailable");
+                }
+                return response.json();
+            }).then(function onDetailsPayload(payload) {
+                var place = payload && payload.place && typeof payload.place === "object" ? payload.place : null;
+                if (!place) {
+                    throw new Error("details-empty");
+                }
+                applyPlaceDetails(place);
+            }).catch(function onDetailsError(error) {
+                clearPlaceMetadata();
+                if (error && error.message === "rate-limited") {
+                    setStatus("Rate limit reached for destination lookups. Try again in a minute.", "error");
+                    return;
+                }
+                setStatus("Could not fetch destination coordinates. You can still submit manually.", "error");
+            });
+        }
+
+        function renderSuggestions(predictions) {
+            if (!suggestionsHost) {
+                return;
+            }
+            var items = Array.isArray(predictions) ? predictions : [];
+            currentPredictions = items;
+            activeSuggestionIndex = items.length > 0 ? 0 : -1;
+            suggestionsHost.innerHTML = "";
+            if (items.length === 0) {
+                suggestionsHost.hidden = true;
+                return;
+            }
+
+            var list = document.createElement("div");
+            list.className = "trip-destination-suggestion-list";
+            items.forEach(function eachPrediction(item) {
+                var button = document.createElement("button");
+                button.type = "button";
+                button.className = "trip-destination-prediction";
+                button.setAttribute("data-destination-prediction", "1");
+                button.setAttribute("aria-label", String(item.label || ""));
+                button.addEventListener("mousedown", function onPredictionMouseDown(event) {
+                    event.preventDefault();
+                });
+                button.addEventListener("click", function onPredictionClick() {
+                    selectPrediction(item);
+                });
+
+                var main = document.createElement("span");
+                main.className = "trip-destination-prediction-main";
+                main.textContent = String(item.main_text || item.label || "");
+                button.appendChild(main);
+
+                var secondaryLabel = String(item.secondary_text || "").trim();
+                if (secondaryLabel) {
+                    var secondary = document.createElement("span");
+                    secondary.className = "trip-destination-prediction-secondary";
+                    secondary.textContent = secondaryLabel;
+                    button.appendChild(secondary);
+                }
+
+                list.appendChild(button);
+            });
+            suggestionsHost.appendChild(list);
+            suggestionsHost.hidden = false;
+            updateSuggestionActiveState();
+        }
+
+        function requestPredictions(query) {
+            latestAutocompleteRequestId += 1;
+            var requestId = latestAutocompleteRequestId;
+            fetch(
+                autocompleteUrl + "?" + new URLSearchParams({
+                    q: query,
+                    session_token: sessionToken
+                }).toString(),
+                {
+                    method: "GET",
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Accept": "application/json"
+                    }
+                }
+            ).then(function onAutocompleteResponse(response) {
+                if (response.status === 429) {
+                    throw new Error("rate-limited");
+                }
+                if (!response.ok) {
+                    throw new Error("autocomplete-unavailable");
+                }
+                return response.json();
+            }).then(function onAutocompletePayload(payload) {
+                if (requestId !== latestAutocompleteRequestId) {
+                    return;
+                }
+                var predictions = payload && Array.isArray(payload.predictions) ? payload.predictions : [];
+                renderSuggestions(predictions);
+                if (predictions.length > 0) {
+                    setStatus("Choose the matching destination suggestion.", "muted");
+                } else {
+                    setStatus("No suggestions found. Continue with manual destination if needed.", "muted");
+                }
+            }).catch(function onAutocompleteError(error) {
+                if (requestId !== latestAutocompleteRequestId) {
+                    return;
+                }
+                hideSuggestions();
+                if (error && error.message === "rate-limited") {
+                    setStatus("Rate limit reached for destination suggestions. Retry in a minute.", "error");
+                    return;
+                }
+                setStatus("Destination suggestions are unavailable. You can still type manually.", "error");
+            });
+        }
+
+        function buildMapEmbedUrl(latitude, longitude, viewport) {
+            var lat = parseFiniteNumber(latitude);
+            var lng = parseFiniteNumber(longitude);
+            if (lat === null || lng === null) {
+                return "";
+            }
+
+            var south = lat - 0.18;
+            var north = lat + 0.18;
+            var west = lng - 0.18;
+            var east = lng + 0.18;
+
+            if (viewport && typeof viewport === "object") {
+                var parsedSouth = parseFiniteNumber(viewport.south);
+                var parsedWest = parseFiniteNumber(viewport.west);
+                var parsedNorth = parseFiniteNumber(viewport.north);
+                var parsedEast = parseFiniteNumber(viewport.east);
+                if (parsedSouth !== null && parsedWest !== null && parsedNorth !== null && parsedEast !== null) {
+                    south = parsedSouth;
+                    west = parsedWest;
+                    north = parsedNorth;
+                    east = parsedEast;
+                }
+            }
+
+            var params = new URLSearchParams();
+            params.set("bbox", [west, south, east, north].join(","));
+            params.set("layer", "mapnik");
+            params.set("marker", [lat, lng].join(","));
+            return "https://www.openstreetmap.org/export/embed.html?" + params.toString();
+        }
+
+        function showMapPreview() {
+            if (selectedLatitude === null || selectedLongitude === null || !mapFrame) {
+                return false;
+            }
+            var mapUrl = buildMapEmbedUrl(selectedLatitude, selectedLongitude, selectedViewport);
+            if (!mapUrl) {
+                return false;
+            }
+            mapFrame.src = mapUrl;
+            if (mapShell) {
+                mapShell.hidden = false;
+            }
+            if (mapToggle) {
+                mapToggle.textContent = "Hide map preview";
+            }
+            setStatus("Map preview loaded on demand.", "success");
+            return true;
+        }
+
+        sessionToken = createSessionToken();
+
+        destinationInput.addEventListener("input", function onDestinationInput() {
+            if (isProgrammaticDestinationUpdate) {
+                return;
+            }
+            if (blurTimer) {
+                window.clearTimeout(blurTimer);
+                blurTimer = 0;
+            }
+
+            var currentValue = String(destinationInput.value || "").trim();
+            if (!currentValue) {
+                clearPlaceMetadata();
+                hideSuggestions();
+                setStatus("Start typing and choose a destination suggestion.", "muted");
+                return;
+            }
+
+            if (selectedLabel && currentValue !== selectedLabel) {
+                clearPlaceMetadata();
+            }
+
+            if (currentValue.length < 2) {
+                hideSuggestions();
+                setStatus("Type at least 2 characters for destination suggestions.", "muted");
+                return;
+            }
+
+            if (!autocompleteUrl || !detailsUrl) {
+                hideSuggestions();
+                setStatus("Destination suggestion service is not configured. Enter destination manually.", "muted");
+                return;
+            }
+
+            debounceAutocomplete(function runAutocompleteRequest() {
+                var liveValue = String(destinationInput.value || "").trim();
+                if (liveValue.length < 2) {
+                    hideSuggestions();
+                    return;
+                }
+                requestPredictions(liveValue);
+            }, 220);
+        });
+
+        destinationInput.addEventListener("focus", function onDestinationFocus() {
+            var currentValue = String(destinationInput.value || "").trim();
+            if (currentValue.length >= 2 && currentPredictions.length > 0 && suggestionsHost) {
+                suggestionsHost.hidden = false;
+            }
+        });
+
+        destinationInput.addEventListener("blur", function onDestinationBlur() {
+            blurTimer = window.setTimeout(function hideSuggestionListAfterBlur() {
+                hideSuggestions();
+            }, 120);
+        });
+
+        destinationInput.addEventListener("keydown", function onDestinationKeydown(event) {
+            if (currentPredictions.length === 0) {
+                return;
+            }
+            if (event.key === "ArrowDown") {
+                event.preventDefault();
+                activeSuggestionIndex = Math.min(currentPredictions.length - 1, activeSuggestionIndex + 1);
+                updateSuggestionActiveState();
+                return;
+            }
+            if (event.key === "ArrowUp") {
+                event.preventDefault();
+                activeSuggestionIndex = Math.max(0, activeSuggestionIndex - 1);
+                updateSuggestionActiveState();
+                return;
+            }
+            if (event.key === "Escape") {
+                hideSuggestions();
+                return;
+            }
+            if (event.key === "Enter") {
+                if (activeSuggestionIndex < 0 || activeSuggestionIndex >= currentPredictions.length) {
+                    return;
+                }
+                event.preventDefault();
+                selectPrediction(currentPredictions[activeSuggestionIndex]);
+            }
+        });
+
+        if (mapToggle) {
+            mapToggle.addEventListener("click", function onMapToggleClick() {
+                if (mapShell && !mapShell.hidden) {
+                    hideMapPreview();
+                    setStatus("Map preview hidden. It can be re-opened anytime.", "muted");
+                    return;
+                }
+
+                if (selectedLatitude === null || selectedLongitude === null) {
+                    setStatus("Pick a destination suggestion first, then load map preview.", "muted");
+                    destinationInput.focus();
+                    return;
+                }
+                if (!showMapPreview()) {
+                    setStatus("Map preview failed to load. Destination text is still saved.", "error");
+                }
+            });
+        }
+
+        picker.addEventListener("click", function onPickerClick(event) {
+            var target = event.target;
+            if (!target || !target.closest) {
+                return;
+            }
+            if (target.closest("[data-destination-prediction]")) {
+                return;
+            }
+            if (target.closest(".trip-destination-suggestions")) {
+                return;
+            }
+            if (target === destinationInput) {
+                return;
+            }
+            hideSuggestions();
+        });
+
+        setMapToggleState(false, "");
+        if (String(destinationInput.value || "").trim()) {
+            setStatus("Select the matching suggestion to pin an exact destination.", "muted");
+        } else {
+            setStatus("Start typing and choose a destination suggestion.", "muted");
+        }
+    }
     function initSectionIndex(form) {
         var layout = form.parentElement;
         var indexHost = layout ? layout.querySelector("[data-trip-section-index]") : null;
@@ -867,20 +1397,29 @@
             }
 
             var sectionLogo = "";
+            var sectionLogoMarkup = "";
             var logoHost = section.querySelector(".trip-form-section-header .section-logo");
             if (logoHost) {
                 sectionLogo = String(logoHost.textContent || "").trim();
+                var logoSvg = logoHost.querySelector("svg");
+                if (logoSvg && logoSvg.outerHTML) {
+                    sectionLogoMarkup = String(logoSvg.outerHTML);
+                }
             }
 
             var item = document.createElement("li");
             var link = document.createElement("a");
             link.className = "trip-form-index-link";
             link.href = "#" + sectionId;
-            if (sectionLogo) {
+            if (sectionLogoMarkup || sectionLogo) {
                 var logo = document.createElement("span");
                 logo.className = "trip-form-index-logo";
                 logo.setAttribute("aria-hidden", "true");
-                logo.textContent = sectionLogo;
+                if (sectionLogoMarkup) {
+                    logo.innerHTML = sectionLogoMarkup;
+                } else {
+                    logo.textContent = sectionLogo;
+                }
                 link.appendChild(logo);
             }
             var text = document.createElement("span");
@@ -1318,6 +1857,7 @@
 
     initCollapsibleSections(form);
     initMediaDropzones(form);
+    initDestinationPicker(form);
     initChoiceLimitGroups(form);
     initAgePreferenceSliders(form);
     initSectionIndex(form);

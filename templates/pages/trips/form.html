@@ -9,6 +9,11 @@
 {% endblock %}
 
 {% block content %}
+<section class="hero hero-compact trip-form-hero">
+    <h1>{{ page_title|default:"Trip form" }}</h1>
+    <p>Complete each section carefully. This flow controls the trip card, itinerary trust, and booking quality.</p>
+</section>
+
 <section class="trip-progress-shell" data-trip-progress-shell>
     <div class="trip-progress-meta">
         <p class="trip-progress-title">Trip Creation Progress</p>
@@ -30,21 +35,31 @@
     </div>
     <div class="trip-progress-actions">
         <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="save_draft">
-            <span class="button-logo" aria-hidden="true">💾</span>Save Draft
+            <span class="button-logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
+                    <path d="M12 11v6"></path>
+                    <path d="M9.5 14.5 12 17l2.5-2.5"></path>
+                </svg>
+            </span>Save Draft
         </button>
         <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="preview">
-            <span class="button-logo" aria-hidden="true">👀</span>Preview
+            <span class="button-logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                    <circle cx="12" cy="12" r="2.7"></circle>
+                </svg>
+            </span>Preview
         </button>
         <button class="btn btn-primary" type="submit" form="trip-creation-form" name="form_action" value="submit">
-            <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Publish" }}
+            <span class="button-logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
+                    <path d="M10.7 14.8 21 3"></path>
+                </svg>
+            </span>{{ submit_label|default:"Publish" }}
         </button>
     </div>
-</section>
-
-<section class="hero hero-compact">
-    <p class="eyebrow">Trips</p>
-    <h1>{{ page_title|default:"Trip form" }}</h1>
-    <p>Complete each section carefully. This flow controls the trip card, itinerary trust, and booking quality.</p>
 </section>
 
 <section class="section-grid">
@@ -78,7 +93,7 @@
 
         <article class="trip-form-section" id="trip-section-overview" data-index-label="Basic Trip Overview" data-section-required="true">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🧳</span>Basic Trip Overview</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"></rect><path d="M9 4.5h6"></path><path d="M9 10h6"></path><path d="M9 14h6"></path></svg></span> Basic Trip Overview</h2>
                 <p>Give a short exciting overview. This is what people see first.</p>
             </header>
             <div class="form-field">
@@ -90,8 +105,37 @@
             <div class="trip-form-grid trip-form-grid-2">
                 <div class="form-field">
                     <label for="{{ form.destination.id_for_label }}">Destination <span class="required-star">*</span></label>
-                    {{ form.destination }}
-                    <p class="detail-meta">{{ form.destination.help_text }}</p>
+                    <div
+                        class="trip-destination-picker"
+                        data-destination-picker
+                        data-target-input-id="{{ form.destination.id_for_label }}"
+                        data-autocomplete-url="{% url 'trips:destination-autocomplete' %}"
+                        data-details-url="{% url 'trips:destination-details' %}"
+                    >
+                        {{ form.destination }}
+                        <div class="trip-destination-suggestions" data-destination-suggestions hidden></div>
+                        <div class="trip-destination-actions">
+                            <button class="btn btn-ghost trip-destination-map-toggle" type="button" data-destination-map-toggle disabled>
+                                Load map preview
+                            </button>
+                            <span class="trip-destination-status detail-meta" data-destination-status>
+                                Start typing and choose a destination suggestion.
+                            </span>
+                        </div>
+                        <div class="trip-destination-map-shell" data-destination-map-shell hidden>
+                            <iframe
+                                class="trip-destination-map"
+                                data-destination-map
+                                title="Destination map preview"
+                                loading="lazy"
+                                referrerpolicy="no-referrer-when-downgrade"
+                            ></iframe>
+                        </div>
+                        <input type="hidden" name="destination_place_id" data-destination-place-id>
+                        <input type="hidden" name="destination_latitude" data-destination-latitude>
+                        <input type="hidden" name="destination_longitude" data-destination-longitude>
+                    </div>
+                    <p class="detail-meta">{{ form.destination.help_text }}. Choose a suggestion for exact map placement.</p>
                     {% for error in form.destination.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
                 </div>
                 <div class="form-field">
@@ -152,7 +196,7 @@
 
         <article class="trip-form-section" id="trip-section-media" data-index-label="Hero and Media" data-section-required="true">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">📸</span>Hero and Media</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="2"></rect><path d="M9 7l1.4-2h3.2L15 7"></path><circle cx="12" cy="13" r="3"></circle></svg></span> Hero and Media</h2>
                 <p>Stunning visuals make your trip stand out.</p>
             </header>
             <div class="form-field" data-media-upload="hero">
@@ -216,7 +260,7 @@
 
         <article class="trip-form-section" id="trip-section-highlights" data-index-label="Highlights">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">✨</span>Highlights</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2 4.5 4.5 2-4.5 2L12 16l-2-4.5-4.5-2 4.5-2L12 3z"></path></svg></span> Highlights</h2>
             </header>
             <div
                 class="dynamic-list-builder"
@@ -232,7 +276,7 @@
 
         <article class="trip-form-section" id="trip-section-itinerary" data-index-label="Detailed Itinerary">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🗺️</span>Detailed Itinerary</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"></circle><circle cx="18" cy="18" r="2"></circle><path d="M8 6h4a2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2v4"></path></svg></span> Detailed Itinerary</h2>
             </header>
             <div class="dynamic-day-builder" data-day-builder data-target-input-id="{{ form.itinerary_days_payload.id_for_label }}">
                 <div class="dynamic-day-items" data-day-items></div>
@@ -242,7 +286,7 @@
 
         <article class="trip-form-section" id="trip-section-included" data-index-label="What's Included">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">✅</span>What's Included</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="m8.5 12.5 2.3 2.3 4.7-4.7"></path></svg></span> What's Included</h2>
             </header>
             <div class="form-field">
                 <label for="{{ form.includes_label.id_for_label }}">Included summary label</label>
@@ -263,7 +307,7 @@
 
         <article class="trip-form-section" id="trip-section-not-included" data-index-label="What's Not Included">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🚫</span>What's Not Included</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="m8 8 8 8"></path></svg></span> What's Not Included</h2>
             </header>
             <div
                 class="dynamic-list-builder"
@@ -279,7 +323,7 @@
 
         <article class="trip-form-section" id="trip-section-carry" data-index-label="Things to Carry">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🎒</span>Things to Carry</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 7V5a3 3 0 0 1 6 0v2"></path><rect x="6" y="7" width="12" height="13" rx="3"></rect><path d="M9.5 11.5h5"></path><path d="M10 15h4"></path></svg></span> Things to Carry</h2>
             </header>
             <div
                 class="pill-input-builder"
@@ -304,7 +348,7 @@
 
         <article class="trip-form-section" id="trip-section-social" data-index-label="Social Context">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🤝</span>Trip Experience and Social Context</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="2.4"></circle><circle cx="16.5" cy="10" r="1.9"></circle><path d="M5.5 17a3.8 3.8 0 0 1 7 0"></path><path d="M13.5 17a3.2 3.2 0 0 1 5 0"></path></svg></span> Trip Experience and Social Context</h2>
             </header>
             <div class="trip-form-grid trip-form-grid-2">
                 <div class="form-field">
@@ -393,7 +437,7 @@
 
         <article class="trip-form-section" id="trip-section-safety" data-index-label="Safety and Policies">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🛡️</span>Safety and Policies</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 6 2.5V11c0 4.2-2.6 6.8-6 8.4-3.4-1.6-6-4.2-6-8.4V5.5L12 3z"></path></svg></span> Safety and Policies</h2>
             </header>
             <div class="form-field">
                 <label for="{{ form.general_policies.id_for_label }}">General Policies</label>
@@ -413,7 +457,7 @@
 
         <article class="trip-form-section" id="trip-section-faqs" data-index-label="FAQs">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">💬</span>FAQs</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H10l-5 4v-4H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"></path></svg></span> FAQs</h2>
             </header>
             <div class="dynamic-faq-builder" data-faq-builder data-target-input-id="{{ form.faqs_payload.id_for_label }}">
                 <div class="dynamic-faq-items" data-faq-items></div>
@@ -423,7 +467,7 @@
 
         <article class="trip-form-section" id="trip-section-host" data-index-label="Host Information">
             <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🧑‍💼</span>Host Information</h2>
+                <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3"></circle><path d="M6 19a6 6 0 0 1 12 0"></path></svg></span> Host Information</h2>
             </header>
             <p class="detail-meta">Posted by: @{{ request.user.username }}{% if request.user.email %} - {{ request.user.email }}{% endif %}</p>
             <div class="trip-form-grid trip-form-grid-2">
@@ -445,13 +489,29 @@
 
         <div class="inline-actions trip-form-bottom-actions">
             <button class="btn btn-secondary" type="submit" name="form_action" value="save_draft">
-                <span class="button-logo" aria-hidden="true">💾</span>Save Draft
+                <span class="button-logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
+                        <path d="M12 11v6"></path>
+                        <path d="M9.5 14.5 12 17l2.5-2.5"></path>
+                    </svg>
+                </span>Save Draft
             </button>
             <button class="btn btn-secondary" type="submit" name="form_action" value="preview">
-                <span class="button-logo" aria-hidden="true">👀</span>Preview
+                <span class="button-logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                        <circle cx="12" cy="12" r="2.7"></circle>
+                    </svg>
+                </span>Preview
             </button>
             <button class="btn btn-primary" type="submit" name="form_action" value="submit">
-                <span class="button-logo" aria-hidden="true">🚀</span>{{ submit_label|default:"Publish" }}
+                <span class="button-logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
+                        <path d="M10.7 14.8 21 3"></path>
+                    </svg>
+                </span>{{ submit_label|default:"Publish" }}
             </button>
         </div>
         </form>

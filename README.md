@@ -1810,6 +1810,11 @@ AWS_QUERYSTRING_AUTH=false
 
 # Django secret
 SECRET_KEY=dev-only
+
+# Google Maps Places (trip destination autocomplete)
+GOOGLE_MAPS_API_KEY=your_browser_key_here
+# Optional alias for backend proxy calls:
+# GOOGLE_PLACES_API_KEY=your_server_places_key_here
 ```
 
 ### How the current code resolves connections

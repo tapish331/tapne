@@ -56,6 +56,7 @@ param(
     [string]$Domain = "tapnetravel.com",
 
     [string]$WwwDomain = "www.tapnetravel.com",
+    [string]$GoogleMapsApiKey = "",
 
     [switch]$SkipAuthLogin,
     [switch]$SkipMigrations,
@@ -145,6 +146,56 @@ function Get-UniqueDomains {
     return @($domains)
 }
 
+function Get-DotEnvValue {
+    param(
+        [string]$FilePath,
+        [string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($FilePath) -or -not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
+        return ""
+    }
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return ""
+    }
+
+    $targetName = $Name.Trim()
+    foreach ($line in (Get-Content -LiteralPath $FilePath)) {
+        $rawLine = [string]$line
+        if ([string]::IsNullOrWhiteSpace($rawLine)) {
+            continue
+        }
+        $trimmedLine = $rawLine.Trim()
+        if ($trimmedLine.StartsWith("#")) {
+            continue
+        }
+        if ($trimmedLine.StartsWith("export ")) {
+            $trimmedLine = $trimmedLine.Substring(7).TrimStart()
+        }
+
+        $equalsIndex = $trimmedLine.IndexOf("=")
+        if ($equalsIndex -lt 1) {
+            continue
+        }
+
+        $key = $trimmedLine.Substring(0, $equalsIndex).Trim()
+        if (-not [string]::Equals($key, $targetName, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $value = $trimmedLine.Substring($equalsIndex + 1).Trim()
+        if ($value.Length -ge 2) {
+            if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+        }
+
+        return $value.Trim()
+    }
+
+    return ""
+}
+
 function Invoke-ScriptStep {
     param(
         [string]$StepName,
@@ -189,6 +240,30 @@ if ($domains.Count -eq 0) {
 $canonicalHost = $domains[0]
 $djangoAllowedHosts = ($domains -join ",")
 $csrfTrustedOrigins = (($domains | ForEach-Object { "https://{0}" -f $_ }) -join ",")
+
+$resolvedGoogleMapsApiKey = ""
+if (-not [string]::IsNullOrWhiteSpace($GoogleMapsApiKey)) {
+    $resolvedGoogleMapsApiKey = $GoogleMapsApiKey.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_MAPS_API_KEY)) {
+    $resolvedGoogleMapsApiKey = $env:GOOGLE_MAPS_API_KEY.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_PLACES_API_KEY)) {
+    $resolvedGoogleMapsApiKey = $env:GOOGLE_PLACES_API_KEY.Trim()
+}
+else {
+    $dotEnvPath = Join-Path $repoRoot ".env"
+    $dotEnvMapsApiKey = Get-DotEnvValue -FilePath $dotEnvPath -Name "GOOGLE_MAPS_API_KEY"
+    if ([string]::IsNullOrWhiteSpace($dotEnvMapsApiKey)) {
+        $dotEnvMapsApiKey = Get-DotEnvValue -FilePath $dotEnvPath -Name "GOOGLE_PLACES_API_KEY"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($dotEnvMapsApiKey)) {
+        $resolvedGoogleMapsApiKey = $dotEnvMapsApiKey.Trim()
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
+    $env:GOOGLE_MAPS_API_KEY = $resolvedGoogleMapsApiKey
+}
 
 $localImageRef = "{0}:{1}" -f $ImageName, $ImageTag
 $artifactImageRef = "{0}-docker.pkg.dev/{1}/{2}/{3}:{4}" -f $Region, $ProjectId, $Repository, $ImageName, $ImageTag
@@ -272,8 +347,8 @@ if ($isVerbose) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}; DisableBuildAttestations={12}; DisableContainerVulnerabilityScanning={13}" -f
-    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning
+    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}; DisableBuildAttestations={12}; DisableContainerVulnerabilityScanning={13}; GoogleMapsApiKeySet={14}" -f
+    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey))
 )
 
 $startTime = Get-Date

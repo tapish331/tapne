@@ -393,6 +393,13 @@ class TripForm(forms.ModelForm):
         self.fields["summary"].help_text = "A 2-3 line pitch. This appears on the trip card."
         self.fields["description"].help_text = "Optional long-form context and storyline for the trip."
         self.fields["destination"].help_text = "City + Country"
+        self.fields["destination"].widget.attrs.update(
+            {
+                "autocomplete": "off",
+                "spellcheck": "false",
+                "data-destination-input": "1",
+            }
+        )
         self.fields["title"].help_text = "A catchy name that grabs attention."
         self.fields["banner_image"].help_text = "Main cover photo for your trip."
         self.fields["video_link"].help_text = "YouTube or Instagram reel link."

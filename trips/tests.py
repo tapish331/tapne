@@ -962,6 +962,69 @@ class TripViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         mock_print.assert_not_called()
 
+    def test_destination_autocomplete_requires_login(self) -> None:
+        response = self.client.get(reverse("trips:destination-autocomplete"), {"q": "Shill"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), str(response["Location"]))
+        self.assertIn(reverse("trips:destination-autocomplete"), str(response["Location"]))
+
+    def test_destination_autocomplete_returns_predictions_for_member(self) -> None:
+        self.client.login(username=self.member_user.username, password=self.password)
+        with patch(
+            "trips.views.autocomplete_places",
+            return_value=[
+                {
+                    "place_id": "abc123",
+                    "label": "Shillong, India",
+                    "main_text": "Shillong",
+                    "secondary_text": "India",
+                }
+            ],
+        ) as mock_proxy:
+            response = self.client.get(
+                reverse("trips:destination-autocomplete"),
+                {"q": "Shill", "session_token": "session-1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = cast(dict[str, object], response.json())
+        predictions = cast(list[dict[str, object]], payload["predictions"])
+        self.assertEqual(len(predictions), 1)
+        self.assertEqual(predictions[0]["label"], "Shillong, India")
+        mock_proxy.assert_called_once_with("Shill", session_token="session-1")
+
+    def test_destination_details_returns_coordinates_for_member(self) -> None:
+        self.client.login(username=self.member_user.username, password=self.password)
+        with patch(
+            "trips.views.place_details",
+            return_value={
+                "place_id": "abc123",
+                "label": "Shillong, India",
+                "latitude": 25.5788,
+                "longitude": 91.8933,
+                "viewport": None,
+            },
+        ) as mock_proxy:
+            response = self.client.get(
+                reverse("trips:destination-details"),
+                {"place_id": "abc123", "session_token": "session-1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = cast(dict[str, object], response.json())
+        place_payload = cast(dict[str, object], payload["place"])
+        self.assertEqual(place_payload["label"], "Shillong, India")
+        self.assertEqual(place_payload["latitude"], 25.5788)
+        self.assertEqual(place_payload["longitude"], 91.8933)
+        mock_proxy.assert_called_once_with("abc123", session_token="session-1")
+
+    def test_destination_details_missing_place_id_returns_400(self) -> None:
+        self.client.login(username=self.member_user.username, password=self.password)
+        response = self.client.get(reverse("trips:destination-details"))
+        self.assertEqual(response.status_code, 400)
+        payload = cast(dict[str, object], response.json())
+        self.assertEqual(payload["error"], "missing-place-id")
+
 
 class TripsBootstrapCommandTests(TestCase):
     def test_bootstrap_trips_seeds_rows_with_verbose_output(self) -> None:
