@@ -38,6 +38,12 @@ SUITABLE_FOR_CHOICES: tuple[tuple[str, str], ...] = (
     ("Solo Travelers", "Solo Travelers"),
     ("Couples", "Couples"),
     ("Friends", "Friends"),
+    ("First-time Travelers", "First-time Travelers"),
+    ("Weekend Getaways", "Weekend Getaways"),
+    ("Remote Workers", "Remote Workers"),
+    ("Nature Lovers", "Nature Lovers"),
+    ("Culture Lovers", "Culture Lovers"),
+    ("Adventure Seekers", "Adventure Seekers"),
     ("All Genders", "All Genders"),
 )
 TRIP_VIBE_CHOICES: tuple[tuple[str, str], ...] = (
@@ -48,7 +54,13 @@ TRIP_VIBE_CHOICES: tuple[tuple[str, str], ...] = (
     ("Adventure", "Adventure"),
     ("Photography", "Photography"),
     ("Work + Travel", "Work + Travel"),
+    ("Road Trip", "Road Trip"),
+    ("Foodie", "Foodie"),
+    ("Wellness", "Wellness"),
+    ("Camping", "Camping"),
+    ("Luxury", "Luxury"),
 )
+CONTACT_PREFERENCE_CODE_SET: frozenset[str] = frozenset(code for code, _label in CONTACT_PREFERENCE_CHOICES)
 
 
 class ResilientClearableFileInput(forms.ClearableFileInput):
@@ -169,6 +181,30 @@ def _as_clean_string_list(raw_value: object) -> list[str]:
     return cleaned
 
 
+def _parse_contact_preference_codes(raw_value: object) -> list[str]:
+    if isinstance(raw_value, list):
+        candidates = [str(item or "") for item in cast(list[object], raw_value)]
+    else:
+        candidates = str(raw_value or "").split(",")
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in candidates:
+        code = " ".join(item.strip().split()).lower()
+        if not code or code not in CONTACT_PREFERENCE_CODE_SET or code in seen:
+            continue
+        seen.add(code)
+        cleaned.append(code)
+    return cleaned
+
+
+def _serialize_contact_preference_codes(raw_value: object) -> str:
+    codes = _parse_contact_preference_codes(raw_value)
+    if not codes:
+        return "in_app"
+    return ",".join(codes)
+
+
 class ItineraryDayPayload(TypedDict):
     is_flexible: bool
     title: str
@@ -235,6 +271,11 @@ class TripForm(forms.ModelForm):
         choices=TRIP_VIBE_CHOICES,
         widget=forms.CheckboxSelectMultiple,
     )
+    contact_preference_choices = forms.MultipleChoiceField(
+        required=False,
+        choices=CONTACT_PREFERENCE_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+    )
 
     highlights_payload = forms.CharField(required=False, widget=forms.HiddenInput())
     included_items_payload = forms.CharField(required=False, widget=forms.HiddenInput())
@@ -278,6 +319,7 @@ class TripForm(forms.ModelForm):
             "fitness_level_required",
             "gender_preference",
             "age_preference",
+            "general_policies",
             "code_of_conduct",
             "cancellation_policy",
             "medical_declaration_required",
@@ -296,6 +338,7 @@ class TripForm(forms.ModelForm):
                 "description": forms.Textarea(attrs={"rows": 5, "maxlength": 4000}),
                 "payment_terms": forms.Textarea(attrs={"rows": 3, "maxlength": 1200}),
                 "includes_label": forms.Textarea(attrs={"rows": 2, "maxlength": 280}),
+                "general_policies": forms.Textarea(attrs={"rows": 4, "maxlength": 2000}),
                 "code_of_conduct": forms.Textarea(attrs={"rows": 4, "maxlength": 2000}),
                 "cancellation_policy": forms.Textarea(attrs={"rows": 4, "maxlength": 2000}),
                 "banner_image": ResilientClearableFileInput(attrs={"accept": "image/*"}),
@@ -312,7 +355,7 @@ class TripForm(forms.ModelForm):
                     choices=(("", "Select level"), *EXPERIENCE_LEVEL_CHOICES)
                 ),
                 "fitness_level_required": forms.Select(choices=(("", "Select level"), *FITNESS_LEVEL_CHOICES)),
-                "contact_preference": forms.Select(choices=CONTACT_PREFERENCE_CHOICES),
+                "contact_preference": forms.HiddenInput(),
             },
         )
 
@@ -358,11 +401,12 @@ class TripForm(forms.ModelForm):
         self.fields["extra_costs_not_included_choices"].label = "Extra Costs Not Included"
         self.fields["suitable_for_choices"].label = "Suitable For"
         self.fields["trip_vibe_choices"].label = "Trip Vibe"
+        self.fields["contact_preference_choices"].label = "Contact Preference"
 
         self.fields["experience_level_required"].label = "Experience Level Required"
         self.fields["fitness_level_required"].label = "Fitness Level Required"
-        self.fields["contact_preference"].label = "Contact Preference"
-        self.fields["co_hosts"].label = "Co-hosts"
+        self.fields["general_policies"].label = "General Policies"
+        self.fields["co_hosts"].label = "Hosts"
 
         _apply_placeholder_examples(
             self,
@@ -394,6 +438,7 @@ class TripForm(forms.ModelForm):
                 "personal_shopping_estimate": "e.g. INR 2500",
                 "gender_preference": "e.g. Women only (leave blank for all genders)",
                 "age_preference": "e.g. 22-35",
+                "general_policies": "e.g. Smoking, alcohol, and room-sharing policies; punctuality and local-law compliance.",
                 "code_of_conduct": "e.g. Respect group timings, local culture, and fellow travelers.",
                 "cancellation_policy": "e.g. 100% refund up to 10 days; 50% up to 5 days.",
                 "co_hosts": "e.g. @riya, @arjun",
@@ -417,6 +462,7 @@ class TripForm(forms.ModelForm):
 
         self.initial.setdefault("minimum_seats", 4)
         self.initial.setdefault("total_seats", 10)
+        self.initial.setdefault("age_preference", "13-70")
 
         if is_edit_mode:
             existing_extra_costs = [
@@ -435,10 +481,15 @@ class TripForm(forms.ModelForm):
             )
             self.initial.setdefault("suitable_for_choices", getattr(self.instance, "suitable_for", []) or [])
             self.initial.setdefault("trip_vibe_choices", getattr(self.instance, "trip_vibe", []) or [])
+            self.initial.setdefault(
+                "contact_preference_choices",
+                _parse_contact_preference_codes(getattr(self.instance, "contact_preference", "") or "in_app"),
+            )
         else:
             self.initial.setdefault("extra_costs_not_included_choices", [])
             self.initial.setdefault("suitable_for_choices", ["Solo Travelers", "Friends", "All Genders"])
             self.initial.setdefault("trip_vibe_choices", ["Explorer"])
+            self.initial.setdefault("contact_preference_choices", ["in_app"])
 
         self.initial.setdefault("highlights_payload", _json_dump(getattr(self.instance, "highlights", []) or []))
         self.initial.setdefault("included_items_payload", _json_dump(getattr(self.instance, "included_items", []) or []))
@@ -585,8 +636,24 @@ class TripForm(forms.ModelForm):
             merged_extra_costs.append(value)
         cleaned_data["extra_costs_not_included"] = merged_extra_costs
 
-        cleaned_data["suitable_for"] = _as_clean_string_list(cleaned_data.get("suitable_for_choices", []))
-        cleaned_data["trip_vibe"] = _as_clean_string_list(cleaned_data.get("trip_vibe_choices", []))
+        suitable_for = _as_clean_string_list(cleaned_data.get("suitable_for_choices", []))
+        if len(suitable_for) > 3:
+            self.add_error("suitable_for_choices", "Select up to 3 options.")
+        cleaned_data["suitable_for"] = suitable_for
+
+        trip_vibe = _as_clean_string_list(cleaned_data.get("trip_vibe_choices", []))
+        if len(trip_vibe) > 5:
+            self.add_error("trip_vibe_choices", "Select up to 5 options.")
+        cleaned_data["trip_vibe"] = trip_vibe
+
+        contact_preference_codes = _parse_contact_preference_codes(cleaned_data.get("contact_preference_choices", []))
+        if not contact_preference_codes:
+            # Backward-compatible fallback for any callers still posting the legacy single-select field.
+            contact_preference_codes = _parse_contact_preference_codes(cleaned_data.get("contact_preference", "in_app"))
+        if not contact_preference_codes:
+            contact_preference_codes = ["in_app"]
+        cleaned_data["contact_preference_choices"] = contact_preference_codes
+        cleaned_data["contact_preference"] = ",".join(contact_preference_codes)
 
         starts_at = _as_datetime_or_none(cleaned_data.get("starts_at"))
         ends_at = _as_datetime_or_none(cleaned_data.get("ends_at"))
@@ -654,9 +721,10 @@ class TripForm(forms.ModelForm):
         trip.personal_shopping_estimate = " ".join(str(trip.personal_shopping_estimate or "").strip().split())
         trip.gender_preference = " ".join(str(trip.gender_preference or "").strip().split())
         trip.age_preference = " ".join(str(trip.age_preference or "").strip().split())
+        trip.general_policies = str(trip.general_policies or "").strip()
         trip.code_of_conduct = str(trip.code_of_conduct or "").strip()
         trip.cancellation_policy = str(trip.cancellation_policy or "").strip()
-        trip.contact_preference = str(trip.contact_preference or "in_app").strip().lower() or "in_app"
+        trip.contact_preference = _serialize_contact_preference_codes(self.cleaned_data.get("contact_preference_choices", []))
         trip.co_hosts = " ".join(str(trip.co_hosts or "").strip().split())
 
         trip.extra_costs_not_included = cast(list[str], self.cleaned_data.get("extra_costs_not_included", []) or [])

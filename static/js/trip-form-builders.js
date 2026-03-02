@@ -118,12 +118,11 @@
                     title: String(((row.querySelector("[data-day-title]") || {}).value || "")).trim(),
                     description: String(((row.querySelector("[data-day-description]") || {}).value || "")).trim(),
                     stay: String(((row.querySelector("[data-day-stay]") || {}).value || "")).trim(),
-                    meals: String(((row.querySelector("[data-day-meals]") || {}).value || "")).trim(),
-                    activities: String(((row.querySelector("[data-day-activities]") || {}).value || "")).trim()
+                    meals: String(((row.querySelector("[data-day-meals]") || {}).value || "")).trim()
                 };
             })
             .filter(function nonEmpty(day) {
-                return day.title || day.description || day.stay || day.meals || day.activities;
+                return day.title || day.description || day.stay || day.meals;
             });
 
         hiddenInput.value = JSON.stringify(days);
@@ -142,10 +141,9 @@
             "</div>" +
             "<div class=\"form-field\"><label>Day Title</label><input class=\"form-input\" type=\"text\" maxlength=\"180\" data-day-title placeholder=\"e.g. Arrival + old town walk\"></div>" +
             "<div class=\"form-field\"><label>What happens on this day ...</label><textarea class=\"form-input\" rows=\"4\" maxlength=\"2000\" data-day-description placeholder=\"e.g. Check-in, local lunch, sunset viewpoint, and welcome dinner.\"></textarea></div>" +
-            "<div class=\"trip-form-grid trip-form-grid-3\">" +
+            "<div class=\"trip-form-grid trip-form-grid-2\">" +
             "  <div class=\"form-field\"><label>Stay</label><input class=\"form-input\" type=\"text\" maxlength=\"180\" data-day-stay placeholder=\"e.g. Lakeside resort\"></div>" +
             "  <div class=\"form-field\"><label>Meals</label><input class=\"form-input\" type=\"text\" maxlength=\"180\" data-day-meals placeholder=\"e.g. Breakfast, Dinner\"></div>" +
-            "  <div class=\"form-field\"><label>Activities</label><input class=\"form-input\" type=\"text\" maxlength=\"280\" data-day-activities placeholder=\"e.g. Village walk, bonfire night\"></div>" +
             "</div>";
 
         var flexible = row.querySelector("[data-day-flexible]");
@@ -160,8 +158,7 @@
             ["[data-day-title]", "title"],
             ["[data-day-description]", "description"],
             ["[data-day-stay]", "stay"],
-            ["[data-day-meals]", "meals"],
-            ["[data-day-activities]", "activities"]
+            ["[data-day-meals]", "meals"]
         ].forEach(function bindField(pair) {
             var field = row.querySelector(pair[0]);
             if (!field) {
@@ -287,6 +284,551 @@
         });
 
         syncFaqBuilder(root);
+    }
+
+    function syncPillBuilder(root) {
+        var inputId = root.getAttribute("data-target-input-id");
+        var hiddenInput = inputId ? document.getElementById(inputId) : null;
+        if (!hiddenInput) {
+            return;
+        }
+
+        var values = Array.prototype.slice.call(root.querySelectorAll("[data-pill-item]"))
+            .map(function mapPill(item) {
+                return String(item.getAttribute("data-pill-value") || "").trim();
+            })
+            .filter(function nonEmpty(value) {
+                return value.length > 0;
+            });
+
+        hiddenInput.value = JSON.stringify(values);
+
+        var proxyInput = root.querySelector("[data-pill-progress-proxy]");
+        if (proxyInput) {
+            proxyInput.value = values.join(", ");
+        }
+        requestProgressRefresh(root);
+    }
+
+    function createPillItem(root, value) {
+        var normalized = String(value || "").trim();
+        if (!normalized) {
+            return null;
+        }
+
+        var pill = document.createElement("span");
+        pill.className = "pill-item";
+        pill.setAttribute("data-pill-item", "1");
+        pill.setAttribute("data-pill-value", normalized);
+
+        var label = document.createElement("span");
+        label.className = "pill-item-label";
+        label.textContent = normalized;
+
+        var removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "pill-item-remove";
+        removeButton.setAttribute("aria-label", "Remove " + normalized);
+        removeButton.textContent = "×";
+        removeButton.addEventListener("click", function onRemove() {
+            pill.remove();
+            syncPillBuilder(root);
+        });
+
+        pill.appendChild(label);
+        pill.appendChild(removeButton);
+        return pill;
+    }
+
+    function initPillBuilder(root) {
+        var inputId = root.getAttribute("data-target-input-id");
+        var hiddenInput = inputId ? document.getElementById(inputId) : null;
+        var itemsHost = root.querySelector("[data-pill-items]");
+        var textInput = root.querySelector("[data-pill-input]");
+        var frame = root.querySelector("[data-pill-frame]");
+        if (!hiddenInput || !itemsHost || !textInput) {
+            return;
+        }
+
+        var initialItems = parseJson(hiddenInput.value, []);
+        if (Array.isArray(initialItems)) {
+            initialItems.forEach(function eachItem(item) {
+                var pill = createPillItem(root, item);
+                if (pill) {
+                    itemsHost.appendChild(pill);
+                }
+            });
+        }
+
+        function normalizedValue(rawValue) {
+            var value = String(rawValue || "")
+                .replace(/\s+/g, " ")
+                .trim();
+            return value.slice(0, 280);
+        }
+
+        function existingValuesLower() {
+            return Array.prototype.slice.call(itemsHost.querySelectorAll("[data-pill-item]")).map(function mapItem(item) {
+                return String(item.getAttribute("data-pill-value") || "").trim().toLowerCase();
+            });
+        }
+
+        function addPill(rawValue) {
+            var value = normalizedValue(rawValue);
+            if (!value) {
+                return false;
+            }
+            if (existingValuesLower().indexOf(value.toLowerCase()) >= 0) {
+                return false;
+            }
+            var pill = createPillItem(root, value);
+            if (!pill) {
+                return false;
+            }
+            itemsHost.appendChild(pill);
+            syncPillBuilder(root);
+            return true;
+        }
+
+        function flushInputToPill() {
+            var didAdd = addPill(textInput.value);
+            textInput.value = "";
+            requestProgressRefresh(root);
+            return didAdd;
+        }
+
+        textInput.addEventListener("keydown", function onPillInputKeydown(event) {
+            if (event.key === "Enter" || event.key === ",") {
+                event.preventDefault();
+                flushInputToPill();
+                return;
+            }
+            if (event.key === "Backspace" && !String(textInput.value || "").trim()) {
+                var pills = itemsHost.querySelectorAll("[data-pill-item]");
+                var lastPill = pills.length ? pills[pills.length - 1] : null;
+                if (lastPill) {
+                    lastPill.remove();
+                    syncPillBuilder(root);
+                }
+            }
+        });
+
+        textInput.addEventListener("blur", function onPillInputBlur() {
+            if (String(textInput.value || "").trim()) {
+                flushInputToPill();
+            }
+        });
+
+        textInput.addEventListener("paste", function onPillInputPaste(event) {
+            var clipboardText = String(((event.clipboardData || {}).getData && event.clipboardData.getData("text")) || "");
+            if (!clipboardText || (clipboardText.indexOf(",") < 0 && clipboardText.indexOf("\n") < 0)) {
+                return;
+            }
+            event.preventDefault();
+            clipboardText.split(/[\n,]+/).forEach(function eachChunk(chunk) {
+                addPill(chunk);
+            });
+            textInput.value = "";
+            syncPillBuilder(root);
+        });
+
+        textInput.addEventListener("input", function onPillInput() {
+            requestProgressRefresh(root);
+        });
+
+        if (frame) {
+            frame.addEventListener("click", function onFrameClick(event) {
+                var target = event.target;
+                if (target && target.closest && target.closest(".pill-item-remove")) {
+                    return;
+                }
+                textInput.focus();
+            });
+        }
+
+        syncPillBuilder(root);
+    }
+
+    function initChoiceLimitGroups(form) {
+        Array.prototype.slice.call(form.querySelectorAll("[data-choice-limit-group]")).forEach(function eachGroup(group) {
+            var limit = Number(group.getAttribute("data-choice-limit") || "0");
+            if (!limit || limit < 1) {
+                return;
+            }
+
+            var checkboxes = Array.prototype.slice.call(group.querySelectorAll("input[type='checkbox']"));
+            if (checkboxes.length === 0) {
+                return;
+            }
+
+            function checkedCount() {
+                return checkboxes.filter(function isChecked(input) {
+                    return !!input.checked;
+                }).length;
+            }
+
+            function syncDisabledState() {
+                var atLimit = checkedCount() >= limit;
+                checkboxes.forEach(function eachCheckbox(input) {
+                    if (!input.checked) {
+                        input.disabled = atLimit;
+                    } else {
+                        input.disabled = false;
+                    }
+                });
+                group.classList.toggle("is-at-limit", atLimit);
+            }
+
+            checkboxes.forEach(function bindCheckbox(input) {
+                input.addEventListener("change", function onCheckboxChange() {
+                    syncDisabledState();
+                    requestProgressRefresh(group);
+                });
+            });
+
+            syncDisabledState();
+        });
+    }
+
+    function initAgePreferenceSliders(form) {
+        Array.prototype.slice.call(form.querySelectorAll("[data-age-pref-slider]")).forEach(function eachSlider(root) {
+            var inputId = root.getAttribute("data-target-input-id");
+            var hiddenInput = inputId ? document.getElementById(inputId) : null;
+            var parentSection = root.closest ? root.closest(".trip-form-section") : null;
+            var shell = root.querySelector("[data-age-pref-shell]");
+            var track = root.querySelector("[data-age-pref-track]");
+            var fill = root.querySelector("[data-age-pref-fill]");
+            var minThumb = root.querySelector("[data-age-pref-thumb='min']");
+            var maxThumb = root.querySelector("[data-age-pref-thumb='max']");
+            var label = root.querySelector("[data-age-pref-label]");
+            var minValueText = root.querySelector("[data-age-pref-min-value]");
+            var maxValueText = root.querySelector("[data-age-pref-max-value]");
+            if (!hiddenInput || !shell || !track || !fill || !minThumb || !maxThumb) {
+                return;
+            }
+
+            var minBound = Number(root.getAttribute("data-age-min") || "18");
+            var maxBound = Number(root.getAttribute("data-age-max") || "70");
+            if (!isFinite(minBound) || !isFinite(maxBound) || maxBound <= minBound) {
+                minBound = 18;
+                maxBound = 70;
+            }
+
+            var state = {
+                minAge: minBound,
+                maxAge: maxBound,
+                dragKind: null
+            };
+            var pendingLayoutRaf = 0;
+
+            function clampAge(value) {
+                return Math.max(minBound, Math.min(maxBound, Math.round(value)));
+            }
+
+            function percentForAge(age) {
+                var span = Math.max(1, maxBound - minBound);
+                return ((age - minBound) / span) * 100;
+            }
+
+            function parseInitialRange() {
+                var raw = String(hiddenInput.value || "").trim();
+                var serverRenderedRaw = String(hiddenInput.defaultValue || "").trim();
+                var matches = raw.match(/(\d{1,3})\D+(\d{1,3})/);
+                var serverMatches = serverRenderedRaw.match(/(\d{1,3})\D+(\d{1,3})/);
+                if (!matches) {
+                    if (serverMatches) {
+                        var fallbackServerMin = clampAge(Number(serverMatches[1] || minBound));
+                        var fallbackServerMax = clampAge(Number(serverMatches[2] || maxBound));
+                        state.minAge = Math.min(fallbackServerMin, fallbackServerMax);
+                        state.maxAge = Math.max(fallbackServerMin, fallbackServerMax);
+                    }
+                    return;
+                }
+                var parsedMin = clampAge(Number(matches[1] || minBound));
+                var parsedMax = clampAge(Number(matches[2] || maxBound));
+                if (serverMatches) {
+                    var serverMin = clampAge(Number(serverMatches[1] || minBound));
+                    var serverMax = clampAge(Number(serverMatches[2] || maxBound));
+                    if (
+                        parsedMin === minBound &&
+                        parsedMax === minBound &&
+                        !(serverMin === minBound && serverMax === minBound)
+                    ) {
+                        state.minAge = Math.min(serverMin, serverMax);
+                        state.maxAge = Math.max(serverMin, serverMax);
+                        return;
+                    }
+                } else if (parsedMin === minBound && parsedMax === minBound) {
+                    state.minAge = minBound;
+                    state.maxAge = maxBound;
+                    return;
+                }
+                state.minAge = Math.min(parsedMin, parsedMax);
+                state.maxAge = Math.max(parsedMin, parsedMax);
+            }
+
+            function setActiveThumb(kind) {
+                root.classList.toggle("is-min-active", kind === "min");
+                root.classList.toggle("is-max-active", kind === "max");
+            }
+
+            function setDragging(isDragging) {
+                root.classList.toggle("is-dragging", !!isDragging);
+            }
+
+            function getTrackMetrics() {
+                var shellRect = shell.getBoundingClientRect();
+                var trackRect = track.getBoundingClientRect();
+                return {
+                    startPx: trackRect.left - shellRect.left,
+                    widthPx: trackRect.width
+                };
+            }
+
+            function syncOutput() {
+                hiddenInput.value = String(state.minAge) + "-" + String(state.maxAge);
+                if (label) {
+                    label.textContent = String(state.minAge) + "-" + String(state.maxAge);
+                }
+                if (minValueText) {
+                    minValueText.textContent = String(state.minAge);
+                }
+                if (maxValueText) {
+                    maxValueText.textContent = String(state.maxAge);
+                }
+                minThumb.setAttribute("aria-valuemin", String(minBound));
+                minThumb.setAttribute("aria-valuemax", String(state.maxAge));
+                minThumb.setAttribute("aria-valuenow", String(state.minAge));
+                maxThumb.setAttribute("aria-valuemin", String(state.minAge));
+                maxThumb.setAttribute("aria-valuemax", String(maxBound));
+                maxThumb.setAttribute("aria-valuenow", String(state.maxAge));
+            }
+
+            function render() {
+                state.minAge = clampAge(state.minAge);
+                state.maxAge = clampAge(state.maxAge);
+                if (state.minAge > state.maxAge) {
+                    state.minAge = state.maxAge;
+                }
+                if (state.maxAge < state.minAge) {
+                    state.maxAge = state.minAge;
+                }
+
+                var minPercent = percentForAge(state.minAge);
+                var maxPercent = percentForAge(state.maxAge);
+                fill.style.left = String(minPercent) + "%";
+                fill.style.width = String(Math.max(0, maxPercent - minPercent)) + "%";
+
+                var metrics = getTrackMetrics();
+                if (metrics.widthPx <= 1) {
+                    syncOutput();
+                    requestProgressRefresh(root);
+                    return;
+                }
+
+                var usableWidth = metrics.widthPx;
+                var minLeftPx = metrics.startPx + (usableWidth * minPercent) / 100;
+                var maxLeftPx = metrics.startPx + (usableWidth * maxPercent) / 100;
+                minThumb.style.left = String(minLeftPx) + "px";
+                maxThumb.style.left = String(maxLeftPx) + "px";
+
+                syncOutput();
+                requestProgressRefresh(root);
+            }
+
+            function cancelPendingLayoutRender() {
+                if (!pendingLayoutRaf) {
+                    return;
+                }
+                window.cancelAnimationFrame(pendingLayoutRaf);
+                pendingLayoutRaf = 0;
+            }
+
+            function renderWhenLaidOut(maxAttempts) {
+                var attemptsLeft = typeof maxAttempts === "number" ? maxAttempts : 12;
+                cancelPendingLayoutRender();
+
+                function tryRender() {
+                    pendingLayoutRaf = 0;
+                    var width = track.getBoundingClientRect().width;
+                    if (width > 1) {
+                        render();
+                        return;
+                    }
+                    if (attemptsLeft <= 0) {
+                        render();
+                        return;
+                    }
+                    attemptsLeft -= 1;
+                    pendingLayoutRaf = window.requestAnimationFrame(tryRender);
+                }
+
+                pendingLayoutRaf = window.requestAnimationFrame(tryRender);
+            }
+
+            function ageFromClientX(clientX) {
+                var rect = track.getBoundingClientRect();
+                if (!rect.width) {
+                    return null;
+                }
+                var boundedX = Math.max(rect.left, Math.min(rect.right, clientX));
+                var ratio = (boundedX - rect.left) / rect.width;
+                var raw = minBound + ratio * (maxBound - minBound);
+                return clampAge(raw);
+            }
+
+            function chooseClosestThumb(clientX) {
+                var targetAge = ageFromClientX(clientX);
+                if (targetAge === null) {
+                    return "min";
+                }
+                return Math.abs(targetAge - state.minAge) <= Math.abs(targetAge - state.maxAge) ? "min" : "max";
+            }
+
+            function updateFromPointer(clientX) {
+                var nextAge = ageFromClientX(clientX);
+                if (nextAge === null) {
+                    return;
+                }
+                if (state.dragKind === "min") {
+                    state.minAge = Math.min(nextAge, state.maxAge);
+                } else if (state.dragKind === "max") {
+                    state.maxAge = Math.max(nextAge, state.minAge);
+                }
+                render();
+            }
+
+            function onPointerMove(event) {
+                if (!state.dragKind) {
+                    return;
+                }
+                updateFromPointer(event.clientX);
+            }
+
+            function stopDrag() {
+                if (!state.dragKind) {
+                    return;
+                }
+                state.dragKind = null;
+                setDragging(false);
+                window.removeEventListener("pointermove", onPointerMove);
+                window.removeEventListener("pointerup", onPointerUp);
+                window.removeEventListener("pointercancel", onPointerUp);
+            }
+
+            function onPointerUp() {
+                stopDrag();
+            }
+
+            function startDrag(kind, event, jumpToPointer) {
+                event.preventDefault();
+                state.dragKind = kind;
+                setActiveThumb(kind);
+                setDragging(true);
+                renderWhenLaidOut(4);
+                if (jumpToPointer) {
+                    updateFromPointer(event.clientX);
+                }
+                window.addEventListener("pointermove", onPointerMove);
+                window.addEventListener("pointerup", onPointerUp);
+                window.addEventListener("pointercancel", onPointerUp);
+            }
+
+            shell.addEventListener("pointerdown", function onShellPointerDown(event) {
+                if (event.target === minThumb || event.target === maxThumb) {
+                    return;
+                }
+                renderWhenLaidOut(4);
+                startDrag(chooseClosestThumb(event.clientX), event, true);
+            });
+
+            minThumb.addEventListener("pointerdown", function onMinPointerDown(event) {
+                event.stopPropagation();
+                startDrag("min", event, false);
+            });
+
+            maxThumb.addEventListener("pointerdown", function onMaxPointerDown(event) {
+                event.stopPropagation();
+                startDrag("max", event, false);
+            });
+
+            minThumb.addEventListener("focus", function onMinFocus() {
+                setActiveThumb("min");
+            });
+
+            maxThumb.addEventListener("focus", function onMaxFocus() {
+                setActiveThumb("max");
+            });
+
+            function handleKeyboard(kind, event) {
+                var delta = 0;
+                if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+                    delta = -1;
+                } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+                    delta = 1;
+                } else if (event.key === "PageDown") {
+                    delta = -5;
+                } else if (event.key === "PageUp") {
+                    delta = 5;
+                } else if (event.key === "Home") {
+                    event.preventDefault();
+                    setActiveThumb(kind);
+                    if (kind === "min") {
+                        state.minAge = minBound;
+                    } else {
+                        state.maxAge = state.minAge;
+                    }
+                    render();
+                    return;
+                } else if (event.key === "End") {
+                    event.preventDefault();
+                    setActiveThumb(kind);
+                    if (kind === "max") {
+                        state.maxAge = maxBound;
+                    } else {
+                        state.minAge = state.maxAge;
+                    }
+                    render();
+                    return;
+                } else {
+                    return;
+                }
+
+                event.preventDefault();
+                setActiveThumb(kind);
+                if (kind === "min") {
+                    state.minAge = Math.min(state.maxAge, state.minAge + delta);
+                } else {
+                    state.maxAge = Math.max(state.minAge, state.maxAge + delta);
+                }
+                render();
+            }
+
+            minThumb.addEventListener("keydown", function onMinKeydown(event) {
+                handleKeyboard("min", event);
+            });
+
+            maxThumb.addEventListener("keydown", function onMaxKeydown(event) {
+                handleKeyboard("max", event);
+            });
+
+            window.addEventListener("resize", function onAgeSliderResize() {
+                renderWhenLaidOut(8);
+            });
+
+            if (parentSection) {
+                parentSection.addEventListener("trip-section-visibility-changed", function onSectionVisibilityChanged(event) {
+                    var detail = event && event.detail ? event.detail : null;
+                    if (detail && detail.collapsed) {
+                        return;
+                    }
+                    renderWhenLaidOut(18);
+                });
+            }
+
+            parseInitialRange();
+            renderWhenLaidOut(18);
+        });
     }
 
     function initSectionIndex(form) {
@@ -428,6 +970,9 @@
             if (!control || control.disabled) {
                 return false;
             }
+            if (control.hasAttribute && control.hasAttribute("data-progress-ignore")) {
+                return false;
+            }
             var type = String(control.type || "").toLowerCase();
             return !(
                 type === "hidden" ||
@@ -462,13 +1007,16 @@
             var controls = Array.prototype.slice.call(section.querySelectorAll("input, select, textarea"))
                 .filter(isTrackableControl);
             if (controls.length === 0) {
-                return false;
+                return section.querySelectorAll("[data-pill-item]").length > 0;
             }
             var requiredControls = controls.filter(function onlyRequired(control) {
                 return !!control.required;
             });
             if (requiredControls.length > 0) {
                 return requiredControls.every(controlHasValue);
+            }
+            if (section.querySelectorAll("[data-pill-item]").length > 0) {
+                return true;
             }
             return controls.some(controlHasValue);
         }
@@ -541,6 +1089,10 @@
                 header.setAttribute("aria-expanded", String(!isCollapsed));
                 header.setAttribute("title", isCollapsed ? "Expand section" : "Collapse section");
                 notation.textContent = isCollapsed ? "▸" : "▾";
+                section.dispatchEvent(new CustomEvent("trip-section-visibility-changed", {
+                    bubbles: true,
+                    detail: { collapsed: isCollapsed }
+                }));
             }
 
             section.__tripSetCollapsed = function setCollapsed(nextCollapsed) {
@@ -766,14 +1318,18 @@
 
     initCollapsibleSections(form);
     initMediaDropzones(form);
+    initChoiceLimitGroups(form);
+    initAgePreferenceSliders(form);
     initSectionIndex(form);
     initTripProgress(form);
     Array.prototype.slice.call(form.querySelectorAll("[data-list-builder]")).forEach(initListBuilder);
+    Array.prototype.slice.call(form.querySelectorAll("[data-pill-builder]")).forEach(initPillBuilder);
     Array.prototype.slice.call(form.querySelectorAll("[data-day-builder]")).forEach(initDayBuilder);
     Array.prototype.slice.call(form.querySelectorAll("[data-faq-builder]")).forEach(initFaqBuilder);
 
     form.addEventListener("submit", function onSubmit() {
         Array.prototype.slice.call(form.querySelectorAll("[data-list-builder]")).forEach(syncListBuilder);
+        Array.prototype.slice.call(form.querySelectorAll("[data-pill-builder]")).forEach(syncPillBuilder);
         Array.prototype.slice.call(form.querySelectorAll("[data-day-builder]")).forEach(syncDayBuilder);
         Array.prototype.slice.call(form.querySelectorAll("[data-faq-builder]")).forEach(syncFaqBuilder);
     });

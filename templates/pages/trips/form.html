@@ -61,6 +61,10 @@
         {{ form.things_to_carry_payload }}
         {{ form.itinerary_days_payload }}
         {{ form.faqs_payload }}
+        {{ form.approximate_flight_cost.as_hidden }}
+        {{ form.optional_activities_cost.as_hidden }}
+        {{ form.buffer_budget_suggestion.as_hidden }}
+        {{ form.personal_shopping_estimate.as_hidden }}
 
         <p class="detail-meta">Date/time fields use {{ form_timezone_label|default:"UTC" }}.</p>
 
@@ -273,43 +277,28 @@
             </div>
         </article>
 
-        <article class="trip-form-section" id="trip-section-extras" data-index-label="Extra Spend">
-            <header class="trip-form-section-header">
-                <h2><span class="section-logo" aria-hidden="true">🛍️</span>Extra Things Participants Might Spend On</h2>
-            </header>
-            <div class="trip-form-grid trip-form-grid-2">
-                <div class="form-field">
-                    <label for="{{ form.approximate_flight_cost.id_for_label }}">Approximate Flight Cost</label>
-                    {{ form.approximate_flight_cost }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.optional_activities_cost.id_for_label }}">Optional Activities Cost</label>
-                    {{ form.optional_activities_cost }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.buffer_budget_suggestion.id_for_label }}">Buffer Budget Suggestion</label>
-                    {{ form.buffer_budget_suggestion }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.personal_shopping_estimate.id_for_label }}">Personal Shopping Estimate</label>
-                    {{ form.personal_shopping_estimate }}
-                </div>
-            </div>
-        </article>
-
         <article class="trip-form-section" id="trip-section-carry" data-index-label="Things to Carry">
             <header class="trip-form-section-header">
                 <h2><span class="section-logo" aria-hidden="true">🎒</span>Things to Carry</h2>
             </header>
             <div
-                class="dynamic-list-builder"
-                data-list-builder
+                class="pill-input-builder"
+                data-pill-builder
                 data-target-input-id="{{ form.things_to_carry_payload.id_for_label }}"
                 data-item-label="Carry item"
                 data-item-example="e.g. Light rain jacket"
             >
-                <div class="dynamic-list-items" data-list-items></div>
-                <button class="btn btn-secondary" type="button" data-list-add>+ Add Item</button>
+                <div class="pill-input-frame" data-pill-frame>
+                    <div class="pill-input-items" data-pill-items></div>
+                    <input
+                        class="pill-input-field"
+                        type="text"
+                        data-pill-input
+                        placeholder="Type an item and press Enter"
+                        aria-label="Add item to things to carry"
+                    >
+                </div>
+                <p class="detail-meta">Press Enter or comma to add a pill. Click × to remove.</p>
             </div>
         </article>
 
@@ -329,46 +318,87 @@
             </div>
             <div class="form-field">
                 <label>Suitable For</label>
-                {{ form.suitable_for_choices }}
+                <div class="choice-limit-group" data-choice-limit-group data-choice-limit="3">
+                    {{ form.suitable_for_choices }}
+                </div>
+                <p class="detail-meta">Choose up to 3.</p>
+                {% for error in form.suitable_for_choices.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
             <div class="form-field">
                 <label>Trip Vibe</label>
-                {{ form.trip_vibe_choices }}
+                <div class="choice-limit-group" data-choice-limit-group data-choice-limit="5">
+                    {{ form.trip_vibe_choices }}
+                </div>
+                <p class="detail-meta">Choose up to 5.</p>
+                {% for error in form.trip_vibe_choices.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
-            <div class="trip-form-grid trip-form-grid-2">
-                <div class="form-field">
-                    <label for="{{ form.gender_preference.id_for_label }}">Gender Preference</label>
-                    {{ form.gender_preference }}
+            <div class="form-field">
+                <label for="{{ form.age_preference.id_for_label }}">Age Preference</label>
+                {{ form.age_preference.as_hidden }}
+                <div
+                    class="age-pref-slider"
+                    data-age-pref-slider
+                    data-target-input-id="{{ form.age_preference.id_for_label }}"
+                    data-age-min="13"
+                    data-age-max="70"
+                >
+                    <div class="age-pref-slider-summary">
+                        <span class="age-pref-slider-pill" data-age-pref-label>13-70</span>
+                    </div>
+                    <div class="age-pref-slider-shell" data-age-pref-shell data-progress-ignore aria-label="Age preference range">
+                        <div class="age-pref-slider-track" data-age-pref-track aria-hidden="true">
+                            <div class="age-pref-slider-fill" data-age-pref-fill aria-hidden="true"></div>
+                        </div>
+                        <button
+                            type="button"
+                            class="age-pref-slider-thumb is-min"
+                            data-age-pref-thumb="min"
+                            aria-label="Min Age"
+                            role="slider"
+                            aria-valuemin="13"
+                            aria-valuemax="70"
+                            aria-valuenow="13"
+                        ></button>
+                        <button
+                            type="button"
+                            class="age-pref-slider-thumb is-max"
+                            data-age-pref-thumb="max"
+                            aria-label="Max Age"
+                            role="slider"
+                            aria-valuemin="13"
+                            aria-valuemax="70"
+                            aria-valuenow="70"
+                        ></button>
+                    </div>
+                    <div class="age-pref-slider-values">
+                        <div class="age-pref-slider-value">
+                            <span>Min Age</span>
+                            <strong data-age-pref-min-value>13</strong>
+                        </div>
+                        <div class="age-pref-slider-value">
+                            <span>Max Age</span>
+                            <strong data-age-pref-max-value>70</strong>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label for="{{ form.age_preference.id_for_label }}">Age Preference</label>
-                    {{ form.age_preference }}
-                </div>
+                <p class="detail-meta">Set the minimum and maximum participant age range.</p>
+                {% for error in form.age_preference.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
-            <div class="trip-form-grid trip-form-grid-4">
-                <div class="form-field">
-                    <label for="{{ form.budget_tier.id_for_label }}">Budget Tier</label>
-                    {{ form.budget_tier }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.difficulty_level.id_for_label }}">Difficulty</label>
-                    {{ form.difficulty_level }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.pace_level.id_for_label }}">Pace</label>
-                    {{ form.pace_level }}
-                </div>
-                <div class="form-field">
-                    <label for="{{ form.group_size_label.id_for_label }}">Group Size</label>
-                    {{ form.group_size_label }}
-                </div>
-            </div>
+            {{ form.gender_preference.as_hidden }}
+            {{ form.budget_tier.as_hidden }}
+            {{ form.difficulty_level.as_hidden }}
+            {{ form.pace_level.as_hidden }}
+            {{ form.group_size_label.as_hidden }}
         </article>
 
         <article class="trip-form-section" id="trip-section-safety" data-index-label="Safety and Policies">
             <header class="trip-form-section-header">
                 <h2><span class="section-logo" aria-hidden="true">🛡️</span>Safety and Policies</h2>
             </header>
+            <div class="form-field">
+                <label for="{{ form.general_policies.id_for_label }}">General Policies</label>
+                {{ form.general_policies }}
+            </div>
             <div class="form-field">
                 <label for="{{ form.code_of_conduct.id_for_label }}">Code of Conduct</label>
                 {{ form.code_of_conduct }}
@@ -377,16 +407,8 @@
                 <label for="{{ form.cancellation_policy.id_for_label }}">Cancellation Policy</label>
                 {{ form.cancellation_policy }}
             </div>
-            <div class="form-field">
-                <label class="inline-checkbox-label" for="{{ form.medical_declaration_required.id_for_label }}">
-                    {{ form.medical_declaration_required }} Medical Declaration Required?
-                </label>
-            </div>
-            <div class="form-field">
-                <label class="inline-checkbox-label" for="{{ form.emergency_contact_required.id_for_label }}">
-                    {{ form.emergency_contact_required }} Emergency Contact Required?
-                </label>
-            </div>
+            {{ form.medical_declaration_required.as_hidden }}
+            {{ form.emergency_contact_required.as_hidden }}
         </article>
 
         <article class="trip-form-section" id="trip-section-faqs" data-index-label="FAQs">
@@ -403,23 +425,22 @@
             <header class="trip-form-section-header">
                 <h2><span class="section-logo" aria-hidden="true">🧑‍💼</span>Host Information</h2>
             </header>
-            <p class="detail-meta">Host account: @{{ request.user.username }}{% if request.user.email %} - {{ request.user.email }}{% endif %}</p>
+            <p class="detail-meta">Posted by: @{{ request.user.username }}{% if request.user.email %} - {{ request.user.email }}{% endif %}</p>
             <div class="trip-form-grid trip-form-grid-2">
                 <div class="form-field">
-                    <label for="{{ form.contact_preference.id_for_label }}">Contact Preference</label>
                     {{ form.contact_preference }}
+                    <label>Contact Preference</label>
+                    <div class="choice-limit-group">
+                        {{ form.contact_preference_choices }}
+                    </div>
                 </div>
                 <div class="form-field">
-                    <label for="{{ form.co_hosts.id_for_label }}">Co-hosts</label>
+                    <label for="{{ form.co_hosts.id_for_label }}">Hosts</label>
                     {{ form.co_hosts }}
                     <p class="detail-meta">Comma-separated names or usernames.</p>
                 </div>
             </div>
-            <div class="form-field">
-                <label class="inline-checkbox-label" for="{{ form.is_published.id_for_label }}">
-                    {{ form.is_published }} Publish immediately
-                </label>
-            </div>
+            {{ form.is_published.as_hidden }}
         </article>
 
         <div class="inline-actions trip-form-bottom-actions">
