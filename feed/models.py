@@ -19,6 +19,7 @@ class TripData(TypedDict):
     title: str
     summary: NotRequired[str]
     description: NotRequired[str]
+    description_html: NotRequired[str]
     destination: NotRequired[str]
     banner_image_url: NotRequired[str]
     host_username: NotRequired[str]
@@ -194,12 +195,18 @@ DEMO_TRIPS: tuple[TripData, ...] = (
 )
 
 TRIP_TYPE_LABELS: dict[str, str] = {
-    "food-culture": "Food & Culture",
-    "trekking": "Trekking",
-    "desert": "Desert Route",
-    "city": "City Discovery",
-    "coastal": "Coastal Escape",
-    "adventure": "Adventure",
+    "city": "City Break",
+    "culture-heritage": "Culture & Heritage",
+    "food-culture": "Food & Culinary",
+    "trekking": "Trekking & Hiking",
+    "coastal": "Beach & Coastal",
+    "desert": "Desert Expedition",
+    "wildlife": "Wildlife & Safari",
+    "road-trip": "Road Trip",
+    "camping": "Camping",
+    "wellness": "Wellness Retreat",
+    "adventure-sports": "Adventure Sports",
+    "adventure": "Adventure Sports",
 }
 DEFAULT_TRIP_BANNER_PATH: str = "img/trip-banners/adventure.svg"
 TRIP_TYPE_BANNER_PATHS: dict[str, str] = {
@@ -208,6 +215,12 @@ TRIP_TYPE_BANNER_PATHS: dict[str, str] = {
     "desert": "img/trip-banners/desert.svg",
     "city": "img/trip-banners/city.svg",
     "coastal": "img/trip-banners/coastal.svg",
+    "culture-heritage": "img/trip-banners/city.svg",
+    "wildlife": "img/trip-banners/adventure.svg",
+    "road-trip": "img/trip-banners/adventure.svg",
+    "camping": "img/trip-banners/trekking.svg",
+    "wellness": "img/trip-banners/coastal.svg",
+    "adventure-sports": "img/trip-banners/adventure.svg",
     "adventure": DEFAULT_TRIP_BANNER_PATH,
 }
 BUDGET_LABELS: dict[str, str] = {
@@ -442,15 +455,27 @@ def _duration_bucket(days: int) -> str:
 def _infer_trip_type(text_blob: str) -> str:
     if any(token in text_blob for token in ("food", "culinary", "souk", "market", "tea", "izakaya")):
         return "food-culture"
+    if any(token in text_blob for token in ("culture", "heritage", "museum", "temple", "history", "fort")):
+        return "culture-heritage"
     if any(token in text_blob for token in ("desert", "sahara", "dune")):
         return "desert"
-    if any(token in text_blob for token in ("trek", "hike", "mountain", "camp", "ridge", "alpine")):
+    if any(token in text_blob for token in ("trek", "hike", "mountain", "ridge", "alpine")):
         return "trekking"
+    if any(token in text_blob for token in ("camp", "camping", "campsite")):
+        return "camping"
+    if any(token in text_blob for token in ("safari", "wildlife", "national park", "birding")):
+        return "wildlife"
+    if any(token in text_blob for token in ("road trip", "drive", "self-drive", "highway")):
+        return "road-trip"
+    if any(token in text_blob for token in ("retreat", "wellness", "spa", "yoga", "meditation")):
+        return "wellness"
+    if any(token in text_blob for token in ("rafting", "kayak", "bungee", "paragliding", "adrenaline")):
+        return "adventure-sports"
     if any(token in text_blob for token in ("city", "urban", "neighborhood", "street", "lanes")):
         return "city"
     if any(token in text_blob for token in ("shore", "beach", "island", "sea")):
         return "coastal"
-    return "adventure"
+    return "culture-heritage"
 
 
 def _infer_budget_tier(text_blob: str, trip_type: str) -> str:
@@ -458,7 +483,7 @@ def _infer_budget_tier(text_blob: str, trip_type: str) -> str:
         return "premium"
     if any(token in text_blob for token in ("budget", "backpack", "hostel")):
         return "budget"
-    if trip_type in {"trekking", "coastal"}:
+    if trip_type in {"trekking", "coastal", "wildlife"}:
         return "premium"
     return "mid"
 
@@ -468,7 +493,7 @@ def _infer_difficulty(text_blob: str, trip_type: str) -> str:
         return "easy"
     if any(token in text_blob for token in ("advanced", "technical", "steep", "high-altitude", "challenging")):
         return "challenging"
-    if trip_type == "trekking":
+    if trip_type in {"trekking", "adventure-sports"}:
         return "challenging"
     return "moderate"
 
@@ -490,6 +515,8 @@ def _infer_group_size_label(text_blob: str, trip_type: str) -> str:
         return "6-8 travelers"
     if trip_type == "desert":
         return "8-12 travelers"
+    if trip_type == "wildlife":
+        return "6-8 travelers"
     return "6-10 travelers"
 
 

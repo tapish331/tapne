@@ -14,15 +14,6 @@
         }
     }
 
-    function rowButton(label, onClick) {
-        var button = document.createElement("button");
-        button.type = "button";
-        button.className = "btn btn-ghost";
-        button.textContent = label;
-        button.addEventListener("click", onClick);
-        return button;
-    }
-
     function requestProgressRefresh(root) {
         if (!root || typeof root.closest !== "function") {
             return;
@@ -32,6 +23,539 @@
             return;
         }
         parentForm.dispatchEvent(new Event("trip-progress-refresh"));
+    }
+
+    function hasHtmlMarkup(value) {
+        return /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+    }
+
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function htmlFromPlainText(value) {
+        var text = String(value || "").trim();
+        if (!text) {
+            return "";
+        }
+        return text
+            .split(/\n{2,}/)
+            .map(function eachParagraph(paragraph) {
+                var escaped = escapeHtml(paragraph).replace(/\n/g, "<br>");
+                return "<p>" + escaped + "</p>";
+            })
+            .join("");
+    }
+
+    function normalizeEditorHtml(value) {
+        var html = String(value || "").trim();
+        if (!html) {
+            return "";
+        }
+        var temp = document.createElement("div");
+        temp.innerHTML = html;
+        var plain = String(temp.textContent || "").trim();
+        if (!plain) {
+            return "";
+        }
+        return String(temp.innerHTML || "").trim();
+    }
+
+    function ensureRichTextEditor(textarea, onChange) {
+        if (!textarea || textarea.getAttribute("data-rich-text-ready") === "1") {
+            return;
+        }
+        textarea.setAttribute("data-rich-text-ready", "1");
+
+        var shell = document.createElement("div");
+        shell.className = "rich-text-shell";
+        shell.setAttribute("data-progress-ignore", "1");
+
+        var toolbar = document.createElement("div");
+        toolbar.className = "rich-text-toolbar";
+
+        var editor = document.createElement("div");
+        editor.className = "rich-text-editor";
+        editor.setAttribute("contenteditable", "true");
+        editor.setAttribute("role", "textbox");
+        editor.setAttribute("aria-multiline", "true");
+        editor.setAttribute("data-placeholder", String(textarea.getAttribute("placeholder") || ""));
+
+        function syncTextareaValue() {
+            var normalized = normalizeEditorHtml(editor.innerHTML);
+            textarea.value = normalized;
+            if (typeof onChange === "function") {
+                onChange();
+            }
+        }
+
+        function runCommand(command, value) {
+            editor.focus();
+            document.execCommand("styleWithCSS", false, true);
+            document.execCommand(command, false, value === undefined ? null : value);
+            window.setTimeout(function syncAfterCommand() {
+                syncTextareaValue();
+                updateToolStates();
+            }, 0);
+        }
+
+        function applyColorCommand(command, colorValue) {
+            var normalizedColor = String(colorValue || "").trim();
+            if (!/^#[0-9a-fA-F]{6}$/.test(normalizedColor)) {
+                return;
+            }
+            editor.focus();
+            document.execCommand("styleWithCSS", false, true);
+            if (command === "hiliteColor") {
+                var applied = document.execCommand("hiliteColor", false, normalizedColor);
+                if (!applied) {
+                    document.execCommand("backColor", false, normalizedColor);
+                }
+            } else {
+                document.execCommand("foreColor", false, normalizedColor);
+            }
+            window.setTimeout(function syncAfterColorChange() {
+                syncTextareaValue();
+                updateToolStates();
+            }, 0);
+        }
+
+        function queryCommandStateSafe(command) {
+            try {
+                return !!document.queryCommandState(command);
+            } catch (_error) {
+                return false;
+            }
+        }
+
+        function queryCommandValueSafe(command) {
+            try {
+                return String(document.queryCommandValue(command) || "").toLowerCase();
+            } catch (_error) {
+                return "";
+            }
+        }
+
+        function createToolbarGroup() {
+            var group = document.createElement("div");
+            group.className = "rich-text-toolbar-group";
+            toolbar.appendChild(group);
+            return group;
+        }
+
+        var stateBinders = [];
+        function createToolButton(group, config) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "rich-text-tool";
+            button.setAttribute("aria-label", config.title);
+            button.title = config.title;
+
+            var glyph = document.createElement("span");
+            glyph.className = "rich-text-tool-glyph";
+            glyph.textContent = config.glyph;
+            button.appendChild(glyph);
+
+            button.addEventListener("click", function onToolClick() {
+                if (typeof config.execute === "function") {
+                    config.execute();
+                    return;
+                }
+                runCommand(config.command, config.value);
+            });
+
+            if (typeof config.isActive === "function") {
+                stateBinders.push(function bindState() {
+                    button.classList.toggle("is-active", !!config.isActive());
+                });
+            }
+
+            group.appendChild(button);
+            return button;
+        }
+
+        function updateToolStates() {
+            stateBinders.forEach(function eachBinder(binder) {
+                binder();
+            });
+        }
+
+        function isFormatBlockActive(expectedTag) {
+            var current = queryCommandValueSafe("formatBlock").replace(/[<>]/g, "");
+            return current === String(expectedTag || "").toLowerCase();
+        }
+
+        function createLinkFromSelection() {
+            editor.focus();
+            var provided = window.prompt("Enter URL", "https://");
+            var href = String(provided || "").trim();
+            if (!href) {
+                return;
+            }
+            if (!/^https?:\/\//i.test(href) && !/^mailto:/i.test(href)) {
+                href = "https://" + href;
+            }
+            runCommand("createLink", href);
+        }
+
+        var blockGroup = createToolbarGroup();
+        createToolButton(blockGroup, {
+            glyph: "P",
+            title: "Paragraph",
+            execute: function toParagraph() {
+                runCommand("formatBlock", "<p>");
+            },
+            isActive: function paragraphActive() {
+                var current = queryCommandValueSafe("formatBlock").replace(/[<>]/g, "");
+                return !current || current === "p" || current === "div";
+            }
+        });
+        createToolButton(blockGroup, {
+            glyph: "H2",
+            title: "Heading",
+            execute: function toHeading() {
+                runCommand("formatBlock", "<h2>");
+            },
+            isActive: function headingActive() {
+                return isFormatBlockActive("h2");
+            }
+        });
+        createToolButton(blockGroup, {
+            glyph: "Q",
+            title: "Quote",
+            execute: function toQuote() {
+                runCommand("formatBlock", "<blockquote>");
+            },
+            isActive: function quoteActive() {
+                return isFormatBlockActive("blockquote");
+            }
+        });
+
+        var emphasisGroup = createToolbarGroup();
+        createToolButton(emphasisGroup, {
+            glyph: "B",
+            title: "Bold (Ctrl+B)",
+            command: "bold",
+            isActive: function boldActive() {
+                return queryCommandStateSafe("bold");
+            }
+        });
+        createToolButton(emphasisGroup, {
+            glyph: "I",
+            title: "Italic (Ctrl+I)",
+            command: "italic",
+            isActive: function italicActive() {
+                return queryCommandStateSafe("italic");
+            }
+        });
+        createToolButton(emphasisGroup, {
+            glyph: "U",
+            title: "Underline (Ctrl+U)",
+            command: "underline",
+            isActive: function underlineActive() {
+                return queryCommandStateSafe("underline");
+            }
+        });
+
+        var listGroup = createToolbarGroup();
+        createToolButton(listGroup, {
+            glyph: "UL",
+            title: "Bullet list",
+            command: "insertUnorderedList",
+            isActive: function unorderedListActive() {
+                return queryCommandStateSafe("insertUnorderedList");
+            }
+        });
+        createToolButton(listGroup, {
+            glyph: "OL",
+            title: "Numbered list",
+            command: "insertOrderedList",
+            isActive: function orderedListActive() {
+                return queryCommandStateSafe("insertOrderedList");
+            }
+        });
+
+        var alignGroup = createToolbarGroup();
+        createToolButton(alignGroup, {
+            glyph: "L",
+            title: "Align left",
+            command: "justifyLeft",
+            isActive: function leftActive() {
+                return queryCommandStateSafe("justifyLeft");
+            }
+        });
+        createToolButton(alignGroup, {
+            glyph: "C",
+            title: "Align center",
+            command: "justifyCenter",
+            isActive: function centerActive() {
+                return queryCommandStateSafe("justifyCenter");
+            }
+        });
+        createToolButton(alignGroup, {
+            glyph: "R",
+            title: "Align right",
+            command: "justifyRight",
+            isActive: function rightActive() {
+                return queryCommandStateSafe("justifyRight");
+            }
+        });
+
+        var linkGroup = createToolbarGroup();
+        createToolButton(linkGroup, {
+            glyph: "Link",
+            title: "Insert link",
+            execute: createLinkFromSelection
+        });
+        createToolButton(linkGroup, {
+            glyph: "Unlink",
+            title: "Remove link",
+            command: "unlink"
+        });
+        createToolButton(linkGroup, {
+            glyph: "Clear",
+            title: "Clear formatting",
+            execute: function clearFormatting() {
+                editor.focus();
+                document.execCommand("removeFormat", false, null);
+                document.execCommand("unlink", false, null);
+                window.setTimeout(function syncAfterClear() {
+                    syncTextareaValue();
+                    updateToolStates();
+                }, 0);
+            }
+        });
+
+        var historyGroup = createToolbarGroup();
+        createToolButton(historyGroup, {
+            glyph: "Undo",
+            title: "Undo",
+            command: "undo"
+        });
+        createToolButton(historyGroup, {
+            glyph: "Redo",
+            title: "Redo",
+            command: "redo"
+        });
+
+        var colorGroup = createToolbarGroup();
+        function createColorTool(label, command, defaultColor) {
+            var wrapper = document.createElement("label");
+            wrapper.className = "rich-text-color-tool";
+            wrapper.title = label;
+
+            var hint = document.createElement("span");
+            hint.className = "rich-text-color-label";
+            hint.textContent = label;
+
+            var input = document.createElement("input");
+            input.className = "rich-text-color-input";
+            input.type = "color";
+            input.value = defaultColor;
+            input.setAttribute("aria-label", label);
+            input.addEventListener("input", function onColorChange() {
+                applyColorCommand(command, input.value);
+            });
+
+            wrapper.appendChild(hint);
+            wrapper.appendChild(input);
+            colorGroup.appendChild(wrapper);
+        }
+
+        createColorTool("Text", "foreColor", "#0f172a");
+        createColorTool("Highlight", "hiliteColor", "#fde68a");
+
+        var initialValue = String(textarea.value || "");
+        if (initialValue.trim()) {
+            editor.innerHTML = hasHtmlMarkup(initialValue) ? initialValue : htmlFromPlainText(initialValue);
+            syncTextareaValue();
+        } else {
+            editor.innerHTML = "";
+        }
+
+        editor.addEventListener("input", function onEditorInput() {
+            syncTextareaValue();
+            updateToolStates();
+        });
+        editor.addEventListener("blur", syncTextareaValue);
+        editor.addEventListener("keyup", updateToolStates);
+        editor.addEventListener("mouseup", updateToolStates);
+        editor.addEventListener("focus", updateToolStates);
+        editor.addEventListener("paste", function onPaste(event) {
+            event.preventDefault();
+            var clipboard = (event.clipboardData || window.clipboardData);
+            var pastedText = clipboard ? String(clipboard.getData("text/plain") || "") : "";
+            document.execCommand("insertText", false, pastedText);
+        });
+
+        document.addEventListener("selectionchange", function onSelectionChange() {
+            if (document.activeElement === editor || editor.contains(document.activeElement)) {
+                updateToolStates();
+            }
+        });
+
+        textarea.classList.add("rich-text-source");
+        textarea.parentNode.insertBefore(shell, textarea);
+        shell.appendChild(toolbar);
+        shell.appendChild(editor);
+        shell.appendChild(textarea);
+        updateToolStates();
+    }
+
+    function createDragHandle(label) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "dynamic-row-handle";
+        button.setAttribute("data-row-drag-handle", "1");
+        button.setAttribute("draggable", "true");
+        button.setAttribute("aria-label", label);
+        button.title = label;
+        button.textContent = "⋮⋮";
+        return button;
+    }
+
+    function createRowRemoveButton(label, onClick) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "dynamic-row-remove";
+        button.setAttribute("aria-label", label);
+        button.title = label;
+        button.textContent = "×";
+        button.addEventListener("click", function onRemoveClick(event) {
+            event.preventDefault();
+            onClick();
+        });
+        return button;
+    }
+
+    function bindReorderableRows(itemsHost, rowSelector, onReorder) {
+        if (!itemsHost || itemsHost.getAttribute("data-reorder-ready") === "1") {
+            return;
+        }
+        itemsHost.setAttribute("data-reorder-ready", "1");
+        var activeRow = null;
+        var hoverRow = null;
+        var dragImageNode = null;
+
+        function clearHoverRow() {
+            if (!hoverRow) {
+                return;
+            }
+            hoverRow.classList.remove("is-drop-target");
+            hoverRow = null;
+        }
+
+        function removeDragImageNode() {
+            if (!dragImageNode) {
+                return;
+            }
+            dragImageNode.remove();
+            dragImageNode = null;
+        }
+
+        function resetActiveRow() {
+            if (activeRow) {
+                activeRow.classList.remove("is-dragging");
+            }
+            clearHoverRow();
+            removeDragImageNode();
+            itemsHost.classList.remove("is-reordering");
+            activeRow = null;
+        }
+
+        itemsHost.addEventListener("dragstart", function onDragStart(event) {
+            var target = event.target;
+            var handle = target && target.closest ? target.closest("[data-row-drag-handle]") : null;
+            if (!handle) {
+                event.preventDefault();
+                return;
+            }
+            var sourceRow = handle.closest(rowSelector);
+            if (!sourceRow) {
+                event.preventDefault();
+                return;
+            }
+            var sourceBounds = sourceRow.getBoundingClientRect();
+            activeRow = sourceRow;
+            activeRow.classList.add("is-dragging");
+            itemsHost.classList.add("is-reordering");
+            if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = "move";
+                try {
+                    event.dataTransfer.setData("text/plain", "drag-row");
+                } catch (_error) {
+                    // Ignore setData errors for browsers that restrict drag payloads.
+                }
+
+                // Use a custom drag image so the full row appears to float with the cursor.
+                dragImageNode = sourceRow.cloneNode(true);
+                dragImageNode.classList.add("dynamic-row-drag-image");
+                dragImageNode.style.width = String(Math.max(220, Math.ceil(sourceBounds.width))) + "px";
+                dragImageNode.style.height = String(Math.max(44, Math.ceil(sourceBounds.height))) + "px";
+                dragImageNode.style.left = "-9999px";
+                dragImageNode.style.top = "-9999px";
+                document.body.appendChild(dragImageNode);
+                try {
+                    var pointerOffsetX = Math.max(18, Math.min(Math.ceil(sourceBounds.width * 0.18), 76));
+                    var pointerOffsetY = Math.max(16, Math.min(Math.ceil(sourceBounds.height * 0.45), 44));
+                    event.dataTransfer.setDragImage(dragImageNode, pointerOffsetX, pointerOffsetY);
+                } catch (_error) {
+                    // Keep default browser drag image as fallback.
+                }
+            }
+        });
+
+        itemsHost.addEventListener("dragover", function onDragOver(event) {
+            if (!activeRow) {
+                return;
+            }
+            var target = event.target;
+            var targetRow = target && target.closest ? target.closest(rowSelector) : null;
+            if (!targetRow || targetRow === activeRow) {
+                return;
+            }
+            event.preventDefault();
+            var bounds = targetRow.getBoundingClientRect();
+            var insertBefore = (event.clientY - bounds.top) < bounds.height / 2;
+            if (hoverRow !== targetRow) {
+                clearHoverRow();
+                targetRow.classList.add("is-drop-target");
+                hoverRow = targetRow;
+            }
+            itemsHost.insertBefore(activeRow, insertBefore ? targetRow : targetRow.nextSibling);
+        });
+
+        itemsHost.addEventListener("drop", function onDrop(event) {
+            if (!activeRow) {
+                return;
+            }
+            event.preventDefault();
+            resetActiveRow();
+            if (typeof onReorder === "function") {
+                onReorder();
+            }
+        });
+
+        itemsHost.addEventListener("dragleave", function onDragLeave(event) {
+            if (!itemsHost.contains(event.relatedTarget)) {
+                clearHoverRow();
+            }
+        });
+
+        itemsHost.addEventListener("dragend", function onDragEnd() {
+            if (!activeRow) {
+                return;
+            }
+            resetActiveRow();
+            if (typeof onReorder === "function") {
+                onReorder();
+            }
+        });
     }
 
     function syncListBuilder(root) {
@@ -55,12 +579,18 @@
 
     function createListRow(root, value) {
         var row = document.createElement("div");
-        row.className = "dynamic-list-row";
+        row.className = "dynamic-list-row dynamic-row-inline";
         row.setAttribute("data-list-row", "1");
+
+        var handle = createDragHandle("Drag to reorder item");
+        var remove = createRowRemoveButton("Remove item", function onRemove() {
+            row.remove();
+            syncListBuilder(root);
+        });
 
         var input = document.createElement("input");
         input.type = "text";
-        input.className = "form-input";
+        input.className = "form-input dynamic-row-inline-input";
         input.setAttribute("data-list-value", "1");
         input.placeholder = root.getAttribute("data-item-example") || root.getAttribute("data-item-label") || "Item";
         input.value = String(value || "");
@@ -68,11 +598,7 @@
             syncListBuilder(root);
         });
 
-        var remove = rowButton("Remove", function onRemove() {
-            row.remove();
-            syncListBuilder(root);
-        });
-
+        row.appendChild(handle);
         row.appendChild(input);
         row.appendChild(remove);
         return row;
@@ -101,7 +627,67 @@
             syncListBuilder(root);
         });
 
+        bindReorderableRows(itemsHost, "[data-list-row]", function onListReorder() {
+            syncListBuilder(root);
+        });
         syncListBuilder(root);
+    }
+
+    function parseDateTimeLocal(value) {
+        var text = String(value || "").trim();
+        if (!text) {
+            return null;
+        }
+        var parts = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+        if (!parts) {
+            return null;
+        }
+        var year = Number(parts[1]);
+        var month = Number(parts[2]) - 1;
+        var day = Number(parts[3]);
+        var hour = Number(parts[4] || 0);
+        var minute = Number(parts[5] || 0);
+        var candidate = new Date(year, month, day, hour, minute, 0, 0);
+        if (!isFinite(candidate.getTime())) {
+            return null;
+        }
+        return candidate;
+    }
+
+    function formatDayDate(dateValue) {
+        if (!(dateValue instanceof Date) || !isFinite(dateValue.getTime())) {
+            return "Date TBD";
+        }
+        return dateValue.toLocaleDateString(undefined, {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+        });
+    }
+
+    function refreshDayRowMeta(root) {
+        var startInputId = String(root.getAttribute("data-start-input-id") || "").trim();
+        var startInput = startInputId ? document.getElementById(startInputId) : null;
+        var startDate = parseDateTimeLocal(startInput ? startInput.value : "");
+
+        Array.prototype.slice.call(root.querySelectorAll("[data-day-row]")).forEach(function eachRow(row, index) {
+            var serialNode = row.querySelector("[data-day-serial]");
+            var dateNode = row.querySelector("[data-day-date]");
+            if (serialNode) {
+                serialNode.textContent = "Day " + String(index);
+            }
+            if (!dateNode) {
+                return;
+            }
+            if (!startDate) {
+                dateNode.textContent = "Date TBD";
+                return;
+            }
+            var currentDate = new Date(startDate.getTime());
+            currentDate.setDate(startDate.getDate() + index);
+            dateNode.textContent = formatDayDate(currentDate);
+        });
     }
 
     function syncDayBuilder(root) {
@@ -126,6 +712,7 @@
             });
 
         hiddenInput.value = JSON.stringify(days);
+        refreshDayRowMeta(root);
         requestProgressRefresh(root);
     }
 
@@ -135,16 +722,45 @@
         row.className = "dynamic-day-row";
         row.setAttribute("data-day-row", "1");
 
-        row.innerHTML = "" +
+        var tools = document.createElement("div");
+        tools.className = "dynamic-day-meta";
+
+        var toolsLeft = document.createElement("div");
+        toolsLeft.className = "dynamic-day-meta-left";
+
+        var handle = createDragHandle("Drag to reorder day");
+        var serial = document.createElement("span");
+        serial.className = "dynamic-day-seq";
+        serial.setAttribute("data-day-serial", "1");
+        serial.textContent = "Day 0";
+        toolsLeft.appendChild(handle);
+        toolsLeft.appendChild(serial);
+
+        var dateLabel = document.createElement("span");
+        dateLabel.className = "dynamic-day-date";
+        dateLabel.setAttribute("data-day-date", "1");
+        dateLabel.textContent = "Date TBD";
+
+        var remove = createRowRemoveButton("Remove day", function onRemove() {
+            row.remove();
+            syncDayBuilder(root);
+        });
+
+        tools.appendChild(toolsLeft);
+        tools.appendChild(dateLabel);
+        tools.appendChild(remove);
+        row.appendChild(tools);
+
+        row.insertAdjacentHTML("beforeend", "" +
             "<div class=\"trip-form-grid trip-form-grid-2\">" +
             "  <label class=\"inline-checkbox-label\"><input type=\"checkbox\" data-day-flexible> flexible?</label>" +
             "</div>" +
             "<div class=\"form-field\"><label>Day Title</label><input class=\"form-input\" type=\"text\" maxlength=\"180\" data-day-title placeholder=\"e.g. Arrival + old town walk\"></div>" +
-            "<div class=\"form-field\"><label>What happens on this day ...</label><textarea class=\"form-input\" rows=\"4\" maxlength=\"2000\" data-day-description placeholder=\"e.g. Check-in, local lunch, sunset viewpoint, and welcome dinner.\"></textarea></div>" +
+            "<div class=\"form-field\"><label>What happens on this day ...</label><textarea class=\"form-input\" rows=\"4\" maxlength=\"2000\" data-day-description data-rich-text=\"1\" placeholder=\"e.g. Check-in, local lunch, sunset viewpoint, and welcome dinner.\"></textarea></div>" +
             "<div class=\"trip-form-grid trip-form-grid-2\">" +
             "  <div class=\"form-field\"><label>Stay</label><input class=\"form-input\" type=\"text\" maxlength=\"180\" data-day-stay placeholder=\"e.g. Lakeside resort\"></div>" +
             "  <div class=\"form-field\"><label>Meals</label><input class=\"form-input\" type=\"text\" maxlength=\"180\" data-day-meals placeholder=\"e.g. Breakfast, Dinner\"></div>" +
-            "</div>";
+            "</div>");
 
         var flexible = row.querySelector("[data-day-flexible]");
         if (flexible) {
@@ -156,7 +772,6 @@
 
         [
             ["[data-day-title]", "title"],
-            ["[data-day-description]", "description"],
             ["[data-day-stay]", "stay"],
             ["[data-day-meals]", "meals"]
         ].forEach(function bindField(pair) {
@@ -170,12 +785,14 @@
             });
         });
 
-        row.appendChild(
-            rowButton("Remove Day", function onRemove() {
-                row.remove();
+        var dayDescription = row.querySelector("[data-day-description]");
+        if (dayDescription) {
+            dayDescription.value = String(dayValue.description || "");
+            ensureRichTextEditor(dayDescription, function onDayDescriptionChange() {
                 syncDayBuilder(root);
-            })
-        );
+            });
+        }
+
         return row;
     }
 
@@ -201,6 +818,21 @@
             itemsHost.appendChild(createDayRow(root, {}));
             syncDayBuilder(root);
         });
+
+        bindReorderableRows(itemsHost, "[data-day-row]", function onDayReorder() {
+            syncDayBuilder(root);
+        });
+
+        var startInputId = String(root.getAttribute("data-start-input-id") || "").trim();
+        var startInput = startInputId ? document.getElementById(startInputId) : null;
+        if (startInput && startInput.getAttribute("data-day-meta-bound") !== "1") {
+            startInput.setAttribute("data-day-meta-bound", "1");
+            ["input", "change"].forEach(function eachEventName(eventName) {
+                startInput.addEventListener(eventName, function onStartDateChange() {
+                    syncDayBuilder(root);
+                });
+            });
+        }
 
         syncDayBuilder(root);
     }
@@ -232,31 +864,52 @@
         var row = document.createElement("div");
         row.className = "dynamic-faq-row";
         row.setAttribute("data-faq-row", "1");
-        row.innerHTML = "" +
-            "<div class=\"form-field\"><label>Question</label><input class=\"form-input\" type=\"text\" maxlength=\"280\" data-faq-question placeholder=\"e.g. Is airport pickup included?\"></div>" +
-            "<div class=\"form-field\"><label>Answer</label><textarea class=\"form-input\" rows=\"3\" maxlength=\"2000\" data-faq-answer placeholder=\"e.g. Pickup is optional and can be arranged at extra cost.\"></textarea></div>";
 
-        var question = row.querySelector("[data-faq-question]");
-        var answer = row.querySelector("[data-faq-answer]");
-        if (question) {
-            question.value = String(faqValue.question || "");
-            question.addEventListener("input", function onInput() {
-                syncFaqBuilder(root);
-            });
-        }
+        var rowInline = document.createElement("div");
+        rowInline.className = "dynamic-row-inline dynamic-row-inline-faq";
+        rowInline.appendChild(createDragHandle("Drag to reorder FAQ"));
+
+        var question = document.createElement("input");
+        question.className = "form-input dynamic-row-inline-input";
+        question.type = "text";
+        question.maxLength = 280;
+        question.setAttribute("data-faq-question", "1");
+        question.setAttribute("aria-label", "FAQ question");
+        question.placeholder = "e.g. Is airport pickup included?";
+        question.value = String(faqValue.question || "");
+        question.addEventListener("input", function onInput() {
+            syncFaqBuilder(root);
+        });
+        rowInline.appendChild(question);
+
+        rowInline.appendChild(createRowRemoveButton("Remove FAQ", function onRemove() {
+            row.remove();
+            syncFaqBuilder(root);
+        }));
+        row.appendChild(rowInline);
+
+        var answerField = document.createElement("div");
+        answerField.className = "form-field";
+        var answerLabel = document.createElement("label");
+        answerLabel.textContent = "Answer";
+        var answer = document.createElement("textarea");
+        answer.className = "form-input";
+        answer.rows = 3;
+        answer.maxLength = 2000;
+        answer.setAttribute("data-faq-answer", "1");
+        answer.setAttribute("data-rich-text", "1");
+        answer.placeholder = "e.g. Pickup is optional and can be arranged at extra cost.";
+        answer.value = String(faqValue.answer || "");
+        answerField.appendChild(answerLabel);
+        answerField.appendChild(answer);
+        row.appendChild(answerField);
+
         if (answer) {
-            answer.value = String(faqValue.answer || "");
-            answer.addEventListener("input", function onInput() {
+            ensureRichTextEditor(answer, function onFaqAnswerChange() {
                 syncFaqBuilder(root);
             });
         }
 
-        row.appendChild(
-            rowButton("Remove FAQ", function onRemove() {
-                row.remove();
-                syncFaqBuilder(root);
-            })
-        );
         return row;
     }
 
@@ -283,6 +936,9 @@
             syncFaqBuilder(root);
         });
 
+        bindReorderableRows(itemsHost, "[data-faq-row]", function onFaqReorder() {
+            syncFaqBuilder(root);
+        });
         syncFaqBuilder(root);
     }
 
@@ -460,6 +1116,9 @@
             if (checkboxes.length === 0) {
                 return;
             }
+            var parentField = group.closest(".form-field");
+            var statusNode = parentField ? parentField.querySelector("[data-choice-limit-status]") : null;
+            var baseLabel = String(group.getAttribute("data-choice-limit-label") || ("Choose up to " + String(limit))).trim();
 
             function checkedCount() {
                 return checkboxes.filter(function isChecked(input) {
@@ -468,7 +1127,8 @@
             }
 
             function syncDisabledState() {
-                var atLimit = checkedCount() >= limit;
+                var totalChecked = checkedCount();
+                var atLimit = totalChecked >= limit;
                 checkboxes.forEach(function eachCheckbox(input) {
                     if (!input.checked) {
                         input.disabled = atLimit;
@@ -477,6 +1137,9 @@
                     }
                 });
                 group.classList.toggle("is-at-limit", atLimit);
+                if (statusNode) {
+                    statusNode.textContent = baseLabel + " (" + String(totalChecked) + " selected)";
+                }
             }
 
             checkboxes.forEach(function bindCheckbox(input) {
@@ -487,6 +1150,14 @@
             });
 
             syncDisabledState();
+        });
+    }
+
+    function initRichTextEditors(form) {
+        Array.prototype.slice.call(form.querySelectorAll("textarea[data-rich-text]")).forEach(function eachTextarea(textarea) {
+            ensureRichTextEditor(textarea, function onRichTextChange() {
+                requestProgressRefresh(textarea);
+            });
         });
     }
 
@@ -1411,6 +2082,8 @@
             var link = document.createElement("a");
             link.className = "trip-form-index-link";
             link.href = "#" + sectionId;
+            link.setAttribute("data-index-target", sectionId);
+
             if (sectionLogoMarkup || sectionLogo) {
                 var logo = document.createElement("span");
                 logo.className = "trip-form-index-logo";
@@ -1422,10 +2095,23 @@
                 }
                 link.appendChild(logo);
             }
+
             var text = document.createElement("span");
             text.className = "trip-form-index-link-text";
             text.textContent = sectionLabel;
             link.appendChild(text);
+
+            var check = document.createElement("span");
+            check.className = "trip-form-index-check";
+            check.setAttribute("aria-hidden", "true");
+            check.innerHTML = (
+                "<svg viewBox=\"0 0 24 24\">" +
+                "<circle cx=\"12\" cy=\"12\" r=\"9\"></circle>" +
+                "<path d=\"m8.6 12.2 2.4 2.4 4.8-4.9\"></path>" +
+                "</svg>"
+            );
+            link.appendChild(check);
+
             link.addEventListener("click", function onIndexClick(event) {
                 event.preventDefault();
                 if (typeof section.__tripSetCollapsed === "function") {
@@ -1491,19 +2177,31 @@
     }
 
     function initTripProgress(form) {
-        var progressShell = document.querySelector("[data-trip-progress-shell]");
+        var layout = form.parentElement;
+        var progressShell = layout ? layout.querySelector("[data-trip-progress-shell]") : document.querySelector("[data-trip-progress-shell]");
         if (!progressShell) {
             return;
         }
 
-        var progressTrack = progressShell.querySelector("[data-trip-progress-track]");
-        var progressFill = progressShell.querySelector("[data-trip-progress-fill]");
-        var progressPercent = progressShell.querySelector("[data-trip-progress-percent]");
-        var progressSections = progressShell.querySelector("[data-trip-progress-sections]");
+        var progressRing = progressShell.querySelector("[data-trip-progress-ring]");
+        var progressPercentNodes = Array.prototype.slice.call(document.querySelectorAll("[data-trip-progress-percent]"));
+        var progressSectionNodes = Array.prototype.slice.call(document.querySelectorAll("[data-trip-progress-sections]"));
         var sections = Array.prototype.slice.call(form.querySelectorAll(".trip-form-section"));
-        if (!progressTrack || !progressFill || !progressPercent || !progressSections || sections.length === 0) {
+        if (!progressRing || progressPercentNodes.length === 0 || progressSectionNodes.length === 0 || sections.length === 0) {
             return;
         }
+        var formMode = String(form.getAttribute("data-form-mode") || "create").trim().toLowerCase();
+        var requiresUserDelta = formMode === "create";
+
+        var ringRadius = Number(progressRing.getAttribute("r") || 0);
+        var ringCircumference = ringRadius > 0 ? (2 * Math.PI * ringRadius) : 0;
+        if (ringCircumference > 0) {
+            progressRing.style.strokeDasharray = String(ringCircumference) + " " + String(ringCircumference);
+            progressRing.style.strokeDashoffset = String(ringCircumference);
+        }
+        var baselineControlSignatures = new WeakMap();
+        var baselinePillCounts = new WeakMap();
+        var touchedControls = new WeakSet();
 
         function isTrackableControl(control) {
             if (!control || control.disabled) {
@@ -1522,6 +2220,50 @@
             );
         }
 
+        function normalizePlainValue(value) {
+            return String(value || "")
+                .replace(/\u00a0/g, " ")
+                .replace(/[\u200B-\u200D\uFEFF]/g, "")
+                .trim();
+        }
+
+        function isRichTextControl(control) {
+            if (!control) {
+                return false;
+            }
+            return control.getAttribute("data-rich-text") === "1" || control.classList.contains("rich-text-source");
+        }
+
+        function normalizedControlValue(control) {
+            if (!control) {
+                return "";
+            }
+            if (isRichTextControl(control)) {
+                return normalizeEditorHtml(control.value);
+            }
+            return normalizePlainValue(control.value);
+        }
+
+        function resolveBuilderTargetInput(builderRoot) {
+            if (!builderRoot) {
+                return null;
+            }
+            var inputId = String(builderRoot.getAttribute("data-target-input-id") || "").trim();
+            if (!inputId) {
+                return null;
+            }
+            return document.getElementById(inputId);
+        }
+
+        function parseBuilderPayloadArray(builderRoot) {
+            var hiddenInput = resolveBuilderTargetInput(builderRoot);
+            if (!hiddenInput) {
+                return [];
+            }
+            var parsed = parseJson(hiddenInput.value, []);
+            return Array.isArray(parsed) ? parsed : [];
+        }
+
         function controlHasValue(control) {
             var tag = String(control.tagName || "").toLowerCase();
             var type = String(control.type || "").toLowerCase();
@@ -1534,49 +2276,191 @@
             if (tag === "select") {
                 if (control.multiple && control.options) {
                     return Array.prototype.slice.call(control.options).some(function hasSelected(option) {
-                        return option.selected && String(option.value || "").trim() !== "";
+                        return option.selected && normalizePlainValue(option.value) !== "";
                     });
                 }
-                return String(control.value || "").trim() !== "";
+                return normalizePlainValue(control.value) !== "";
             }
-            return String(control.value || "").trim() !== "";
+            return normalizedControlValue(control) !== "";
+        }
+
+        function isBooleanControl(control) {
+            var type = String(control.type || "").toLowerCase();
+            return type === "checkbox" || type === "radio";
+        }
+
+        function controlSignature(control) {
+            var tag = String(control.tagName || "").toLowerCase();
+            var type = String(control.type || "").toLowerCase();
+            if (type === "checkbox" || type === "radio") {
+                return control.checked ? "1" : "0";
+            }
+            if (type === "file") {
+                return String(control.files && control.files.length ? control.files.length : 0);
+            }
+            if (tag === "select") {
+                if (control.multiple && control.options) {
+                    return Array.prototype.slice.call(control.options)
+                        .filter(function onlySelected(option) {
+                            return option.selected && normalizePlainValue(option.value) !== "";
+                        })
+                        .map(function mapOption(option) {
+                            return normalizePlainValue(option.value);
+                        })
+                        .sort()
+                        .join("|");
+                }
+                return normalizePlainValue(control.value);
+            }
+            return normalizedControlValue(control);
+        }
+
+        function controlDiffersFromBaseline(control) {
+            var currentSignature = controlSignature(control);
+            if (baselineControlSignatures.has(control)) {
+                return baselineControlSignatures.get(control) !== currentSignature;
+            }
+            if (requiresUserDelta && !touchedControls.has(control)) {
+                return false;
+            }
+            return controlHasValue(control);
+        }
+
+        function sectionHasUserDelta(section) {
+            if (!requiresUserDelta) {
+                return true;
+            }
+            var controls = Array.prototype.slice.call(section.querySelectorAll("input, select, textarea"))
+                .filter(isTrackableControl);
+            if (controls.some(controlDiffersFromBaseline)) {
+                return true;
+            }
+            var baselinePills = Number(baselinePillCounts.get(section) || 0);
+            var currentPills = section.querySelectorAll("[data-pill-item]").length;
+            return currentPills !== baselinePills;
         }
 
         function sectionIsComplete(section) {
+            function payloadTextValue(value) {
+                return normalizePlainValue(value);
+            }
+
+            function payloadRichTextValue(value) {
+                return normalizeEditorHtml(value);
+            }
+
+            var listBuilder = section.querySelector("[data-list-builder]");
+            if (listBuilder) {
+                var listItems = parseBuilderPayloadArray(listBuilder);
+                var hasCompleteListRow = listItems.some(function anyCompleteListRow(item) {
+                    return payloadTextValue(item) !== "";
+                });
+                return sectionHasUserDelta(section) && hasCompleteListRow;
+            }
+
+            var dayBuilder = section.querySelector("[data-day-builder]");
+            if (dayBuilder) {
+                var dayItems = parseBuilderPayloadArray(dayBuilder);
+                var hasCompleteDayRow = dayItems.some(function anyCompleteDayRow(day) {
+                    var dayRecord = day && typeof day === "object" ? day : {};
+                    return (
+                        payloadTextValue(dayRecord.title) !== "" &&
+                        payloadRichTextValue(dayRecord.description) !== "" &&
+                        payloadTextValue(dayRecord.stay) !== "" &&
+                        payloadTextValue(dayRecord.meals) !== ""
+                    );
+                });
+                return sectionHasUserDelta(section) && hasCompleteDayRow;
+            }
+
+            var faqBuilder = section.querySelector("[data-faq-builder]");
+            if (faqBuilder) {
+                var faqItems = parseBuilderPayloadArray(faqBuilder);
+                var hasCompleteFaqRow = faqItems.some(function anyCompleteFaqRow(faq) {
+                    var faqRecord = faq && typeof faq === "object" ? faq : {};
+                    return (
+                        payloadTextValue(faqRecord.question) !== "" &&
+                        payloadRichTextValue(faqRecord.answer) !== ""
+                    );
+                });
+                return sectionHasUserDelta(section) && hasCompleteFaqRow;
+            }
+
+            var pillBuilder = section.querySelector("[data-pill-builder]");
+            if (pillBuilder) {
+                var pillItems = parseBuilderPayloadArray(pillBuilder);
+                var hasPillItem = pillItems.some(function anyPillValue(value) {
+                    return payloadTextValue(value) !== "";
+                });
+                return sectionHasUserDelta(section) && hasPillItem;
+            }
+
             var controls = Array.prototype.slice.call(section.querySelectorAll("input, select, textarea"))
                 .filter(isTrackableControl);
             if (controls.length === 0) {
-                return section.querySelectorAll("[data-pill-item]").length > 0;
+                return sectionHasUserDelta(section) && section.querySelectorAll("[data-pill-item]").length > 0;
             }
             var requiredControls = controls.filter(function onlyRequired(control) {
                 return !!control.required;
             });
             if (requiredControls.length > 0) {
-                return requiredControls.every(controlHasValue);
+                return sectionHasUserDelta(section) && requiredControls.every(controlHasValue);
+            }
+            var fillableControls = controls.filter(function onlyFillable(control) {
+                return !isBooleanControl(control);
+            });
+            if (fillableControls.length > 0) {
+                return sectionHasUserDelta(section) && fillableControls.every(controlHasValue);
             }
             if (section.querySelectorAll("[data-pill-item]").length > 0) {
-                return true;
+                return sectionHasUserDelta(section);
             }
-            return controls.some(controlHasValue);
+            return sectionHasUserDelta(section) && controls.some(controlHasValue);
         }
 
         function syncProgressTopOffset() {
             var header = document.querySelector(".site-header");
             var headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
             var topOffset = Math.max(8, headerHeight + 8);
-            var progressHeight = Math.ceil(progressShell.getBoundingClientRect().height) || 0;
             document.documentElement.style.setProperty("--trip-progress-top", String(topOffset) + "px");
-            document.documentElement.style.setProperty("--trip-progress-height", String(progressHeight) + "px");
+        }
+
+        function syncIndexCompletion(completionMap) {
+            var indexLinks = Array.prototype.slice.call(
+                document.querySelectorAll(".trip-form-index-link[data-index-target]")
+            );
+            indexLinks.forEach(function eachLink(link) {
+                var targetId = String(link.getAttribute("data-index-target") || "").trim();
+                var isComplete = !!completionMap[targetId];
+                link.classList.toggle("is-complete", isComplete);
+            });
         }
 
         function updateProgress() {
-            var completedCount = sections.filter(sectionIsComplete).length;
+            var completionMap = {};
+            var completedCount = 0;
+            sections.forEach(function eachSection(section) {
+                var isComplete = sectionIsComplete(section);
+                completionMap[String(section.id || "")] = isComplete;
+                if (isComplete) {
+                    completedCount += 1;
+                }
+            });
             var totalCount = sections.length;
             var percent = Math.round((completedCount / totalCount) * 100);
-            progressFill.style.width = String(percent) + "%";
-            progressTrack.setAttribute("aria-valuenow", String(percent));
-            progressPercent.textContent = String(percent) + "%";
-            progressSections.textContent = String(completedCount) + " / " + String(totalCount) + " sections";
+            var ratio = Math.max(0, Math.min(1, percent / 100));
+
+            if (ringCircumference > 0) {
+                progressRing.style.strokeDashoffset = String(ringCircumference * (1 - ratio));
+            }
+            progressShell.setAttribute("aria-valuenow", String(percent));
+            progressPercentNodes.forEach(function eachPercentNode(node) {
+                node.textContent = String(percent) + "%";
+            });
+            progressSectionNodes.forEach(function eachSectionNode(node) {
+                node.textContent = String(completedCount) + " / " + String(totalCount) + " sections";
+            });
+            syncIndexCompletion(completionMap);
             syncProgressTopOffset();
         }
 
@@ -1591,6 +2475,32 @@
             });
         }
 
+        Array.prototype.slice.call(form.querySelectorAll("input, select, textarea"))
+            .filter(isTrackableControl)
+            .forEach(function captureControlBaseline(control) {
+                baselineControlSignatures.set(control, controlSignature(control));
+            });
+        sections.forEach(function captureSectionBaseline(section) {
+            baselinePillCounts.set(section, section.querySelectorAll("[data-pill-item]").length);
+        });
+
+        function markControlTouched(event) {
+            var target = event.target;
+            if (!target || typeof target.tagName !== "string") {
+                return;
+            }
+            var tag = String(target.tagName || "").toLowerCase();
+            if (tag !== "input" && tag !== "select" && tag !== "textarea") {
+                return;
+            }
+            if (!isTrackableControl(target)) {
+                return;
+            }
+            touchedControls.add(target);
+        }
+
+        form.addEventListener("input", markControlTouched, true);
+        form.addEventListener("change", markControlTouched, true);
         form.addEventListener("input", requestProgressUpdate);
         form.addEventListener("change", requestProgressUpdate);
         form.addEventListener("trip-progress-refresh", requestProgressUpdate);
@@ -1860,6 +2770,7 @@
     initDestinationPicker(form);
     initChoiceLimitGroups(form);
     initAgePreferenceSliders(form);
+    initRichTextEditors(form);
     initSectionIndex(form);
     initTripProgress(form);
     Array.prototype.slice.call(form.querySelectorAll("[data-list-builder]")).forEach(initListBuilder);

@@ -59,7 +59,11 @@
     </dl>
     <p class="detail-meta">Includes: {{ trip.includes_label|default:"Host planning support and route guidance. Bookings are self-managed." }}</p>
 
+    {% if trip.description_html and trip_detail_mode == "member-full" %}
+    <div class="trip-rich-description">{{ trip.description_html|safe }}</div>
+    {% else %}
     <p>{{ trip.description|default:"Trip description is not available yet." }}</p>
+    {% endif %}
 
     <div class="inline-actions">
         {% if can_manage_trip %}

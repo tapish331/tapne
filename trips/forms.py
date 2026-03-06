@@ -5,6 +5,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, TypedDict, cast
 
+import bleach
 from django import forms
 from django.utils import timezone
 
@@ -19,6 +20,11 @@ from .models import (
     TRIP_TYPE_CHOICES,
     Trip,
 )
+
+try:
+    from bleach.css_sanitizer import CSSSanitizer as _BleachCSSSanitizer
+except ModuleNotFoundError:
+    _BleachCSSSanitizer = None
 
 CURRENCY_CHOICES: tuple[tuple[str, str], ...] = (
     ("INR", "INR (Rs)"),
@@ -38,29 +44,66 @@ SUITABLE_FOR_CHOICES: tuple[tuple[str, str], ...] = (
     ("Solo Travelers", "Solo Travelers"),
     ("Couples", "Couples"),
     ("Friends", "Friends"),
+    ("Families", "Families"),
+    ("Women Travelers", "Women Travelers"),
+    ("LGBTQ+ Travelers", "LGBTQ+ Travelers"),
     ("First-time Travelers", "First-time Travelers"),
-    ("Weekend Getaways", "Weekend Getaways"),
+    ("Senior Travelers", "Senior Travelers (55+)"),
+    ("Students & Budget Travelers", "Students & Budget Travelers"),
     ("Remote Workers", "Remote Workers"),
-    ("Nature Lovers", "Nature Lovers"),
-    ("Culture Lovers", "Culture Lovers"),
-    ("Adventure Seekers", "Adventure Seekers"),
-    ("All Genders", "All Genders"),
 )
 TRIP_VIBE_CHOICES: tuple[tuple[str, str], ...] = (
-    ("Chill", "Chill"),
-    ("Party", "Party"),
-    ("Explorer", "Explorer"),
-    ("Spiritual", "Spiritual"),
-    ("Adventure", "Adventure"),
+    ("Relaxed", "Relaxed"),
+    ("Social", "Social & Community"),
+    ("Cultural", "Cultural Immersion"),
+    ("Food-focused", "Food-focused"),
+    ("Nature-focused", "Nature-focused"),
+    ("Adventure Sports", "Adventure Sports"),
+    ("Nightlife", "Nightlife"),
     ("Photography", "Photography"),
-    ("Work + Travel", "Work + Travel"),
+    ("Wellness", "Wellness & Mindfulness"),
     ("Road Trip", "Road Trip"),
-    ("Foodie", "Foodie"),
-    ("Wellness", "Wellness"),
     ("Camping", "Camping"),
-    ("Luxury", "Luxury"),
+    ("Luxury", "Luxury Comfort"),
 )
 CONTACT_PREFERENCE_CODE_SET: frozenset[str] = frozenset(code for code, _label in CONTACT_PREFERENCE_CHOICES)
+RICH_TEXT_ALLOWED_TAGS: tuple[str, ...] = (
+    "p",
+    "br",
+    "strong",
+    "em",
+    "u",
+    "span",
+    "font",
+    "ul",
+    "ol",
+    "li",
+    "a",
+)
+RICH_TEXT_ALLOWED_PROTOCOLS: tuple[str, ...] = ("http", "https", "mailto")
+RICH_TEXT_ALLOWED_CSS_PROPERTIES: tuple[str, ...] = ("color", "background-color")
+
+
+def _build_rich_text_sanitizer_config() -> tuple[dict[str, list[str]], Any | None]:
+    if _BleachCSSSanitizer is None:
+        return (
+            {
+                "a": ["href", "target", "rel"],
+                "font": ["color"],
+            },
+            None,
+        )
+    return (
+        {
+            "a": ["href", "target", "rel"],
+            "span": ["style"],
+            "font": ["color"],
+        },
+        _BleachCSSSanitizer(allowed_css_properties=RICH_TEXT_ALLOWED_CSS_PROPERTIES),
+    )
+
+
+RICH_TEXT_ALLOWED_ATTRIBUTES, RICH_TEXT_CSS_SANITIZER = _build_rich_text_sanitizer_config()
 
 
 class ResilientClearableFileInput(forms.ClearableFileInput):
@@ -131,6 +174,33 @@ def _safe_json_list(raw_value: object) -> list[object]:
     if not isinstance(parsed, list):
         return []
     return cast(list[object], parsed)
+
+
+def _sanitize_rich_text_html(raw_value: object) -> str:
+    raw_text = str(raw_value or "").strip()
+    if RICH_TEXT_CSS_SANITIZER is None:
+        cleaned = bleach.clean(
+            raw_text,
+            tags=RICH_TEXT_ALLOWED_TAGS,
+            attributes=RICH_TEXT_ALLOWED_ATTRIBUTES,
+            protocols=RICH_TEXT_ALLOWED_PROTOCOLS,
+            strip=True,
+        )
+    else:
+        cleaned = bleach.clean(
+            raw_text,
+            tags=RICH_TEXT_ALLOWED_TAGS,
+            attributes=RICH_TEXT_ALLOWED_ATTRIBUTES,
+            protocols=RICH_TEXT_ALLOWED_PROTOCOLS,
+            css_sanitizer=RICH_TEXT_CSS_SANITIZER,
+            strip=True,
+        )
+    return str(cleaned or "").strip()
+
+
+def _rich_text_plain_text(raw_value: object) -> str:
+    plain_text = bleach.clean(str(raw_value or ""), tags=[], attributes={}, strip=True)
+    return str(plain_text or "")
 
 
 def _as_datetime_or_none(value: object) -> datetime | None:
@@ -365,7 +435,7 @@ class TripForm(forms.ModelForm):
         _add_input_css_classes(self)
 
         metadata_defaults = {
-            "trip_type": "adventure",
+            "trip_type": "city",
             "budget_tier": "mid",
             "difficulty_level": "moderate",
             "pace_level": "balanced",
@@ -452,6 +522,20 @@ class TripForm(forms.ModelForm):
             },
         )
 
+        for rich_text_field_name in (
+            "description",
+            "payment_terms",
+            "general_policies",
+            "code_of_conduct",
+            "cancellation_policy",
+        ):
+            rich_text_field = self.fields.get(rich_text_field_name)
+            if rich_text_field is None:
+                continue
+            if not isinstance(rich_text_field.widget, forms.Textarea):
+                continue
+            rich_text_field.widget.attrs["data-rich-text"] = "1"
+
         self.fields["title"].required = True
         self.fields["destination"].required = True
         self.fields["trip_type"].required = True
@@ -494,8 +578,8 @@ class TripForm(forms.ModelForm):
             )
         else:
             self.initial.setdefault("extra_costs_not_included_choices", [])
-            self.initial.setdefault("suitable_for_choices", ["Solo Travelers", "Friends", "All Genders"])
-            self.initial.setdefault("trip_vibe_choices", ["Explorer"])
+            self.initial.setdefault("suitable_for_choices", ["Solo Travelers", "Friends", "First-time Travelers"])
+            self.initial.setdefault("trip_vibe_choices", ["Cultural"])
             self.initial.setdefault("contact_preference_choices", ["in_app"])
 
         self.initial.setdefault("highlights_payload", _json_dump(getattr(self.instance, "highlights", []) or []))
@@ -541,7 +625,10 @@ class TripForm(forms.ModelForm):
             entry_map = cast(dict[object, object], entry)
 
             title = " ".join(str(entry_map.get("title", "") or "").strip().split())[:180]
-            description = str(entry_map.get("description", "") or "").strip()[:2000]
+            raw_description = str(entry_map.get("description", "") or "").strip()
+            if len(_rich_text_plain_text(raw_description)) > 2000:
+                raw_description = _rich_text_plain_text(raw_description)[:2000]
+            description = _sanitize_rich_text_html(raw_description)
             stay = " ".join(str(entry_map.get("stay", "") or "").strip().split())[:180]
             meals = " ".join(str(entry_map.get("meals", "") or "").strip().split())[:180]
             activities = " ".join(str(entry_map.get("activities", "") or "").strip().split())[:280]
@@ -573,7 +660,10 @@ class TripForm(forms.ModelForm):
             entry_map = cast(dict[object, object], entry)
 
             question = " ".join(str(entry_map.get("question", "") or "").strip().split())[:280]
-            answer = str(entry_map.get("answer", "") or "").strip()[:2000]
+            raw_answer = str(entry_map.get("answer", "") or "").strip()
+            if len(_rich_text_plain_text(raw_answer)) > 2000:
+                raw_answer = _rich_text_plain_text(raw_answer)[:2000]
+            answer = _sanitize_rich_text_html(raw_answer)
             if not question and not answer:
                 continue
             faqs.append({"question": question, "answer": answer})
@@ -599,9 +689,9 @@ class TripForm(forms.ModelForm):
 
     def clean_description(self) -> str:
         description = str(self.cleaned_data.get("description", "")).strip()
-        if len(description) > 4000:
+        if len(_rich_text_plain_text(description)) > 4000:
             raise forms.ValidationError("Description must be 4000 characters or fewer.")
-        return description
+        return _sanitize_rich_text_html(description)
 
     def clean_includes_label(self) -> str:
         includes_label = str(self.cleaned_data.get("includes_label", "")).strip()
@@ -711,7 +801,7 @@ class TripForm(forms.ModelForm):
         trip = super().save(commit=False)
         trip.title = trip.title.strip()
         trip.summary = trip.summary.strip()
-        trip.description = trip.description.strip()
+        trip.description = _sanitize_rich_text_html(trip.description)
         trip.destination = trip.destination.strip()
         trip.video_link = str(trip.video_link or "").strip()
         trip.currency = str(trip.currency or "INR").strip().upper() or "INR"
@@ -721,16 +811,16 @@ class TripForm(forms.ModelForm):
         trip.pace_level = str(trip.pace_level or "").strip().lower()
         trip.group_size_label = str(trip.group_size_label or "").strip()
         trip.includes_label = str(trip.includes_label or "").strip()
-        trip.payment_terms = str(trip.payment_terms or "").strip()
+        trip.payment_terms = _sanitize_rich_text_html(trip.payment_terms)
         trip.approximate_flight_cost = " ".join(str(trip.approximate_flight_cost or "").strip().split())
         trip.optional_activities_cost = " ".join(str(trip.optional_activities_cost or "").strip().split())
         trip.buffer_budget_suggestion = " ".join(str(trip.buffer_budget_suggestion or "").strip().split())
         trip.personal_shopping_estimate = " ".join(str(trip.personal_shopping_estimate or "").strip().split())
         trip.gender_preference = " ".join(str(trip.gender_preference or "").strip().split())
         trip.age_preference = " ".join(str(trip.age_preference or "").strip().split())
-        trip.general_policies = str(trip.general_policies or "").strip()
-        trip.code_of_conduct = str(trip.code_of_conduct or "").strip()
-        trip.cancellation_policy = str(trip.cancellation_policy or "").strip()
+        trip.general_policies = _sanitize_rich_text_html(trip.general_policies)
+        trip.code_of_conduct = _sanitize_rich_text_html(trip.code_of_conduct)
+        trip.cancellation_policy = _sanitize_rich_text_html(trip.cancellation_policy)
         trip.contact_preference = _serialize_contact_preference_codes(self.cleaned_data.get("contact_preference_choices", []))
         trip.co_hosts = " ".join(str(trip.co_hosts or "").strip().split())
 

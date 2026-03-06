@@ -3,16 +3,23 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Final, TypedDict, cast
 
+import bleach
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxLengthValidator
 from django.db import models
 from django.utils import timezone
+from django.utils.html import strip_tags
 
 from feed.models import MemberFeedPreference, TripData, enrich_trip_preview_fields, get_demo_trips, get_trip_by_id
 from tapne.features import demo_catalog_enabled
 from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
+
+try:
+    from bleach.css_sanitizer import CSSSanitizer as _BleachCSSSanitizer
+except ModuleNotFoundError:
+    _BleachCSSSanitizer = None
 
 
 class TripListPayload(TypedDict):
@@ -64,12 +71,17 @@ class TripFaqItem(TypedDict):
 
 
 TRIP_TYPE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
-    ("food-culture", "Food & Culture"),
-    ("trekking", "Trekking"),
-    ("desert", "Desert Route"),
-    ("city", "City Discovery"),
-    ("coastal", "Coastal Escape"),
-    ("adventure", "Adventure"),
+    ("city", "City Break"),
+    ("culture-heritage", "Culture & Heritage"),
+    ("food-culture", "Food & Culinary"),
+    ("trekking", "Trekking & Hiking"),
+    ("coastal", "Beach & Coastal"),
+    ("desert", "Desert Expedition"),
+    ("wildlife", "Wildlife & Safari"),
+    ("road-trip", "Road Trip"),
+    ("camping", "Camping"),
+    ("wellness", "Wellness Retreat"),
+    ("adventure-sports", "Adventure Sports"),
 )
 BUDGET_TIER_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("budget", "$ Budget-friendly"),
@@ -109,6 +121,45 @@ CONTACT_PREFERENCE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("phone", "Phone call"),
     ("whatsapp", "WhatsApp"),
 )
+TRIP_RICH_TEXT_ALLOWED_TAGS: Final[tuple[str, ...]] = (
+    "p",
+    "br",
+    "strong",
+    "em",
+    "u",
+    "span",
+    "font",
+    "ul",
+    "ol",
+    "li",
+    "a",
+)
+TRIP_RICH_TEXT_ALLOWED_PROTOCOLS: Final[tuple[str, ...]] = ("http", "https", "mailto")
+TRIP_RICH_TEXT_ALLOWED_CSS_PROPERTIES: Final[tuple[str, ...]] = ("color", "background-color")
+
+
+def _build_trip_rich_text_sanitizer_config() -> tuple[dict[str, list[str]], Any | None]:
+    if _BleachCSSSanitizer is None:
+        return (
+            {
+                "a": ["href", "target", "rel"],
+                "font": ["color"],
+            },
+            None,
+        )
+    return (
+        {
+            "a": ["href", "target", "rel"],
+            "span": ["style"],
+            "font": ["color"],
+        },
+        _BleachCSSSanitizer(allowed_css_properties=TRIP_RICH_TEXT_ALLOWED_CSS_PROPERTIES),
+    )
+
+
+_trip_rich_text_allowed_attributes, _trip_rich_text_css_sanitizer = _build_trip_rich_text_sanitizer_config()
+TRIP_RICH_TEXT_ALLOWED_ATTRIBUTES: Final[dict[str, list[str]]] = _trip_rich_text_allowed_attributes
+TRIP_RICH_TEXT_CSS_SANITIZER: Final[Any | None] = _trip_rich_text_css_sanitizer
 
 
 def _normalize_string_list(raw_values: object, *, max_length: int = 280) -> list[str]:
@@ -317,17 +368,38 @@ class Trip(models.Model):
 
     def to_trip_data(self) -> TripData:
         trip_id = int(self.pk or 0)
+        raw_description = str(self.description or "").strip()
+        if TRIP_RICH_TEXT_CSS_SANITIZER is None:
+            description_html = bleach.clean(
+                raw_description,
+                tags=TRIP_RICH_TEXT_ALLOWED_TAGS,
+                attributes=TRIP_RICH_TEXT_ALLOWED_ATTRIBUTES,
+                protocols=TRIP_RICH_TEXT_ALLOWED_PROTOCOLS,
+                strip=True,
+            )
+        else:
+            description_html = bleach.clean(
+                raw_description,
+                tags=TRIP_RICH_TEXT_ALLOWED_TAGS,
+                attributes=TRIP_RICH_TEXT_ALLOWED_ATTRIBUTES,
+                protocols=TRIP_RICH_TEXT_ALLOWED_PROTOCOLS,
+                css_sanitizer=TRIP_RICH_TEXT_CSS_SANITIZER,
+                strip=True,
+            )
+        description_plain = strip_tags(description_html).strip()
         trip_data: TripData = {
             "id": trip_id,
             "title": self.title,
             "summary": self.summary,
-            "description": self.description,
+            "description": description_plain,
             "destination": self.destination,
             "host_username": str(getattr(self.host, "username", "") or "").strip(),
             "traffic_score": int(self.traffic_score or 0),
             "starts_at": self.starts_at,
             "url": self.get_absolute_url(),
         }
+        if description_html:
+            trip_data["description_html"] = description_html
         if self.banner_image:
             banner_url = resolve_file_url(self.banner_image)
             banner_name = str(getattr(self.banner_image, "name", "") or "").strip()
@@ -535,6 +607,7 @@ def _rank_for_member(
 
 def _guest_limited_detail(trip: TripData) -> TripData:
     limited = _as_trip_data_copy(trip)
+    limited.pop("description_html", None)
     source_text = str(limited.get("summary") or limited.get("description") or "").strip()
 
     if source_text:

@@ -14,61 +14,87 @@
     <p>Complete each section carefully. This flow controls the trip card, itinerary trust, and booking quality.</p>
 </section>
 
-<section class="trip-progress-shell" data-trip-progress-shell>
-    <div class="trip-progress-meta">
-        <p class="trip-progress-title">Trip Creation Progress</p>
-        <p class="trip-progress-summary">
-            <span class="trip-progress-percent" data-trip-progress-percent>0%</span>
-            <span class="trip-progress-sections" data-trip-progress-sections>0 / 0 sections</span>
-        </p>
-    </div>
-    <div
-        class="trip-progress-track"
-        role="progressbar"
-        aria-label="Trip creation completion percentage"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow="0"
-        data-trip-progress-track
-    >
-        <span class="trip-progress-fill" data-trip-progress-fill></span>
-    </div>
-    <div class="trip-progress-actions">
-        <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="save_draft">
-            <span class="button-logo" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                    <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
-                    <path d="M12 11v6"></path>
-                    <path d="M9.5 14.5 12 17l2.5-2.5"></path>
-                </svg>
-            </span>Save Draft
-        </button>
-        <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="preview">
-            <span class="button-logo" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
-                    <circle cx="12" cy="12" r="2.7"></circle>
-                </svg>
-            </span>Preview
-        </button>
-        <button class="btn btn-primary" type="submit" form="trip-creation-form" name="form_action" value="submit">
-            <span class="button-logo" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                    <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
-                    <path d="M10.7 14.8 21 3"></path>
-                </svg>
-            </span>{{ submit_label|default:"Publish" }}
-        </button>
-    </div>
-</section>
-
 <section class="section-grid">
     <div class="trip-form-layout">
         <aside class="trip-form-index" aria-label="Trip section index">
+            <section
+                class="trip-progress-shell"
+                data-trip-progress-shell
+                role="progressbar"
+                aria-label="Trip creation completion percentage"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+            >
+                <div class="trip-progress-meta">
+                    <p class="trip-progress-title">Trip Creation Progress</p>
+                </div>
+                <div class="trip-progress-ring-wrap">
+                    <svg class="trip-progress-ring" viewBox="0 0 120 120" aria-hidden="true">
+                        <circle class="trip-progress-ring-track" cx="60" cy="60" r="50"></circle>
+                        <circle class="trip-progress-ring-fill" cx="60" cy="60" r="50" data-trip-progress-ring></circle>
+                    </svg>
+                    <div class="trip-progress-ring-center">
+                        <span class="trip-progress-percent" data-trip-progress-percent>0%</span>
+                        <span class="trip-progress-sections" data-trip-progress-sections>0 / 0 sections</span>
+                    </div>
+                </div>
+                <div class="trip-progress-actions trip-progress-actions-icon">
+                    <button
+                        class="btn btn-secondary trip-action-btn"
+                        type="submit"
+                        form="trip-creation-form"
+                        name="form_action"
+                        value="save_draft"
+                        aria-label="Save Draft"
+                    >
+                        <span class="button-logo" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
+                                <path d="M12 11v6"></path>
+                                <path d="M9.5 14.5 12 17l2.5-2.5"></path>
+                            </svg>
+                        </span>
+                        <span class="trip-action-hover-label" aria-hidden="true">Save Draft</span>
+                    </button>
+                    <button
+                        class="btn btn-secondary trip-action-btn"
+                        type="submit"
+                        form="trip-creation-form"
+                        name="form_action"
+                        value="preview"
+                        aria-label="Preview"
+                    >
+                        <span class="button-logo" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                                <circle cx="12" cy="12" r="2.7"></circle>
+                            </svg>
+                        </span>
+                        <span class="trip-action-hover-label" aria-hidden="true">Preview</span>
+                    </button>
+                    <button
+                        class="btn btn-primary trip-action-btn"
+                        type="submit"
+                        form="trip-creation-form"
+                        name="form_action"
+                        value="submit"
+                        aria-label="{{ submit_label|default:'Publish' }}"
+                    >
+                        <span class="button-logo" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
+                                <path d="M10.7 14.8 21 3"></path>
+                            </svg>
+                        </span>
+                        <span class="trip-action-hover-label" aria-hidden="true">{{ submit_label|default:"Publish" }}</span>
+                    </button>
+                </div>
+            </section>
             <p class="trip-form-index-title">Sections</p>
             <nav class="trip-form-index-nav" data-trip-section-index></nav>
         </aside>
-        <form method="post" class="form-stack trip-creation-form" id="trip-creation-form" enctype="multipart/form-data" novalidate>
+        <form method="post" class="form-stack trip-creation-form" id="trip-creation-form" enctype="multipart/form-data" novalidate data-form-mode="{{ form_mode|default:'create' }}">
         {% csrf_token %}
         {{ form.highlights_payload }}
         {{ form.included_items_payload }}
@@ -190,6 +216,10 @@
                 {{ form.summary }}
                 <p class="detail-meta">{{ form.summary.help_text }}</p>
                 {% for error in form.summary.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
+            </div>
+            <div class="form-field">
+                <label for="{{ form.description.id_for_label }}">Detailed Description</label>
+                {{ form.description }}
                 {% for error in form.description.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
         </article>
@@ -278,7 +308,12 @@
             <header class="trip-form-section-header">
                 <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"></circle><circle cx="18" cy="18" r="2"></circle><path d="M8 6h4a2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2v4"></path></svg></span> Detailed Itinerary</h2>
             </header>
-            <div class="dynamic-day-builder" data-day-builder data-target-input-id="{{ form.itinerary_days_payload.id_for_label }}">
+            <div
+                class="dynamic-day-builder"
+                data-day-builder
+                data-target-input-id="{{ form.itinerary_days_payload.id_for_label }}"
+                data-start-input-id="{{ form.starts_at.id_for_label }}"
+            >
                 <div class="dynamic-day-items" data-day-items></div>
                 <button class="btn btn-secondary" type="button" data-day-add>+ Add Day</button>
             </div>
@@ -288,11 +323,6 @@
             <header class="trip-form-section-header">
                 <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="m8.5 12.5 2.3 2.3 4.7-4.7"></path></svg></span> What's Included</h2>
             </header>
-            <div class="form-field">
-                <label for="{{ form.includes_label.id_for_label }}">Included summary label</label>
-                {{ form.includes_label }}
-                {% for error in form.includes_label.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
-            </div>
             <div
                 class="dynamic-list-builder"
                 data-list-builder
@@ -361,19 +391,23 @@
                 </div>
             </div>
             <div class="form-field">
-                <label>Suitable For</label>
-                <div class="choice-limit-group" data-choice-limit-group data-choice-limit="3">
+                <label class="choice-limit-label-row">
+                    <span>Suitable For</span>
+                    <span class="detail-meta choice-limit-status" data-choice-limit-status>0 / 3 selected</span>
+                </label>
+                <div class="choice-limit-group" data-choice-limit-group data-choice-limit="3" data-choice-limit-label="Choose up to 3">
                     {{ form.suitable_for_choices }}
                 </div>
-                <p class="detail-meta">Choose up to 3.</p>
                 {% for error in form.suitable_for_choices.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
             <div class="form-field">
-                <label>Trip Vibe</label>
-                <div class="choice-limit-group" data-choice-limit-group data-choice-limit="5">
+                <label class="choice-limit-label-row">
+                    <span>Trip Vibe</span>
+                    <span class="detail-meta choice-limit-status" data-choice-limit-status>0 / 5 selected</span>
+                </label>
+                <div class="choice-limit-group" data-choice-limit-group data-choice-limit="5" data-choice-limit-label="Choose up to 5">
                     {{ form.trip_vibe_choices }}
                 </div>
-                <p class="detail-meta">Choose up to 5.</p>
                 {% for error in form.trip_vibe_choices.errors %}<p class="detail-meta text-danger">{{ error }}</p>{% endfor %}
             </div>
             <div class="form-field">
@@ -469,7 +503,7 @@
             <header class="trip-form-section-header">
                 <h2><span class="section-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3"></circle><path d="M6 19a6 6 0 0 1 12 0"></path></svg></span> Host Information</h2>
             </header>
-            <p class="detail-meta">Posted by: @{{ request.user.username }}{% if request.user.email %} - {{ request.user.email }}{% endif %}</p>
+            <p class="detail-meta">Posted by: @{{ request.user.username }}</p>
             <div class="trip-form-grid trip-form-grid-2">
                 <div class="form-field">
                     {{ form.contact_preference }}
@@ -487,32 +521,42 @@
             {{ form.is_published.as_hidden }}
         </article>
 
-        <div class="inline-actions trip-form-bottom-actions">
-            <button class="btn btn-secondary" type="submit" name="form_action" value="save_draft">
-                <span class="button-logo" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
-                        <path d="M12 11v6"></path>
-                        <path d="M9.5 14.5 12 17l2.5-2.5"></path>
-                    </svg>
-                </span>Save Draft
-            </button>
-            <button class="btn btn-secondary" type="submit" name="form_action" value="preview">
-                <span class="button-logo" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
-                        <circle cx="12" cy="12" r="2.7"></circle>
-                    </svg>
-                </span>Preview
-            </button>
-            <button class="btn btn-primary" type="submit" name="form_action" value="submit">
-                <span class="button-logo" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                        <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
-                        <path d="M10.7 14.8 21 3"></path>
-                    </svg>
-                </span>{{ submit_label|default:"Publish" }}
-            </button>
+        <div class="trip-form-bottom-actions">
+            <p class="trip-form-bottom-summary detail-meta">
+                <span class="trip-form-bottom-summary-title">Sections filled</span>
+                <span data-trip-progress-sections>0 / 0 sections</span>
+                <span data-trip-progress-percent>0%</span>
+            </p>
+            <div class="inline-actions trip-progress-actions">
+                <button class="btn btn-secondary" type="submit" name="form_action" value="save_draft">
+                    <span class="button-logo" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
+                            <path d="M12 11v6"></path>
+                            <path d="M9.5 14.5 12 17l2.5-2.5"></path>
+                        </svg>
+                    </span>
+                    Save Draft
+                </button>
+                <button class="btn btn-secondary" type="submit" name="form_action" value="preview">
+                    <span class="button-logo" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                            <circle cx="12" cy="12" r="2.7"></circle>
+                        </svg>
+                    </span>
+                    Preview
+                </button>
+                <button class="btn btn-primary" type="submit" name="form_action" value="submit">
+                    <span class="button-logo" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
+                            <path d="M10.7 14.8 21 3"></path>
+                        </svg>
+                    </span>
+                    {{ submit_label|default:"Publish" }}
+                </button>
+            </div>
         </div>
         </form>
     </div>

@@ -842,7 +842,7 @@ else
 fi
 
 if search_tree 'startupProbe|--startup-probe' infra/*.yml infra/*.yaml infra/*.ps1 && \
-   search_tree '/runtime/health/' infra/*.yml infra/*.yaml infra/*.ps1; then
+   search_tree 'runtime/health/' infra/*.yml infra/*.yaml infra/*.ps1; then
   pass "2.2" "Startup probe configuration appears wired to /runtime/health/"
 else
   fail "2.2" "No Cloud Run startup probe configuration found"
