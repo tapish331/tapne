@@ -15,82 +15,70 @@
 </section>
 
 <section class="section-grid">
+    <section
+        class="trip-progress-shell trip-top-progress"
+        data-trip-progress-shell
+        role="progressbar"
+        aria-label="Trip creation completion percentage"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+    >
+        <div class="trip-top-progress-main">
+            <div class="trip-top-progress-meta">
+                <span class="trip-top-progress-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M3 18h18"></path>
+                        <path d="m5 18 5.5-9 2.7 4.5 2-3.3 3.8 7.8"></path>
+                        <path d="M12 6h.01"></path>
+                    </svg>
+                </span>
+                <div>
+                    <p class="trip-top-progress-title">Trip Progress</p>
+                    <p class="trip-top-progress-summary">
+                        <span data-trip-progress-percent>0%</span> complete
+                        <span aria-hidden="true">•</span>
+                        <span data-trip-progress-sections>0 / 0 sections</span>
+                    </p>
+                </div>
+            </div>
+            <div class="trip-progress-actions trip-top-progress-actions">
+                <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="save_draft">
+                    <span class="button-logo" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
+                            <path d="M12 11v6"></path>
+                            <path d="M9.5 14.5 12 17l2.5-2.5"></path>
+                        </svg>
+                    </span>
+                    Save Draft
+                </button>
+                <button class="btn btn-secondary" type="submit" form="trip-creation-form" name="form_action" value="preview">
+                    <span class="button-logo" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                            <circle cx="12" cy="12" r="2.7"></circle>
+                        </svg>
+                    </span>
+                    Preview
+                </button>
+                <button class="btn btn-primary" type="submit" form="trip-creation-form" name="form_action" value="submit">
+                    <span class="button-logo" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
+                            <path d="M10.7 14.8 21 3"></path>
+                        </svg>
+                    </span>
+                    {{ submit_label|default:"Publish" }}
+                </button>
+            </div>
+        </div>
+        <div class="trip-top-progress-track" aria-hidden="true">
+            <span class="trip-top-progress-fill" data-trip-progress-linear style="width: 0%;"></span>
+        </div>
+    </section>
     <div class="trip-form-layout">
         <aside class="trip-form-index" aria-label="Trip section index">
-            <section
-                class="trip-progress-shell"
-                data-trip-progress-shell
-                role="progressbar"
-                aria-label="Trip creation completion percentage"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow="0"
-            >
-                <div class="trip-progress-meta">
-                    <p class="trip-progress-title">Trip Creation Progress</p>
-                </div>
-                <div class="trip-progress-ring-wrap">
-                    <svg class="trip-progress-ring" viewBox="0 0 120 120" aria-hidden="true">
-                        <circle class="trip-progress-ring-track" cx="60" cy="60" r="50"></circle>
-                        <circle class="trip-progress-ring-fill" cx="60" cy="60" r="50" data-trip-progress-ring></circle>
-                    </svg>
-                    <div class="trip-progress-ring-center">
-                        <span class="trip-progress-percent" data-trip-progress-percent>0%</span>
-                        <span class="trip-progress-sections" data-trip-progress-sections>0 / 0 sections</span>
-                    </div>
-                </div>
-                <div class="trip-progress-actions trip-progress-actions-icon">
-                    <button
-                        class="btn btn-secondary trip-action-btn"
-                        type="submit"
-                        form="trip-creation-form"
-                        name="form_action"
-                        value="save_draft"
-                        aria-label="Save Draft"
-                    >
-                        <span class="button-logo" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M4 7h6l2 2h8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7"></path>
-                                <path d="M12 11v6"></path>
-                                <path d="M9.5 14.5 12 17l2.5-2.5"></path>
-                            </svg>
-                        </span>
-                        <span class="trip-action-hover-label" aria-hidden="true">Save Draft</span>
-                    </button>
-                    <button
-                        class="btn btn-secondary trip-action-btn"
-                        type="submit"
-                        form="trip-creation-form"
-                        name="form_action"
-                        value="preview"
-                        aria-label="Preview"
-                    >
-                        <span class="button-logo" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
-                                <circle cx="12" cy="12" r="2.7"></circle>
-                            </svg>
-                        </span>
-                        <span class="trip-action-hover-label" aria-hidden="true">Preview</span>
-                    </button>
-                    <button
-                        class="btn btn-primary trip-action-btn"
-                        type="submit"
-                        form="trip-creation-form"
-                        name="form_action"
-                        value="submit"
-                        aria-label="{{ submit_label|default:'Publish' }}"
-                    >
-                        <span class="button-logo" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path d="m3 11.5 18-8.5-6.8 18-3.5-6.2L3 11.5z"></path>
-                                <path d="M10.7 14.8 21 3"></path>
-                            </svg>
-                        </span>
-                        <span class="trip-action-hover-label" aria-hidden="true">{{ submit_label|default:"Publish" }}</span>
-                    </button>
-                </div>
-            </section>
             <p class="trip-form-index-title">Sections</p>
             <nav class="trip-form-index-nav" data-trip-section-index></nav>
         </aside>

@@ -344,6 +344,20 @@
         });
 
         var colorGroup = createToolbarGroup();
+        function readColorToken(variableName, fallbackColor) {
+            var fallback = String(fallbackColor || "").trim();
+            try {
+                var tokenValue = window.getComputedStyle(document.documentElement).getPropertyValue(variableName);
+                var normalized = String(tokenValue || "").trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+                    return normalized;
+                }
+            } catch (_error) {
+                // Keep fallback for environments where computed styles are unavailable.
+            }
+            return fallback;
+        }
+
         function createColorTool(label, command, defaultColor) {
             var wrapper = document.createElement("label");
             wrapper.className = "rich-text-color-tool";
@@ -367,8 +381,8 @@
             colorGroup.appendChild(wrapper);
         }
 
-        createColorTool("Text", "foreColor", "#0f172a");
-        createColorTool("Highlight", "hiliteColor", "#fde68a");
+        createColorTool("Text", "foreColor", readColorToken("--rich-text-default-fore-color", "#0f172a"));
+        createColorTool("Highlight", "hiliteColor", readColorToken("--rich-text-default-hilite-color", "#fde68a"));
 
         var initialValue = String(textarea.value || "");
         if (initialValue.trim()) {
@@ -2178,24 +2192,28 @@
 
     function initTripProgress(form) {
         var layout = form.parentElement;
-        var progressShell = layout ? layout.querySelector("[data-trip-progress-shell]") : document.querySelector("[data-trip-progress-shell]");
+        var progressShell = layout ? layout.querySelector("[data-trip-progress-shell]") : null;
+        if (!progressShell) {
+            progressShell = document.querySelector("[data-trip-progress-shell]");
+        }
         if (!progressShell) {
             return;
         }
 
         var progressRing = progressShell.querySelector("[data-trip-progress-ring]");
+        var progressLinear = progressShell.querySelector("[data-trip-progress-linear]");
         var progressPercentNodes = Array.prototype.slice.call(document.querySelectorAll("[data-trip-progress-percent]"));
         var progressSectionNodes = Array.prototype.slice.call(document.querySelectorAll("[data-trip-progress-sections]"));
         var sections = Array.prototype.slice.call(form.querySelectorAll(".trip-form-section"));
-        if (!progressRing || progressPercentNodes.length === 0 || progressSectionNodes.length === 0 || sections.length === 0) {
+        if (progressPercentNodes.length === 0 || progressSectionNodes.length === 0 || sections.length === 0) {
             return;
         }
         var formMode = String(form.getAttribute("data-form-mode") || "create").trim().toLowerCase();
         var requiresUserDelta = formMode === "create";
 
-        var ringRadius = Number(progressRing.getAttribute("r") || 0);
+        var ringRadius = progressRing ? Number(progressRing.getAttribute("r") || 0) : 0;
         var ringCircumference = ringRadius > 0 ? (2 * Math.PI * ringRadius) : 0;
-        if (ringCircumference > 0) {
+        if (progressRing && ringCircumference > 0) {
             progressRing.style.strokeDasharray = String(ringCircumference) + " " + String(ringCircumference);
             progressRing.style.strokeDashoffset = String(ringCircumference);
         }
@@ -2450,8 +2468,11 @@
             var percent = Math.round((completedCount / totalCount) * 100);
             var ratio = Math.max(0, Math.min(1, percent / 100));
 
-            if (ringCircumference > 0) {
+            if (progressRing && ringCircumference > 0) {
                 progressRing.style.strokeDashoffset = String(ringCircumference * (1 - ratio));
+            }
+            if (progressLinear) {
+                progressLinear.style.width = String(percent) + "%";
             }
             progressShell.setAttribute("aria-valuenow", String(percent));
             progressPercentNodes.forEach(function eachPercentNode(node) {

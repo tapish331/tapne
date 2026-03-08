@@ -7,6 +7,42 @@
     --font-body: "Outfit", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     --font-ui: "Outfit", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+    /* Centralized typography scale tokens. */
+    --font-size-070: 0.7rem;
+    --font-size-071: 0.71rem;
+    --font-size-072: 0.72rem;
+    --font-size-076: 0.76rem;
+    --font-size-077: 0.77rem;
+    --font-size-078: 0.78rem;
+    --font-size-080: 0.8rem;
+    --font-size-082: 0.82rem;
+    --font-size-084: 0.84rem;
+    --font-size-084-code: 0.84em;
+    --font-size-085: 0.85rem;
+    --font-size-086: 0.86rem;
+    --font-size-087: 0.87rem;
+    --font-size-088: 0.88rem;
+    --font-size-089: 0.89rem;
+    --font-size-090: 0.9rem;
+    --font-size-091: 0.91rem;
+    --font-size-092: 0.92rem;
+    --font-size-093: 0.93rem;
+    --font-size-095: 0.95rem;
+    --font-size-097: 0.97rem;
+    --font-size-100: 1rem;
+    --font-size-106: 1.06rem;
+    --font-size-110: 1.1rem;
+    --font-size-112: 1.12rem;
+    --font-size-116: 1.16rem;
+    --font-size-135: 1.35rem;
+    --font-size-142: 1.42rem;
+    --font-size-160: 1.6rem;
+    --font-size-fluid-md: clamp(1.1rem, 2vw, 1.45rem);
+    --font-size-fluid-lg: clamp(1.1rem, 2.1vw, 1.45rem);
+    --font-size-fluid-xl: clamp(1.25rem, 2.7vw, 1.7rem);
+    --font-size-fluid-2xl: clamp(1.35rem, 2.9vw, 1.95rem);
+    --font-size-fluid-3xl: clamp(1.45rem, 2.6vw, 2.2rem);
+    --font-size-fluid-hero: clamp(1.9rem, 3.3vw, 2.8rem);
 
     --radius-xs: 0.45rem;
     --radius-sm: 0.7rem;
@@ -38,6 +74,7 @@
     --danger: #b44436;
     --danger-rgb: 180, 68, 54;
     --support-rgb: 87, 170, 163;
+    --support: rgb(var(--support-rgb));
 
     /* Status and component semantic tokens. */
     --flash-error-bg: rgba(var(--danger-rgb), 0.1);
@@ -62,6 +99,11 @@
     --text-2: #284760;
     --text-3: #506983;
     --text-inverse: #f5f9ff;
+    --rich-text-default-fore-color: #0f172a;
+    --rich-text-default-hilite-color: #fde68a;
+    --text-on-media-strong: #fff;
+    --text-on-media-soft: rgba(255, 255, 255, 0.93);
+    --text-muted-contrast: color-mix(in srgb, var(--text-3) 75%, var(--line-strong));
     --overlay: rgba(8, 15, 24, 0.66);
     --hero-glow-a: rgba(105, 184, 178, 0.2);
     --hero-glow-b: rgba(163, 220, 215, 0.2);
@@ -88,6 +130,8 @@ html[data-theme="dark"] {
     --text-2: #c2d5e8;
     --text-3: #93aeca;
     --text-inverse: #091421;
+    --rich-text-default-fore-color: #e6f1ff;
+    --rich-text-default-hilite-color: #8a6b00;
     --overlay: rgba(4, 8, 12, 0.78);
     --hero-glow-a: rgba(var(--accent-rgb), 0.3);
     --hero-glow-b: rgba(var(--accent-rgb), 0.24);
@@ -183,7 +227,7 @@ code {
     border-radius: var(--radius-xs);
     color: var(--text-2);
     font-family: var(--font-mono);
-    font-size: 0.84em;
+    font-size: var(--font-size-084-code);
     padding: 0.1em 0.35em;
 }
 
@@ -224,7 +268,7 @@ code {
 .brand {
     color: var(--text-1);
     font-family: var(--font-display);
-    font-size: 1.42rem;
+    font-size: var(--font-size-142);
     font-weight: 800;
     letter-spacing: 0.06em;
     text-decoration: none;
@@ -244,7 +288,7 @@ code {
     border-radius: var(--radius-pill);
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.88rem;
+    font-size: var(--font-size-088);
     font-weight: 600;
     letter-spacing: 0.01em;
     padding: 0.4rem 0.8rem;
@@ -390,7 +434,7 @@ code {
     border-radius: var(--radius-sm);
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.86rem;
+    font-size: var(--font-size-086);
     font-weight: 600;
     padding: 0.45rem 0.62rem;
     text-decoration: none;
@@ -457,7 +501,7 @@ code {
     display: flex;
     flex-wrap: wrap;
     font-family: var(--font-ui);
-    font-size: 0.82rem;
+    font-size: var(--font-size-082);
     gap: 0.4rem;
     list-style: none;
     margin: 0;
@@ -502,7 +546,7 @@ code {
     display: flex;
     flex-wrap: wrap;
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: var(--font-size-090);
     gap: 0.55rem 1rem;
     justify-content: space-between;
 }
@@ -510,7 +554,7 @@ code {
 .footer-brand {
     color: var(--text-1);
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: var(--font-size-100);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: lowercase;
@@ -526,7 +570,7 @@ code {
 .footer-links a {
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.86rem;
+    font-size: var(--font-size-086);
     text-decoration: none;
 }
 
@@ -549,7 +593,7 @@ code {
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-soft);
     font-family: var(--font-ui);
-    font-size: 0.91rem;
+    font-size: var(--font-size-091);
     line-height: 1.45;
     padding: 0.72rem 0.88rem;
 }
@@ -687,7 +731,7 @@ code {
 .home-hero-stat-value {
     color: var(--text-1);
     font-family: var(--font-ui);
-    font-size: clamp(1.25rem, 2.7vw, 1.7rem);
+    font-size: var(--font-size-fluid-xl);
     font-weight: 800;
     line-height: 1.1;
 }
@@ -695,7 +739,7 @@ code {
 .home-hero-stat-label {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.8rem;
+    font-size: var(--font-size-080);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -743,13 +787,13 @@ code {
 }
 
 .hero h1 {
-    font-size: clamp(1.9rem, 3.3vw, 2.8rem);
+    font-size: var(--font-size-fluid-hero);
     margin: 0.4rem 0 0.72rem;
 }
 
 .hero p {
     color: var(--text-2);
-    font-size: 1rem;
+    font-size: var(--font-size-100);
     max-width: 74ch;
 }
 
@@ -769,7 +813,7 @@ code {
 .eyebrow {
     color: var(--accent-ink);
     font-family: var(--font-ui);
-    font-size: 0.76rem;
+    font-size: var(--font-size-076);
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
@@ -789,7 +833,7 @@ code {
 }
 
 .section-header h2 {
-    font-size: clamp(1.1rem, 2.1vw, 1.45rem);
+    font-size: var(--font-size-fluid-lg);
 }
 
 .card-grid {
@@ -992,16 +1036,16 @@ code {
 }
 
 .destination-card-title {
-    color: #fff;
-    font-size: clamp(1.35rem, 2.9vw, 1.95rem);
+    color: var(--text-on-media-strong);
+    font-size: var(--font-size-fluid-2xl);
     line-height: 1.06;
     text-shadow: 0 3px 16px rgba(0, 0, 0, 0.48);
 }
 
 .destination-card-count {
-    color: rgba(255, 255, 255, 0.93);
+    color: var(--text-on-media-soft);
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: var(--font-size-090);
     font-weight: 700;
     line-height: 1.2;
     text-shadow: 0 2px 14px rgba(0, 0, 0, 0.42);
@@ -1069,7 +1113,7 @@ code {
     box-shadow: 0 8px 18px rgba(var(--accent-rgb), 0.3);
     color: var(--text-inverse);
     font-family: var(--font-ui);
-    font-size: 0.72rem;
+    font-size: var(--font-size-072);
     font-weight: 700;
     left: 0.72rem;
     letter-spacing: 0.04em;
@@ -1163,7 +1207,7 @@ code {
 }
 
 .trip-card-home-title {
-    font-size: 1.12rem;
+    font-size: var(--font-size-112);
     transition: color var(--ease-standard);
 }
 
@@ -1189,14 +1233,14 @@ code {
 
 .trip-card-home-text {
     font-family: var(--font-ui);
-    font-size: 0.89rem;
+    font-size: var(--font-size-089);
     overflow-wrap: anywhere;
 }
 
 .trip-card-home-description {
     color: var(--text-2);
     font-family: var(--font-body);
-    font-size: 0.86rem;
+    font-size: var(--font-size-086);
     line-height: 1.42;
     margin: -0.1rem 0 0.12rem;
     overflow-wrap: anywhere;
@@ -1205,7 +1249,7 @@ code {
 .trip-card-home-read-more {
     color: var(--accent-ink);
     font-family: var(--font-ui);
-    font-size: 0.82rem;
+    font-size: var(--font-size-082);
     font-weight: 700;
     margin-left: 0.24rem;
     white-space: nowrap;
@@ -1218,7 +1262,7 @@ code {
 .trip-card-home-right {
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.85rem;
+    font-size: var(--font-size-085);
     font-weight: 600;
     text-align: right;
     white-space: nowrap;
@@ -1259,7 +1303,7 @@ code {
 .trip-card-host-name {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.85rem;
+    font-size: var(--font-size-085);
     font-weight: 600;
 }
 
@@ -1282,14 +1326,14 @@ code {
 .card-kicker {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.72rem;
+    font-size: var(--font-size-072);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
 .card-title {
-    font-size: 1.12rem;
+    font-size: var(--font-size-112);
     overflow-wrap: anywhere;
 }
 
@@ -1301,13 +1345,13 @@ code {
 .card-subtitle {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.87rem;
+    font-size: var(--font-size-087);
     overflow-wrap: anywhere;
 }
 
 .card-description {
     color: var(--text-2);
-    font-size: 0.97rem;
+    font-size: var(--font-size-097);
     line-height: 1.5;
     overflow-wrap: anywhere;
 }
@@ -1331,7 +1375,7 @@ code {
 .card-meta-grid dt {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.71rem;
+    font-size: var(--font-size-071);
     font-weight: 700;
     letter-spacing: 0.05em;
     margin: 0 0 0.15rem;
@@ -1341,7 +1385,7 @@ code {
 .card-meta-grid dd {
     color: var(--text-1);
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: var(--font-size-090);
     margin: 0;
     overflow-wrap: anywhere;
 }
@@ -1361,7 +1405,7 @@ code {
     cursor: pointer;
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.84rem;
+    font-size: var(--font-size-084);
     font-weight: 700;
     gap: 0.32rem;
     justify-content: center;
@@ -1423,7 +1467,7 @@ code {
     background: transparent;
     border-color: transparent;
     color: var(--text-2);
-    font-size: 1.1rem;
+    font-size: var(--font-size-110);
     justify-content: center;
     line-height: 1;
     min-height: 2.08rem;
@@ -1453,7 +1497,7 @@ code {
     cursor: pointer;
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.82rem;
+    font-size: var(--font-size-082);
     font-weight: 700;
     height: 2rem;
     justify-content: center;
@@ -1478,7 +1522,7 @@ code {
 }
 
 .detail-shell h1 {
-    font-size: clamp(1.45rem, 2.6vw, 2.2rem);
+    font-size: var(--font-size-fluid-3xl);
 }
 
 .trip-detail-banner {
@@ -1491,7 +1535,7 @@ code {
 }
 
 .detail-shell h2 {
-    font-size: clamp(1.1rem, 2vw, 1.45rem);
+    font-size: var(--font-size-fluid-md);
 }
 
 .trip-rich-description {
@@ -1510,7 +1554,7 @@ code {
 .detail-meta {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: var(--font-size-090);
 }
 
 .prose {
@@ -1579,7 +1623,7 @@ code {
 .trip-progress-title {
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1632,7 +1676,7 @@ code {
 .trip-progress-percent {
     color: var(--accent-ink);
     font-family: var(--font-display);
-    font-size: 1.6rem;
+    font-size: var(--font-size-160);
     font-weight: 900;
     letter-spacing: -0.02em;
     line-height: 1;
@@ -1641,7 +1685,7 @@ code {
 .trip-progress-sections {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.76rem;
+    font-size: var(--font-size-076);
     font-weight: 800;
 }
 
@@ -1675,7 +1719,7 @@ code {
 .trip-form-index-title {
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.84rem;
+    font-size: var(--font-size-084);
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1697,7 +1741,7 @@ code {
     align-items: center;
     gap: 0.5rem;
     font-family: var(--font-ui);
-    font-size: 0.84rem;
+    font-size: var(--font-size-084);
     font-weight: 700;
     line-height: 1.35;
     padding: 0.35rem 0.48rem;
@@ -1717,7 +1761,7 @@ code {
     display: inline-flex;
     flex: 0 0 auto;
     font-family: var(--font-ui);
-    font-size: 0.76rem;
+    font-size: var(--font-size-076);
     font-weight: 700;
     justify-content: center;
     line-height: 1;
@@ -1738,7 +1782,7 @@ code {
 
 .trip-form-index-check {
     align-items: center;
-    color: color-mix(in srgb, var(--text-3) 75%, var(--line-strong));
+    color: var(--text-muted-contrast);
     display: inline-flex;
     flex: 0 0 auto;
     height: 1rem;
@@ -1804,7 +1848,7 @@ code {
     box-shadow: var(--shadow-soft);
     color: var(--surface-1);
     font-family: var(--font-ui);
-    font-size: 0.72rem;
+    font-size: var(--font-size-072);
     font-weight: 700;
     left: 50%;
     opacity: 0;
@@ -1852,7 +1896,7 @@ code {
 .trip-form-bottom-summary-title {
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
     font-weight: 800;
     text-transform: uppercase;
 }
@@ -1911,7 +1955,7 @@ code {
     align-self: start;
     color: var(--accent-ink);
     font-family: var(--font-ui);
-    font-size: 1.6rem;
+    font-size: var(--font-size-160);
     font-weight: 800;
     grid-column: 2;
     grid-row: 1 / span 3;
@@ -1929,7 +1973,7 @@ code {
     color: var(--text-1);
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.86rem;
+    font-size: var(--font-size-086);
     font-weight: 700;
     height: 1.55rem;
     justify-content: center;
@@ -1956,7 +2000,7 @@ code {
     border-radius: 0.32rem;
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.8rem;
+    font-size: var(--font-size-080);
     font-weight: 700;
     justify-content: center;
     line-height: 1;
@@ -2028,14 +2072,14 @@ code {
 
 .trip-destination-prediction-main {
     font-family: var(--font-ui);
-    font-size: 0.88rem;
+    font-size: var(--font-size-088);
     font-weight: 700;
 }
 
 .trip-destination-prediction-secondary {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
 }
 
 .trip-destination-actions {
@@ -2215,7 +2259,7 @@ code {
     cursor: grab;
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.88rem;
+    font-size: var(--font-size-088);
     font-weight: 800;
     justify-content: center;
     letter-spacing: -0.05em;
@@ -2244,7 +2288,7 @@ code {
     color: var(--text-3);
     cursor: pointer;
     display: inline-flex;
-    font-size: 1.06rem;
+    font-size: var(--font-size-106);
     font-weight: 800;
     height: 1.55rem;
     justify-content: center;
@@ -2277,14 +2321,14 @@ code {
 .dynamic-day-seq {
     color: var(--text-1);
     font-family: var(--font-ui);
-    font-size: 0.84rem;
+    font-size: var(--font-size-084);
     font-weight: 700;
 }
 
 .dynamic-day-date {
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
     font-weight: 600;
     text-align: right;
 }
@@ -2322,7 +2366,7 @@ code {
     color: var(--accent-ink);
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
     font-weight: 700;
     gap: 0.18rem;
     line-height: 1;
@@ -2343,7 +2387,7 @@ code {
     color: currentColor;
     cursor: pointer;
     display: inline-flex;
-    font-size: 0.95rem;
+    font-size: var(--font-size-095);
     font-weight: 800;
     height: 1.1rem;
     justify-content: center;
@@ -2363,7 +2407,7 @@ code {
     color: var(--text-1);
     flex: 1 1 12rem;
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: var(--font-size-090);
     min-height: 1.8rem;
     min-width: 8rem;
     outline: none;
@@ -2394,7 +2438,7 @@ code {
     align-items: center;
     display: inline-flex;
     gap: 0.42rem;
-    font-size: 0.82rem;
+    font-size: var(--font-size-082);
     font-weight: 600;
 }
 
@@ -2473,7 +2517,7 @@ code {
     cursor: pointer;
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.72rem;
+    font-size: var(--font-size-072);
     font-weight: 800;
     justify-content: center;
     line-height: 1;
@@ -2516,7 +2560,7 @@ code {
     color: var(--text-2);
     display: inline-flex;
     font-family: var(--font-ui);
-    font-size: 0.7rem;
+    font-size: var(--font-size-070);
     font-weight: 800;
     gap: 0.24rem;
     line-height: 1;
@@ -2544,7 +2588,7 @@ code {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 25%);
     color: var(--text-1);
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: var(--font-size-095);
     line-height: 1.6;
     min-height: 9.5rem;
     overflow-wrap: anywhere;
@@ -2553,7 +2597,7 @@ code {
 
 .rich-text-editor h2 {
     font-family: var(--font-display);
-    font-size: 1.16rem;
+    font-size: var(--font-size-116);
     margin: 0 0 0.38rem;
 }
 
@@ -2617,7 +2661,7 @@ code {
     border-radius: var(--radius-pill);
     color: var(--accent-ink);
     font-family: var(--font-ui);
-    font-size: 0.8rem;
+    font-size: var(--font-size-080);
     font-weight: 800;
     line-height: 1;
     padding: 0.34rem 0.62rem;
@@ -2719,14 +2763,14 @@ code {
 .age-pref-slider-value span {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
     font-weight: 700;
 }
 
 .age-pref-slider-value strong {
     color: var(--text-1);
     font-family: var(--font-ui);
-    font-size: 0.86rem;
+    font-size: var(--font-size-086);
     font-weight: 800;
 }
 
@@ -2815,14 +2859,14 @@ code {
 
 .media-dropzone-placeholder strong {
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: var(--font-size-090);
     font-weight: 700;
 }
 
 .media-dropzone-placeholder span {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
     font-weight: 600;
 }
 
@@ -2886,7 +2930,7 @@ code {
 .media-gallery-placeholder {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.77rem;
+    font-size: var(--font-size-077);
     font-weight: 600;
     line-height: 1.35;
     text-align: center;
@@ -2895,7 +2939,7 @@ code {
 label {
     color: var(--text-2);
     font-family: var(--font-ui);
-    font-size: 0.84rem;
+    font-size: var(--font-size-084);
     font-weight: 700;
     letter-spacing: 0.01em;
 }
@@ -2925,7 +2969,7 @@ label {
     border-radius: var(--radius-xs);
     color: var(--text-1);
     font-family: var(--font-ui);
-    font-size: 0.92rem;
+    font-size: var(--font-size-092);
     line-height: 1.4;
     min-height: 2.4rem;
     padding: 0.5rem 0.58rem;
@@ -2960,7 +3004,7 @@ input[type="radio"] {
 .form-help {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.78rem;
+    font-size: var(--font-size-078);
 }
 
 .form-help ul {
@@ -2974,7 +3018,7 @@ input[type="radio"] {
     border-radius: var(--radius-xs);
     color: var(--danger);
     font-family: var(--font-ui);
-    font-size: 0.8rem;
+    font-size: var(--font-size-080);
     line-height: 1.4;
     margin: 0;
     padding: 0.42rem 0.55rem;
@@ -2987,7 +3031,7 @@ input[type="radio"] {
 .muted-inline {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: var(--font-size-090);
     font-weight: 500;
 }
 
@@ -2995,7 +3039,7 @@ input[type="radio"] {
 .profile-demo-note {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.85rem;
+    font-size: var(--font-size-085);
 }
 
 .empty-state {
@@ -3004,7 +3048,7 @@ input[type="radio"] {
     border-radius: var(--radius-md);
     color: var(--accent-ink);
     font-family: var(--font-ui);
-    font-size: 0.93rem;
+    font-size: var(--font-size-093);
     line-height: 1.45;
     padding: 0.95rem 1rem;
 }
@@ -3083,7 +3127,7 @@ html[data-theme="dark"] .empty-state {
     border-radius: var(--radius-pill);
     color: var(--accent-ink);
     font-family: var(--font-ui);
-    font-size: 0.71rem;
+    font-size: var(--font-size-071);
     font-weight: 700;
     line-height: 1;
     padding: 0.28rem 0.54rem;
@@ -3128,7 +3172,7 @@ html[data-theme="dark"] .empty-state {
 }
 
 .modal-header h2 {
-    font-size: 1.35rem;
+    font-size: var(--font-size-135);
 }
 
 .modal-body {
@@ -3151,7 +3195,7 @@ html[data-theme="dark"] .empty-state {
     border-radius: var(--radius-xs);
     color: var(--auth-note-text);
     font-family: var(--font-ui);
-    font-size: 0.84rem;
+    font-size: var(--font-size-084);
     line-height: 1.4;
     padding: 0.5rem 0.58rem;
 }
@@ -3164,7 +3208,7 @@ html[data-theme="dark"] .empty-state {
 .auth-modal-switch-line {
     color: var(--text-3);
     font-family: var(--font-ui);
-    font-size: 0.84rem;
+    font-size: var(--font-size-084);
 }
 
 .text-link-button {
@@ -3214,6 +3258,347 @@ body.modal-open {
     animation-delay: 60ms;
 }
 
+/* Lovable-inspired trip form skin */
+.trip-form-hero {
+    margin-bottom: 0.8rem;
+    padding: 0.1rem 0 0.2rem;
+}
+
+.trip-form-hero::before {
+    display: none;
+}
+
+.trip-form-hero h1 {
+    font-size: clamp(1.8rem, 2.35vw, 2.7rem);
+    margin: 0;
+}
+
+.trip-form-hero p {
+    color: var(--text-3);
+    margin-top: 0.38rem;
+    max-width: 62ch;
+}
+
+.trip-progress-shell {
+    background: color-mix(in srgb, var(--surface-1) 94%, white);
+    border: 1px solid color-mix(in srgb, var(--line) 82%, rgba(var(--accent-rgb), 0.22));
+    border-radius: calc(var(--radius-sm) + 0.05rem);
+    box-shadow: var(--shadow-soft);
+}
+
+.trip-top-progress {
+    backdrop-filter: blur(10px);
+    display: grid;
+    gap: 0.62rem;
+    margin-bottom: 1rem;
+    padding: 0.72rem 0.85rem 0.82rem;
+    position: sticky;
+    top: var(--trip-progress-top, 5.4rem);
+    z-index: 26;
+}
+
+.trip-top-progress-main {
+    align-items: center;
+    display: flex;
+    gap: 0.8rem;
+    justify-content: space-between;
+}
+
+.trip-top-progress-meta {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.62rem;
+    min-width: 0;
+}
+
+.trip-top-progress-icon {
+    align-items: center;
+    background: var(--accent-soft);
+    border: 1px solid rgba(var(--accent-rgb), 0.34);
+    border-radius: 0.58rem;
+    color: var(--accent-ink);
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+}
+
+.trip-top-progress-icon svg {
+    fill: none;
+    height: 1rem;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.9;
+    width: 1rem;
+}
+
+.trip-top-progress-title {
+    color: var(--text-1);
+    font-family: var(--font-ui);
+    font-size: var(--font-size-088);
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    margin: 0;
+}
+
+.trip-top-progress-summary {
+    color: var(--text-3);
+    font-family: var(--font-ui);
+    font-size: var(--font-size-078);
+    margin: 0.12rem 0 0;
+}
+
+.trip-top-progress-summary [data-trip-progress-percent] {
+    color: var(--text-1);
+    font-weight: 800;
+}
+
+.trip-top-progress-actions {
+    justify-content: flex-end;
+}
+
+.trip-top-progress-actions .btn {
+    min-height: 2.2rem;
+    padding: 0.42rem 0.7rem;
+}
+
+.trip-top-progress-track {
+    background: color-mix(in srgb, var(--line) 75%, transparent);
+    border-radius: var(--radius-pill);
+    height: 0.38rem;
+    overflow: hidden;
+    width: 100%;
+}
+
+.trip-top-progress-fill {
+    background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+    border-radius: inherit;
+    display: block;
+    height: 100%;
+    transition: width var(--ease-float);
+    width: 0;
+}
+
+.trip-form-layout {
+    gap: 1.15rem;
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+}
+
+.trip-form-index {
+    border-radius: calc(var(--radius-sm) + 0.05rem);
+    gap: 0.5rem;
+    padding: 0.7rem;
+    top: calc(var(--trip-progress-top, 5.4rem) + 5.7rem);
+}
+
+.trip-form-index-title {
+    color: var(--text-2);
+    font-size: var(--font-size-082);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    margin: 0.08rem 0 0.08rem;
+}
+
+.trip-form-index-link {
+    border-radius: 0.62rem;
+    font-size: var(--font-size-084);
+    gap: 0.45rem;
+    padding: 0.44rem 0.5rem;
+}
+
+.trip-form-index-link:hover {
+    transform: translateX(0);
+}
+
+.trip-form-index-link.is-active {
+    background: var(--accent-soft);
+    border-color: rgba(var(--accent-rgb), 0.4);
+    color: var(--accent-ink);
+}
+
+.trip-form-index-logo {
+    background: var(--surface-2);
+    border-color: color-mix(in srgb, var(--line) 78%, rgba(var(--accent-rgb), 0.28));
+    border-radius: 0.5rem;
+    color: var(--text-2);
+    min-height: 1.58rem;
+    min-width: 1.58rem;
+}
+
+.trip-creation-form {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    gap: 0.95rem;
+    padding: 0;
+}
+
+.trip-form-section {
+    background: var(--surface-1);
+    border-color: color-mix(in srgb, var(--line) 80%, rgba(var(--accent-rgb), 0.22));
+    border-radius: calc(var(--radius-sm) + 0.06rem);
+    box-shadow: var(--shadow-soft);
+    gap: 0.88rem;
+    padding: 0.9rem 0.95rem 0.98rem;
+}
+
+.trip-form-section-header {
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+    border-radius: 0.65rem;
+    padding: 0.08rem 0.14rem 0.72rem;
+}
+
+.trip-form-section-header.is-collapsible:hover {
+    background: transparent;
+}
+
+.trip-form-section.is-collapsed .trip-form-section-header {
+    border-bottom: 0;
+    padding-bottom: 0.12rem;
+}
+
+.trip-form-section-header h2 {
+    font-size: var(--font-size-fluid-md);
+    gap: 0.52rem;
+    margin: 0;
+}
+
+.trip-form-section-header h2 .section-logo {
+    align-items: center;
+    background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--line) 82%, rgba(var(--accent-rgb), 0.26));
+    border-radius: 0.58rem;
+    color: var(--text-2);
+    display: inline-flex;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+}
+
+.trip-form-section-header h2 .section-logo svg {
+    fill: none;
+    height: 0.95rem;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.9;
+    width: 0.95rem;
+}
+
+.trip-form-section[data-section-required="true"] .trip-form-section-header h2::after {
+    background: color-mix(in srgb, rgba(var(--danger-rgb), 0.15) 90%, var(--surface-1));
+    border: 1px solid rgba(var(--danger-rgb), 0.32);
+    border-radius: var(--radius-pill);
+    color: var(--danger);
+    content: "Required";
+    font-family: var(--font-ui);
+    font-size: var(--font-size-070);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    margin-left: 0.25rem;
+    padding: 0.26rem 0.44rem;
+    text-transform: uppercase;
+}
+
+.trip-form-section-header p {
+    color: var(--text-3);
+    margin-top: 0.18rem;
+}
+
+.trip-section-notation {
+    align-items: center;
+    background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--line) 82%, rgba(var(--accent-rgb), 0.22));
+    border-radius: 0.45rem;
+    color: var(--text-3);
+    display: inline-flex;
+    font-size: 0.92rem;
+    height: 1.58rem;
+    justify-content: center;
+    margin-top: 0.06rem;
+    width: 1.58rem;
+}
+
+.trip-form-grid {
+    gap: 0.82rem;
+}
+
+.form-field {
+    gap: 0.42rem;
+}
+
+.trip-creation-form label {
+    color: var(--text-2);
+    font-size: var(--font-size-084);
+    font-weight: 700;
+}
+
+.trip-creation-form input:not([type="checkbox"]):not([type="radio"]),
+.trip-creation-form select,
+.trip-creation-form textarea,
+.trip-creation-form .form-input {
+    background: color-mix(in srgb, var(--surface-1) 96%, white);
+    border: 1px solid color-mix(in srgb, var(--line) 80%, rgba(var(--accent-rgb), 0.2));
+    border-radius: calc(var(--radius-xs) + 0.1rem);
+    min-height: 2.55rem;
+    padding: 0.56rem 0.68rem;
+}
+
+.trip-creation-form textarea {
+    min-height: 6.6rem;
+}
+
+.trip-creation-form input:not([type="checkbox"]):not([type="radio"]):focus,
+.trip-creation-form select:focus,
+.trip-creation-form textarea:focus {
+    border-color: rgba(var(--accent-rgb), 0.62);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.12);
+    outline: none;
+}
+
+.trip-creation-form .dynamic-list-row,
+.trip-creation-form .dynamic-day-row,
+.trip-creation-form .dynamic-faq-row {
+    background: color-mix(in srgb, var(--surface-1) 95%, white);
+    border-color: color-mix(in srgb, var(--line) 82%, rgba(var(--accent-rgb), 0.18));
+    border-radius: calc(var(--radius-xs) + 0.08rem);
+}
+
+.trip-creation-form .choice-limit-group {
+    background: color-mix(in srgb, var(--surface-1) 95%, white);
+    border-radius: calc(var(--radius-xs) + 0.08rem);
+    gap: 0.44rem;
+    padding: 0.62rem 0.7rem;
+}
+
+.trip-creation-form .choice-limit-group label {
+    background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--line) 78%, rgba(var(--accent-rgb), 0.2));
+    border-radius: var(--radius-pill);
+    font-size: var(--font-size-078);
+    gap: 0.36rem;
+    padding: 0.28rem 0.5rem;
+}
+
+.trip-form-bottom-actions {
+    background: var(--surface-1);
+    border: 1px solid color-mix(in srgb, var(--line) 82%, rgba(var(--accent-rgb), 0.22));
+    border-radius: calc(var(--radius-sm) + 0.05rem);
+    box-shadow: var(--shadow-soft);
+    margin-top: 0.08rem;
+    padding: 0.8rem 0.9rem;
+}
+
+.trip-form-bottom-summary {
+    background: transparent;
+    border: 0;
+    color: var(--text-3);
+    padding: 0;
+}
+
 @keyframes tapne-rise-in {
     from {
         opacity: 0;
@@ -3232,12 +3617,27 @@ body.modal-open {
 }
 
 @media (max-width: 1020px) {
+    .trip-top-progress {
+        position: static;
+    }
+
+    .trip-top-progress-main {
+        align-items: start;
+        flex-direction: column;
+    }
+
+    .trip-top-progress-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
     .trip-form-layout {
         grid-template-columns: 1fr;
     }
 
     .trip-form-index {
         position: static;
+        top: auto;
     }
 
     .trip-form-index-nav {
@@ -3288,6 +3688,14 @@ body.modal-open {
 }
 
 @media (max-width: 760px) {
+    .trip-top-progress {
+        padding: 0.66rem 0.72rem 0.74rem;
+    }
+
+    .trip-top-progress-actions .btn {
+        flex: 1 1 calc(50% - 0.22rem);
+    }
+
     .container {
         padding: 0 0.85rem;
     }
@@ -3432,3 +3840,4 @@ body.modal-open {
         transition: none !important;
     }
 }
+
