@@ -74,6 +74,7 @@
         })();
     </script>
     <link rel="stylesheet" href="{% static 'css/tapne.css' %}">
+    <link rel="stylesheet" href="{% static 'css/lovable-parity.css' %}">
     <script>
         // Frontend runtime flags shared with static JS helpers.
         window.TAPNE_RUNTIME = {
@@ -88,103 +89,139 @@
     <script src="{% static 'js/tapne-ui.js' %}" defer></script>
     {% block head_extra %}{% endblock %}
 </head>
-<body>
-    <header class="site-header">
-        <div class="container header-inner">
-            <a class="brand" href="/">tapne</a>
-            {% with nav_search_type=request.GET.type|default:"all" nav_search_query=request.GET.q|default:"" %}
-            {% if request.path == "/" or request.path == "/search/" %}
-            <div class="header-search-slot" data-navbar-search-slot data-navbar-search-dock-only="true"></div>
-            {% else %}
-            <div class="header-search-slot" data-navbar-search-slot>
-                <form class="search-form header-search-form" method="get" action="/search/">
-                    <label class="sr-only" for="navSearchType">Search type</label>
-                    <select id="navSearchType" name="type">
-                        <option value="all" {% if nav_search_type == "all" %}selected{% endif %}>All</option>
-                        <option value="trips" {% if nav_search_type == "trips" %}selected{% endif %}>Trips</option>
-                        <option value="users" {% if nav_search_type == "users" %}selected{% endif %}>Users</option>
-                        <option value="blogs" {% if nav_search_type == "blogs" %}selected{% endif %}>Blogs</option>
-                    </select>
-                    <label class="sr-only" for="navSearchQuery">Search query</label>
-                    <input
-                        id="navSearchQuery"
-                        name="q"
-                        type="search"
-                        placeholder="Search trips, users, blogs..."
-                        value="{{ nav_search_query }}"
-                    >
-                    <button class="btn btn-primary" type="submit">Search</button>
-                </form>
-            </div>
-            {% endif %}
-            {% endwith %}
-            <nav class="site-nav" aria-label="Primary navigation">
-                <a href="/trips/">Trips</a>
-                <a href="/blogs/">Blogs</a>
-            </nav>
-            <div class="header-tools">
-                <div class="theme-controls header-theme-controls" role="group" aria-label="Appearance controls">
-                    <button
-                        id="themeToggle"
-                        class="btn btn-theme-toggle"
-                        type="button"
-                        aria-label="Switch to dark mode"
-                        title="Switch to dark mode"
-                    >
-                        &#127769;
-                    </button>
+<body class="{% block body_class %}{% endblock %}">
+    <header class="site-header lv-navbar-shell">
+        <div class="container lv-navbar-root">
+            <div class="header-inner lv-navbar">
+                <a class="brand lv-navbar-brand" href="/">Tapne</a>
+
+                <nav class="site-nav lv-navbar-links" aria-label="Primary navigation">
+                    <a href="/trips/">Trips</a>
+                    <a href="/blogs/">Blogs</a>
+                </nav>
+
+                {% with nav_search_type=request.GET.type|default:"all" nav_search_query=request.GET.q|default:"" %}
+                {% if request.path == "/" or request.path == "/search/" %}
+                <div class="header-search-slot lv-navbar-search-slot" data-navbar-search-slot data-navbar-search-dock-only="true"></div>
+                {% else %}
+                <div class="header-search-slot lv-navbar-search-slot" data-navbar-search-slot>
+                    <form class="search-form header-search-form lv-navbar-search" method="get" action="/search/">
+                        <label class="sr-only" for="navSearchType">Search type</label>
+                        <select id="navSearchType" name="type">
+                            <option value="all" {% if nav_search_type == "all" %}selected{% endif %}>All</option>
+                            <option value="trips" {% if nav_search_type == "trips" %}selected{% endif %}>Trips</option>
+                            <option value="users" {% if nav_search_type == "users" %}selected{% endif %}>Users</option>
+                            <option value="blogs" {% if nav_search_type == "blogs" %}selected{% endif %}>Blogs</option>
+                        </select>
+                        <label class="sr-only" for="navSearchQuery">Search query</label>
+                        <input
+                            id="navSearchQuery"
+                            name="q"
+                            type="search"
+                            placeholder="Search trips, users, blogs..."
+                            value="{{ nav_search_query }}"
+                        >
+                        <button class="btn btn-primary" type="submit">Search</button>
+                    </form>
                 </div>
-                {% if user.is_authenticated %}
-                <div class="member-menu" data-member-menu>
-                    <button
-                        class="btn btn-secondary member-menu-toggle"
-                        type="button"
-                        data-member-menu-toggle
-                        aria-expanded="false"
-                        aria-haspopup="true"
-                        aria-controls="memberMenuPanel"
-                        aria-label="Open member menu"
-                    >
-                        <span class="member-menu-icon" aria-hidden="true">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </span>
-                    </button>
-                    <div
-                        id="memberMenuPanel"
-                        class="member-menu-panel"
-                        data-member-menu-panel
-                        hidden
-                    >
-                        <nav class="member-menu-links" aria-label="Member navigation">
-                            <a href="/trips/create/">Create Trip</a>
-                            <a href="/interactions/dm/">Messages</a>
-                            <a href="/enroll/hosting/inbox/">Hosting Inbox</a>
-                            <a href="/social/bookmarks/">Bookmarks</a>
-                            <a href="/activity/">Activity</a>
-                            <a href="/settings/">Settings</a>
-                        </nav>
-                        <div class="member-menu-actions">
-                            <a class="btn btn-secondary" href="/accounts/me/">My Profile</a>
-                            <form method="post" action="/accounts/logout/" class="inline-form">
-                                {% csrf_token %}
-                                <button class="btn btn-ghost" type="submit">Log out</button>
-                            </form>
+                {% endif %}
+                {% endwith %}
+
+                <div class="header-tools lv-navbar-tools">
+                    <div class="theme-controls header-theme-controls" role="group" aria-label="Appearance controls">
+                        <button
+                            id="themeToggle"
+                            class="btn btn-theme-toggle"
+                            type="button"
+                            aria-label="Switch to dark mode"
+                            title="Switch to dark mode"
+                        >
+                            &#127769;
+                        </button>
+                    </div>
+
+                    {% if user.is_authenticated %}
+                    <a class="btn btn-ghost lv-navbar-icon-link" href="/activity/" aria-label="Notifications" title="Notifications">
+                        &#128276;
+                    </a>
+                    <div class="member-menu" data-member-menu>
+                        <button
+                            class="btn btn-secondary member-menu-toggle lv-member-avatar-btn"
+                            type="button"
+                            data-member-menu-toggle
+                            aria-expanded="false"
+                            aria-haspopup="true"
+                            aria-controls="memberMenuPanel"
+                            aria-label="Open member menu"
+                        >
+                            <span class="lv-member-avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
+                        </button>
+                        <div
+                            id="memberMenuPanel"
+                            class="member-menu-panel lv-member-menu-panel"
+                            data-member-menu-panel
+                            hidden
+                        >
+                            <nav class="member-menu-links" aria-label="Member navigation">
+                                <a href="/accounts/me/">My Profile</a>
+                                <a href="/interactions/dm/">Inbox</a>
+                                <a href="/social/bookmarks/">Bookmarks</a>
+                                <a href="/settings/">Settings</a>
+                                <a href="/trips/create/">Create Trip</a>
+                                <a href="/enroll/hosting/inbox/">Hosting Inbox</a>
+                            </nav>
+                            <div class="member-menu-actions">
+                                <form method="post" action="/accounts/logout/" class="inline-form">
+                                    {% csrf_token %}
+                                    <button class="btn btn-ghost" type="submit">Log out</button>
+                                </form>
+                            </div>
                         </div>
                     </div>
+                    {% else %}
+                    <div class="auth-links lv-navbar-auth-desktop">
+                        <button class="btn btn-primary" type="button" data-modal-open="auth" data-auth-mode="login">Login</button>
+                    </div>
+                    {% endif %}
+
+                    <button
+                        class="btn btn-ghost lv-mobile-toggle"
+                        type="button"
+                        data-lv-mobile-toggle
+                        aria-expanded="false"
+                        aria-controls="lvMobileMenu"
+                        aria-label="Toggle mobile menu"
+                    >
+                        &#9776;
+                    </button>
                 </div>
-                {% else %}
-                <div class="auth-links">
-                    <button class="btn btn-primary" type="button" data-modal-open="auth" data-auth-mode="login">Log in</button>
-                </div>
+            </div>
+
+            <div id="lvMobileMenu" class="lv-mobile-menu" data-lv-mobile-menu hidden>
+                <nav class="lv-mobile-links" aria-label="Mobile navigation">
+                    <a href="/trips/">Trips</a>
+                    <a href="/blogs/">Blogs</a>
+                    {% if user.is_authenticated %}
+                    <a href="/accounts/me/">My Profile</a>
+                    <a href="/interactions/dm/">Inbox</a>
+                    <a href="/social/bookmarks/">Bookmarks</a>
+                    <a href="/settings/">Settings</a>
+                    {% else %}
+                    <button class="btn btn-primary lv-mobile-login-btn" type="button" data-modal-open="auth" data-auth-mode="login">Login</button>
+                    {% endif %}
+                </nav>
+                {% if user.is_authenticated %}
+                <form method="post" action="/accounts/logout/" class="inline-form lv-mobile-logout-form">
+                    {% csrf_token %}
+                    <button class="btn btn-ghost" type="submit">Log out</button>
+                </form>
                 {% endif %}
             </div>
         </div>
     </header>
 
     <main class="site-main">
-        <div class="container">
+        <div class="{% block page_container_class %}container{% endblock %}">
             {% if messages %}
             <section class="flash-list" aria-label="Notifications">
                 {% for message in messages %}
@@ -199,21 +236,58 @@
         </div>
     </main>
 
-    <footer class="site-footer">
-        <div class="container footer-inner">
-            <p class="footer-brand">tapne</p>
-            <nav class="footer-links" aria-label="Footer links">
-                <a href="/about/">About</a>
-                <a href="/how-it-works/">How it works</a>
-                <a href="/safety/">Safety</a>
-                <a href="/contact/">Contact</a>
-                <a href="/terms/">Terms</a>
-                <a href="/privacy/">Privacy</a>
+    <footer class="site-footer lv-footer-shell">
+        <div class="container footer-inner lv-footer">
+            <p class="footer-brand">Tapne</p>
+            <nav class="footer-links lv-footer-links" aria-label="Footer links">
+                <a href="/trips/">Explore</a>
+                <a href="/trips/create/">Create Trip</a>
+                {% if user.is_authenticated %}
+                <a href="/accounts/me/">My Profile</a>
+                {% else %}
+                <button class="text-link-button" type="button" data-modal-open="auth" data-auth-mode="login">Login</button>
+                {% endif %}
             </nav>
+            <p class="lv-footer-copy">&copy; 2026 Tapne. All rights reserved.</p>
         </div>
     </footer>
 
     {% include "partials/modals/login_prompt_modal.html" %}
+    <script>
+        (function initLovableMobileMenu() {
+            var toggle = document.querySelector("[data-lv-mobile-toggle]");
+            var menu = document.querySelector("[data-lv-mobile-menu]");
+            if (!(toggle instanceof HTMLElement) || !(menu instanceof HTMLElement)) {
+                return;
+            }
+
+            function setOpen(open) {
+                menu.hidden = !open;
+                toggle.setAttribute("aria-expanded", open ? "true" : "false");
+                toggle.innerHTML = open ? "&times;" : "&#9776;";
+            }
+
+            toggle.addEventListener("click", function onToggle() {
+                setOpen(menu.hidden);
+            });
+
+            menu.addEventListener("click", function onMenuClick(event) {
+                var target = event.target;
+                if (!(target instanceof Element)) {
+                    return;
+                }
+                if (target.closest("a[href], button[data-modal-open='auth']")) {
+                    setOpen(false);
+                }
+            });
+
+            window.addEventListener("resize", function onResize() {
+                if (window.innerWidth > 900) {
+                    setOpen(false);
+                }
+            });
+        })();
+    </script>
     {% block body_extra %}{% endblock %}
 </body>
 </html>

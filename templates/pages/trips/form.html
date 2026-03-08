@@ -2,6 +2,8 @@
 {% load static %}
 
 {% block title %}tapne | {{ page_title|default:"Trip form" }}{% endblock %}
+{% block body_class %}lovable-theme lovable-create-trip-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block head_extra %}
 {{ block.super }}
@@ -10,8 +12,8 @@
 
 {% block content %}
 <section class="hero hero-compact trip-form-hero">
-    <h1>{{ page_title|default:"Trip form" }}</h1>
-    <p>Complete each section carefully. This flow controls the trip card, itinerary trust, and booking quality.</p>
+    <h1>{% if form_mode == "create" %}Create a Trip{% else %}Edit Trip{% endif %}</h1>
+    <p>Craft a professional travel experience.</p>
 </section>
 
 <section class="section-grid">
@@ -74,7 +76,7 @@
             </div>
         </div>
         <div class="trip-top-progress-track" aria-hidden="true">
-            <span class="trip-top-progress-fill" data-trip-progress-linear style="width: 0%;"></span>
+            <span class="trip-top-progress-fill" data-trip-progress-linear></span>
         </div>
     </section>
     <div class="trip-form-layout">

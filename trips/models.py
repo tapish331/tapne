@@ -425,6 +425,50 @@ class Trip(models.Model):
             trip_data["includes_label"] = self.includes_label
         if self.ends_at is not None:
             trip_data["ends_at"] = self.ends_at
+        if self.booking_closes_at is not None:
+            trip_data["booking_closes_at"] = self.booking_closes_at
+        if self.total_seats is not None:
+            trip_data["total_seats"] = int(self.total_seats)
+        if self.minimum_seats is not None:
+            trip_data["minimum_seats"] = int(self.minimum_seats)
+        if self.currency:
+            trip_data["currency"] = str(self.currency or "").strip().upper()
+        if self.total_trip_price is not None:
+            trip_data["total_trip_price"] = str(self.total_trip_price)
+        if self.price_per_person is not None:
+            trip_data["price_per_person"] = str(self.price_per_person)
+        if self.early_bird_price is not None:
+            trip_data["early_bird_price"] = str(self.early_bird_price)
+        if self.payment_terms:
+            trip_data["payment_terms"] = str(self.payment_terms or "").strip()
+        if self.highlights:
+            trip_data["highlights"] = [str(item or "").strip() for item in self.highlights if str(item or "").strip()]
+        if self.itinerary_days:
+            trip_data["itinerary_days"] = [dict(item) for item in cast(list[dict[str, object]], self.itinerary_days)]
+        if self.included_items:
+            trip_data["included_items"] = [
+                str(item or "").strip() for item in self.included_items if str(item or "").strip()
+            ]
+        if self.not_included_items:
+            trip_data["not_included_items"] = [
+                str(item or "").strip() for item in self.not_included_items if str(item or "").strip()
+            ]
+        if self.things_to_carry:
+            trip_data["things_to_carry"] = [
+                str(item or "").strip() for item in self.things_to_carry if str(item or "").strip()
+            ]
+        if self.suitable_for:
+            trip_data["suitable_for"] = [str(item or "").strip() for item in self.suitable_for if str(item or "").strip()]
+        if self.trip_vibe:
+            trip_data["trip_vibe"] = [str(item or "").strip() for item in self.trip_vibe if str(item or "").strip()]
+        if self.general_policies:
+            trip_data["general_policies"] = str(self.general_policies or "").strip()
+        if self.code_of_conduct:
+            trip_data["code_of_conduct"] = str(self.code_of_conduct or "").strip()
+        if self.cancellation_policy:
+            trip_data["cancellation_policy"] = str(self.cancellation_policy or "").strip()
+        if self.faqs:
+            trip_data["faqs"] = [dict(item) for item in cast(list[dict[str, object]], self.faqs)]
         return trip_data
 
 MINE_TABS: Final[tuple[str, ...]] = ("upcoming", "hosting", "past", "saved")

@@ -28,6 +28,8 @@ class TripData(TypedDict):
     url: NotRequired[str]
     starts_at: NotRequired[datetime | str]
     ends_at: NotRequired[datetime | str]
+    booking_closes_at: NotRequired[datetime | str]
+    booking_closes_label: NotRequired[str]
     date_label: NotRequired[str]
     season_label: NotRequired[str]
     duration_days: NotRequired[int]
@@ -44,9 +46,26 @@ class TripData(TypedDict):
     pace_level: NotRequired[str]
     pace_label: NotRequired[str]
     group_size_label: NotRequired[str]
+    total_seats: NotRequired[int]
+    minimum_seats: NotRequired[int]
     spots_left_label: NotRequired[str]
+    currency: NotRequired[str]
+    total_trip_price: NotRequired[str | int | float]
+    price_per_person: NotRequired[str | int | float]
+    early_bird_price: NotRequired[str | int | float]
+    payment_terms: NotRequired[str]
     includes_label: NotRequired[str]
     highlights: NotRequired[list[str]]
+    itinerary_days: NotRequired[list[dict[str, object]]]
+    included_items: NotRequired[list[str]]
+    not_included_items: NotRequired[list[str]]
+    things_to_carry: NotRequired[list[str]]
+    suitable_for: NotRequired[list[str]]
+    trip_vibe: NotRequired[list[str]]
+    general_policies: NotRequired[str]
+    code_of_conduct: NotRequired[str]
+    cancellation_policy: NotRequired[str]
+    faqs: NotRequired[list[dict[str, object]]]
 
 
 class ProfileData(TypedDict):
@@ -69,6 +88,8 @@ class BlogData(TypedDict):
     reviews_count: NotRequired[int]
     url: NotRequired[str]
     body: NotRequired[str]
+    cover_image_url: NotRequired[str]
+    published_label: NotRequired[str]
 
 
 class HomeFeedPayload(TypedDict):
@@ -444,6 +465,42 @@ def _format_date_label(starts_at: datetime | None, ends_at: datetime | None) -> 
     return f"{starts_at:%b} {starts_at.day}, {starts_at.year} - {ends_at:%b} {ends_at.day}, {ends_at.year}"
 
 
+def _format_booking_closes_label(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    return f"{value:%b} {value.day}, {value.year}"
+
+
+def _to_float_amount(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _format_price_label(currency: str, value: object, *, suffix: str = "") -> str:
+    amount = _to_float_amount(value)
+    if amount is None:
+        return ""
+    normalized_currency = str(currency or "").strip().upper() or "INR"
+    if abs(amount - round(amount)) < 0.01:
+        amount_label = f"{int(round(amount)):,}"
+    else:
+        amount_label = f"{amount:,.2f}"
+    if suffix:
+        return f"{normalized_currency} {amount_label} {suffix}"
+    return f"{normalized_currency} {amount_label}"
+
+
 def _duration_bucket(days: int) -> str:
     if days <= 3:
         return "short"
@@ -541,6 +598,7 @@ def enrich_trip_preview_fields(trip: TripData) -> TripData:
     text_blob = _trip_text_blob(enriched)
     starts_at = _as_datetime(enriched.get("starts_at"))
     ends_at = _as_datetime(enriched.get("ends_at"))
+    booking_closes_at = _as_datetime(enriched.get("booking_closes_at"))
 
     trip_type = str(enriched.get("trip_type", "") or "").strip().lower()
     if trip_type not in TRIP_TYPE_LABELS:
@@ -585,10 +643,18 @@ def enrich_trip_preview_fields(trip: TripData) -> TripData:
     enriched["budget_tier"] = budget_tier
     enriched["budget_label"] = BUDGET_LABELS.get(budget_tier, BUDGET_LABELS["mid"])
     enriched["budget_range_label"] = BUDGET_RANGE_LABELS.get(budget_tier, BUDGET_RANGE_LABELS["mid"])
+    currency = str(enriched.get("currency", "") or "").strip().upper() or "INR"
+    enriched["currency"] = currency
+    direct_price_label = _format_price_label(currency, enriched.get("price_per_person"), suffix="/ person")
+    if not direct_price_label:
+        direct_price_label = _format_price_label(currency, enriched.get("total_trip_price"))
     if not str(enriched.get("cost_label", "") or "").strip():
-        enriched["cost_label"] = str(enriched.get("budget_range_label", "") or "").strip() or str(
-            enriched.get("budget_label", "") or ""
-        ).strip() or BUDGET_LABELS["mid"]
+        enriched["cost_label"] = (
+            direct_price_label
+            or str(enriched.get("budget_range_label", "") or "").strip()
+            or str(enriched.get("budget_label", "") or "").strip()
+            or BUDGET_LABELS["mid"]
+        )
 
     difficulty_level = str(enriched.get("difficulty_level", "") or "").strip().lower()
     if difficulty_level not in DIFFICULTY_LABELS:
@@ -604,14 +670,22 @@ def enrich_trip_preview_fields(trip: TripData) -> TripData:
 
     if not str(enriched.get("group_size_label", "") or "").strip():
         enriched["group_size_label"] = _infer_group_size_label(text_blob, trip_type)
+    total_seats_value = _to_float_amount(enriched.get("total_seats"))
+    total_seats = int(total_seats_value) if total_seats_value is not None and total_seats_value > 0 else 0
     if not str(enriched.get("spots_left_label", "") or "").strip():
-        enriched["spots_left_label"] = _infer_spots_left_label(str(enriched.get("group_size_label", "") or ""))
+        if total_seats > 0:
+            enriched["spots_left_label"] = f"{total_seats} spot{'s' if total_seats != 1 else ''} total"
+        else:
+            enriched["spots_left_label"] = _infer_spots_left_label(str(enriched.get("group_size_label", "") or ""))
 
     if not str(enriched.get("includes_label", "") or "").strip():
         enriched["includes_label"] = (
             "Host planning support, route guidance, and group coordination. "
             "Bookings are self-managed by members."
         )
+
+    if not str(enriched.get("booking_closes_label", "") or "").strip():
+        enriched["booking_closes_label"] = _format_booking_closes_label(booking_closes_at)
 
     raw_highlights = enriched.get("highlights")
     if not isinstance(raw_highlights, list) or not raw_highlights:
@@ -876,7 +950,14 @@ def _live_blog_rows() -> list[BlogData]:
             "reviews_count": _int_attr(blog, "reviews_count", "review_count", "comments_count"),
             "url": f"/blogs/{slug}/",
             "body": _string_attr(blog, "body", "content"),
+            "cover_image_url": (
+                "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80"
+            ),
         }
+
+        created_at = getattr(blog, "created_at", None)
+        if isinstance(created_at, datetime):
+            payload["published_label"] = created_at.strftime("%b %d, %Y")
 
         get_absolute_url = getattr(blog, "get_absolute_url", None)
         if callable(get_absolute_url):

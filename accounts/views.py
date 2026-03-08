@@ -271,6 +271,53 @@ def _profile_context_from_demo(demo_profile: DemoPublicProfile) -> ProfilePayloa
     }
 
 
+def _profile_trip_sections_for_member(member: object) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """
+    Build created/joined trip payloads for the member profile page.
+    """
+
+    try:
+        from enrollment.models import EnrollmentRequest
+        from feed.models import enrich_trip_preview_fields
+        from trips.models import Trip
+    except Exception:
+        return [], []
+
+    created_trip_rows = (
+        Trip.objects.select_related("host")
+        .filter(host=cast(Any, member), is_published=True)
+        .order_by("-starts_at", "-pk")[:12]
+    )
+    created_trips = [dict(enrich_trip_preview_fields(item.to_trip_data())) for item in created_trip_rows]
+
+    approved_join_rows = (
+        EnrollmentRequest.objects.select_related("trip", "trip__host")
+        .filter(
+            requester=cast(Any, member),
+            status=EnrollmentRequest.STATUS_APPROVED,
+            trip__is_published=True,
+        )
+        .order_by("-updated_at", "-pk")
+    )
+
+    joined_trips: list[dict[str, object]] = []
+    seen_trip_ids: set[int] = set()
+    for row in approved_join_rows:
+        trip = getattr(row, "trip", None)
+        trip_id = int(getattr(trip, "pk", 0) or 0)
+        if trip is None or trip_id <= 0 or trip_id in seen_trip_ids:
+            continue
+        seen_trip_ids.add(trip_id)
+        try:
+            joined_trips.append(dict(enrich_trip_preview_fields(trip.to_trip_data())))
+        except Exception:
+            continue
+        if len(joined_trips) >= 12:
+            break
+
+    return created_trips, joined_trips
+
+
 @require_http_methods(["GET", "POST"])
 def signup_view(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:
@@ -396,8 +443,11 @@ def logout_view(request: HttpRequest) -> HttpResponse:
 def my_profile_view(request: HttpRequest) -> HttpResponse:
     member_user = cast(ProfileUserLike, request.user)
     profile = ensure_profile(member_user)
+    created_trips, joined_trips = _profile_trip_sections_for_member(request.user)
     context: dict[str, object] = {
         "profile": _profile_context_from_model(member_user, profile),
+        "created_trips": created_trips,
+        "joined_trips": joined_trips,
     }
     _vprint(request, f"Loaded member profile page for @{member_user.get_username()}")
     return render(request, "pages/accounts/me.html", context)

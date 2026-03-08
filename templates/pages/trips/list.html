@@ -1,93 +1,106 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Trips{% endblock %}
+{% block body_class %}lovable-theme lovable-trips-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="hero hero-compact">
-    <p class="eyebrow">Trips</p>
-    <h1>Browse upcoming and hosted trips.</h1>
+<section class="lovable-trip-list-hero">
+    <h1>Explore Trips</h1>
+    <p>Discover your next adventure with amazing people.</p>
     {% if user.is_authenticated %}
-    <p>Members can see full details, manage hosted trips, and track plans from My Trips.</p>
-    {% else %}
-    <p>Guests can browse limited details. Join, bookmark, and review actions require login.</p>
-    {% endif %}
-
-    {% if user.is_authenticated %}
-    <div class="inline-actions">
-        <a class="btn btn-primary" href="/trips/create/">Create trip</a>
-        <a class="btn btn-secondary" href="/trips/mine/">My trips</a>
+    <div class="inline-actions lovable-mt-06">
+        <a class="btn btn-primary" href="/trips/create/">Create Trip</a>
     </div>
     {% endif %}
 </section>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Filters</h2>
-    </header>
-    <form class="search-form filters-grid" method="get" action="{% url 'trips:list' %}">
-        <label for="trip-filter-destination">Destination</label>
+<form class="lovable-trip-filter-bar lovable-trip-filter-bar-simple" method="get" action="{% url 'trips:list' %}">
+    <div class="lovable-filter-search-shell">
+        <span aria-hidden="true">&#128269;</span>
         <input
             id="trip-filter-destination"
             name="destination"
             type="text"
             value="{{ trip_filters.destination|default:'' }}"
-            placeholder="Kyoto, Patagonia, Morocco..."
+            placeholder="Search destinations or trips..."
         >
-
-        <label for="trip-filter-duration">Duration</label>
-        <select id="trip-filter-duration" name="duration">
-            {% for value, label in trip_filter_options.duration %}
-            <option value="{{ value }}" {% if trip_filters.duration == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-
-        <label for="trip-filter-type">Trip type</label>
-        <select id="trip-filter-type" name="trip_type">
-            {% for value, label in trip_filter_options.trip_type %}
-            <option value="{{ value }}" {% if trip_filters.trip_type == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-
-        <label for="trip-filter-budget">Budget</label>
-        <select id="trip-filter-budget" name="budget">
-            {% for value, label in trip_filter_options.budget %}
-            <option value="{{ value }}" {% if trip_filters.budget == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-
-        <label for="trip-filter-difficulty">Difficulty</label>
-        <select id="trip-filter-difficulty" name="difficulty">
-            {% for value, label in trip_filter_options.difficulty %}
-            <option value="{{ value }}" {% if trip_filters.difficulty == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-
-        <div class="inline-actions">
-            <button class="btn btn-primary" type="submit">Apply filters</button>
-            {% if trip_has_active_filters %}
-            <a class="btn btn-ghost" href="{% url 'trips:list' %}">Clear filters</a>
-            {% endif %}
-        </div>
-    </form>
-</section>
-
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Available trips</h2>
-        <p class="detail-meta">Showing {{ trip_filtered_count|default:0 }} of {{ trip_total_count|default:0 }} trip{{ trip_total_count|default:0|pluralize }}</p>
-    </header>
-    <div class="card-grid">
-        {% for trip in trips %}
-        {% include "partials/cards/trip_card.html" with trip=trip %}
-        {% empty %}
-        <div class="empty-state">
-            {% if trip_has_active_filters %}
-            No trips match the current filters yet. Try widening duration, budget, or difficulty.
-            {% else %}
-            No trips are published yet. New hosted trips will appear here.
-            {% endif %}
-        </div>
-        {% endfor %}
     </div>
+
+    <select id="trip-filter-type" name="trip_type">
+        {% for value, label in trip_filter_options.trip_type %}
+        <option value="{{ value }}" {% if trip_filters.trip_type == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+
+    <input type="hidden" name="duration" value="{{ trip_filters.duration|default:'all' }}">
+    <input type="hidden" name="budget" value="{{ trip_filters.budget|default:'all' }}">
+    <input type="hidden" name="difficulty" value="{{ trip_filters.difficulty|default:'all' }}">
+
+    <div class="inline-actions lovable-justify-end">
+        <button class="btn btn-primary" type="submit">Apply</button>
+        {% if trip_has_active_filters %}
+        <a class="btn btn-ghost" href="{% url 'trips:list' %}">Clear</a>
+        {% endif %}
+    </div>
+</form>
+
+<section class="lovable-trip-list" aria-label="Available trips">
+    {% for trip in trips %}
+    <article class="lovable-trip-row">
+        <a class="lovable-trip-row-media lovable-trip-row-media-hide-mobile" href="{{ trip.url|default:'/trips/' }}">
+            <img src="{{ trip.banner_image_url|default:'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80' }}" alt="{{ trip.title|default:'Trip' }}">
+        </a>
+        <div class="lovable-trip-row-body">
+            <div class="inline-actions lovable-m-0 lovable-justify-between lovable-items-start">
+                <span class="lovable-chip">{{ trip.trip_type_label|default:"Adventure" }}</span>
+                <a class="btn btn-secondary" href="{{ trip.url|default:'/trips/' }}">View Details</a>
+            </div>
+            <h2><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h2>
+            <p class="lovable-trip-row-desc">
+                {% if trip.summary %}
+                {{ trip.summary|truncatechars:220 }}
+                {% elif trip.description %}
+                {{ trip.description|truncatechars:220 }}
+                {% else %}
+                Trip details are coming soon.
+                {% endif %}
+            </p>
+            <div class="lovable-trip-row-meta">
+                <span>&#128205; {{ trip.destination|default:"TBD" }}</span>
+                <span>&#128197; {{ trip.date_label|default:"Dates announced soon" }}</span>
+                <span>&#8377;
+                    {% if trip.cost_label %}
+                    {{ trip.cost_label }}
+                    {% elif trip.budget_label %}
+                    {{ trip.budget_label }}
+                    {% else %}
+                    Mid-range
+                    {% endif %}
+                </span>
+                <span>&#128101;
+                    {% if trip.spots_left_label %}
+                    {{ trip.spots_left_label }}
+                    {% elif trip.group_size_label %}
+                    {{ trip.group_size_label }}
+                    {% else %}
+                    Limited spots
+                    {% endif %}
+                </span>
+                {% if trip.host_username %}
+                <span class="lovable-trip-row-host">@{{ trip.host_username }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+    {% empty %}
+    <div class="empty-state">
+        {% if trip_has_active_filters %}
+        No trips match the current filters yet. Try widening your search.
+        {% else %}
+        No trips are published yet. New hosted trips will appear here.
+        {% endif %}
+    </div>
+    {% endfor %}
 </section>
 {% endblock %}

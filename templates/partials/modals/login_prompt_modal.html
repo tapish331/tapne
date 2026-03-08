@@ -11,12 +11,13 @@
     <div class="modal-backdrop" data-modal-close></div>
     <section class="modal-panel auth-modal-panel" role="document">
         <header class="modal-header">
-            <h2 id="authModalTitle">Log in</h2>
-            <button class="icon-btn" type="button" data-modal-close aria-label="Close login or signup modal">x</button>
+            <h2 id="authModalTitle">Welcome back</h2>
+            <button class="icon-btn" type="button" data-modal-close aria-label="Close login or signup modal">&times;</button>
         </header>
         <p id="authModalContextNote" class="auth-modal-context-note" hidden>Please log in to continue.</p>
 
         <section data-auth-pane="login">
+            <p class="lovable-detail-muted lovable-m-0 lovable-mb-035">Log in to continue your journey.</p>
             <form method="post" action="{% url 'accounts:login' %}" class="auth-modal-form">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}" data-auth-next-input>
@@ -31,7 +32,7 @@
                 </div>
                 {% endif %}
 
-                <label for="{{ auth_modal_login_form.username.id_for_label }}">{{ auth_modal_login_form.username.label }}</label>
+                <label for="{{ auth_modal_login_form.username.id_for_label }}">Username or Email</label>
                 {{ auth_modal_login_form.username }}
                 {% if auth_modal_errors.login.username %}
                 <div class="form-error">
@@ -41,7 +42,7 @@
                 </div>
                 {% endif %}
 
-                <label for="{{ auth_modal_login_form.password.id_for_label }}">{{ auth_modal_login_form.password.label }}</label>
+                <label for="{{ auth_modal_login_form.password.id_for_label }}">Password</label>
                 {{ auth_modal_login_form.password }}
                 {% if auth_modal_errors.login.password %}
                 <div class="form-error">
@@ -51,16 +52,17 @@
                 </div>
                 {% endif %}
 
-                <button class="btn btn-primary" type="submit">Log in</button>
+                <button class="btn btn-primary" type="submit">Log In</button>
             </form>
 
             <p class="auth-modal-switch-line">
-                Need an account?
+                Do not have an account?
                 <button type="button" class="text-link-button" data-auth-switch="signup">Sign up</button>
             </p>
         </section>
 
         <section data-auth-pane="signup" hidden>
+            <p class="lovable-detail-muted lovable-m-0 lovable-mb-035">Create your account and start discovering trips.</p>
             <form method="post" action="{% url 'accounts:signup' %}" class="auth-modal-form">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}" data-auth-next-input>
@@ -75,7 +77,7 @@
                 </div>
                 {% endif %}
 
-                <label for="{{ auth_modal_signup_form.username.id_for_label }}">{{ auth_modal_signup_form.username.label }}</label>
+                <label for="{{ auth_modal_signup_form.username.id_for_label }}">Username</label>
                 {{ auth_modal_signup_form.username }}
                 {% if auth_modal_errors.signup.username %}
                 <div class="form-error">
@@ -85,7 +87,7 @@
                 </div>
                 {% endif %}
 
-                <label for="{{ auth_modal_signup_form.email.id_for_label }}">{{ auth_modal_signup_form.email.label }}</label>
+                <label for="{{ auth_modal_signup_form.email.id_for_label }}">Email</label>
                 {{ auth_modal_signup_form.email }}
                 {% if auth_modal_errors.signup.email %}
                 <div class="form-error">
@@ -95,11 +97,8 @@
                 </div>
                 {% endif %}
 
-                <label for="{{ auth_modal_signup_form.password1.id_for_label }}">{{ auth_modal_signup_form.password1.label }}</label>
+                <label for="{{ auth_modal_signup_form.password1.id_for_label }}">Password</label>
                 {{ auth_modal_signup_form.password1 }}
-                {% if auth_modal_signup_form.password1.help_text %}
-                <p class="form-help">{{ auth_modal_signup_form.password1.help_text|safe }}</p>
-                {% endif %}
                 {% if auth_modal_errors.signup.password1 %}
                 <div class="form-error">
                     {% for error in auth_modal_errors.signup.password1 %}
@@ -108,11 +107,8 @@
                 </div>
                 {% endif %}
 
-                <label for="{{ auth_modal_signup_form.password2.id_for_label }}">{{ auth_modal_signup_form.password2.label }}</label>
+                <label for="{{ auth_modal_signup_form.password2.id_for_label }}">Confirm Password</label>
                 {{ auth_modal_signup_form.password2 }}
-                {% if auth_modal_signup_form.password2.help_text %}
-                <p class="form-help">{{ auth_modal_signup_form.password2.help_text|safe }}</p>
-                {% endif %}
                 {% if auth_modal_errors.signup.password2 %}
                 <div class="form-error">
                     {% for error in auth_modal_errors.signup.password2 %}
@@ -121,7 +117,7 @@
                 </div>
                 {% endif %}
 
-                <button class="btn btn-primary" type="submit">Create account</button>
+                <button class="btn btn-primary" type="submit">Sign Up</button>
             </form>
 
             <p class="auth-modal-switch-line">

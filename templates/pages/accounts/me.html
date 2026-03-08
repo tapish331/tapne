@@ -1,41 +1,111 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | My profile{% endblock %}
+{% block body_class %}lovable-theme lovable-profile-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="detail-shell">
-    <p class="eyebrow">Member profile</p>
-    <h1>@{{ profile.username }}</h1>
-    <p>{{ profile.bio|default:"Add a bio to tell others how you host trips and write blogs." }}</p>
+<section class="lovable-profile-shell">
+    <header class="lovable-profile-head lovable-profile-header">
+        <div class="lovable-profile-id">
+            <span class="lovable-avatar lovable-profile-avatar-ring" aria-hidden="true">{{ profile.display_name|default:profile.username|slice:":1"|upper }}</span>
+            <div class="lovable-profile-copy">
+                <h1>{{ profile.display_name|default:profile.username }}</h1>
+                <p>@{{ profile.username }}</p>
+                {% if profile.location %}<p>{{ profile.location }}</p>{% endif %}
+                {% if profile.bio %}<p>{{ profile.bio }}</p>{% endif %}
+            </div>
+        </div>
+        <div class="inline-actions lovable-m-0">
+            <a class="btn btn-secondary" href="{% url 'accounts:me-edit' %}">Edit Profile</a>
+            <a class="btn btn-primary" href="{% url 'public-profile' username=profile.username %}">View Public Profile</a>
+        </div>
+    </header>
 
-    <dl class="card-meta-grid">
-        <div>
-            <dt>Display name</dt>
-            <dd>{{ profile.display_name|default:"Not set" }}</dd>
-        </div>
-        <div>
-            <dt>Location</dt>
-            <dd>{{ profile.location|default:"Not set" }}</dd>
-        </div>
-        <div>
-            <dt>Email</dt>
-            <dd>{{ profile.email|default:"Not set" }}</dd>
-        </div>
-        <div>
-            <dt>Website</dt>
-            <dd>
-                {% if profile.website %}
-                <a href="{{ profile.website }}" target="_blank" rel="noopener noreferrer">{{ profile.website }}</a>
-                {% else %}
-                Not set
-                {% endif %}
-            </dd>
-        </div>
-    </dl>
-
-    <div class="inline-actions">
-        <a class="btn btn-primary" href="{% url 'accounts:me-edit' %}">Edit profile</a>
-        <a class="btn btn-secondary" href="{% url 'public-profile' username=profile.username %}">View public profile</a>
+    <div class="lovable-profile-tabs" role="tablist" aria-label="Profile trip tabs">
+        <button class="lovable-profile-tab" type="button" role="tab" aria-selected="true" data-profile-tab="created">
+            Trips Created ({{ created_trips|length }})
+        </button>
+        <button class="lovable-profile-tab" type="button" role="tab" aria-selected="false" data-profile-tab="joined">
+            Trips Joined ({{ joined_trips|length }})
+        </button>
     </div>
+
+    <section data-profile-panel="created">
+        {% if created_trips %}
+        <div class="lovable-profile-trip-grid">
+            {% for trip in created_trips %}
+            <article class="lovable-small-trip">
+                <a href="{{ trip.url|default:'/trips/' }}">
+                    <img src="{{ trip.banner_image_url|default:'' }}" alt="{{ trip.title|default:'Trip' }}">
+                </a>
+                <div class="lovable-small-trip-body">
+                    <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
+                    <p class="lovable-small-trip-meta">{{ trip.destination|default:"TBD" }}</p>
+                    <p class="lovable-small-trip-meta">{{ trip.date_label|default:"Dates announced soon" }}</p>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">You have not created any trips yet.</p>
+        {% endif %}
+    </section>
+
+    <section data-profile-panel="joined" hidden>
+        {% if joined_trips %}
+        <div class="lovable-profile-trip-grid">
+            {% for trip in joined_trips %}
+            <article class="lovable-small-trip">
+                <a href="{{ trip.url|default:'/trips/' }}">
+                    <img src="{{ trip.banner_image_url|default:'' }}" alt="{{ trip.title|default:'Trip' }}">
+                </a>
+                <div class="lovable-small-trip-body">
+                    <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
+                    <p class="lovable-small-trip-meta">{{ trip.destination|default:"TBD" }}</p>
+                    <p class="lovable-small-trip-meta">{{ trip.date_label|default:"Dates announced soon" }}</p>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">You have not joined any trips yet.</p>
+        {% endif %}
+    </section>
 </section>
+{% endblock %}
+
+{% block body_extra %}
+{{ block.super }}
+<script>
+    (function initProfileTabs() {
+        var tabButtons = document.querySelectorAll("[data-profile-tab]");
+        var panels = {
+            created: document.querySelector("[data-profile-panel='created']"),
+            joined: document.querySelector("[data-profile-panel='joined']")
+        };
+        if (!tabButtons.length || !panels.created || !panels.joined) {
+            return;
+        }
+
+        function activate(name) {
+            var isCreated = name === "created";
+            panels.created.hidden = !isCreated;
+            panels.joined.hidden = isCreated;
+            tabButtons.forEach(function (button) {
+                var selected = button.getAttribute("data-profile-tab") === name;
+                button.setAttribute("aria-selected", selected ? "true" : "false");
+                button.classList.toggle("is-active", selected);
+            });
+        }
+
+        tabButtons.forEach(function (button) {
+            button.addEventListener("click", function () {
+                activate(button.getAttribute("data-profile-tab") || "created");
+            });
+        });
+
+        activate("created");
+    })();
+</script>
 {% endblock %}

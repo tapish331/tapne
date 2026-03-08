@@ -247,7 +247,7 @@ artifact_manifest_with_gcloud_token() {
       cmd_exe="/mnt/c/Windows/System32/cmd.exe"
     fi
     if [[ -n "$cmd_exe" ]]; then
-      token="$("$cmd_exe" /C "gcloud auth print-access-token" 2>/dev/null | awk 'NF { print; exit }' | tr -d '\r' || true)"
+      token="$("$cmd_exe" //C "gcloud auth print-access-token" 2>/dev/null | awk 'NF { print; exit }' | tr -d '\r' || true)"
     fi
   fi
   if [[ -z "$token" ]]; then
@@ -266,6 +266,59 @@ artifact_manifest_with_gcloud_token() {
     -H "Authorization: Bearer ${token}" \
     -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
     "$manifest_url" 2>/dev/null
+}
+
+artifact_config_blob_with_gcloud_token() {
+  local image_ref="$1"
+  local config_digest="$2"
+  local registry
+  local rest
+  local image_path
+  local token
+  local blob_url
+  local cmd_exe
+  local powershell_exe
+
+  [[ -n "$config_digest" ]] || return 1
+  [[ "$image_ref" == */* ]] || return 1
+
+  registry="${image_ref%%/*}"
+  rest="${image_ref#*/}"
+
+  if [[ "$rest" == *"@"* ]]; then
+    image_path="${rest%@*}"
+  elif [[ "$rest" == *:* ]]; then
+    image_path="${rest%:*}"
+  else
+    return 1
+  fi
+
+  token="$(gcloud auth print-access-token 2>/dev/null | awk 'NF { print; exit }' | tr -d '\r' || true)"
+  if [[ -z "$token" ]]; then
+    cmd_exe="$(command -v cmd.exe 2>/dev/null || true)"
+    if [[ -z "$cmd_exe" && -e /mnt/c/Windows/System32/cmd.exe ]]; then
+      cmd_exe="/mnt/c/Windows/System32/cmd.exe"
+    fi
+    if [[ -n "$cmd_exe" ]]; then
+      token="$("$cmd_exe" //C "gcloud auth print-access-token" 2>/dev/null | awk 'NF { print; exit }' | tr -d '\r' || true)"
+    fi
+  fi
+  if [[ -z "$token" ]]; then
+    powershell_exe="$(command -v powershell.exe 2>/dev/null || true)"
+    if [[ -z "$powershell_exe" && -e /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]]; then
+      powershell_exe="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    fi
+    if [[ -n "$powershell_exe" ]]; then
+      token="$("$powershell_exe" -NoProfile -Command "gcloud auth print-access-token" 2>/dev/null | awk 'NF { print; exit }' | tr -d '\r' || true)"
+    fi
+  fi
+  [[ -n "$token" ]] || return 1
+
+  blob_url="https://${registry}/v2/${image_path}/blobs/${config_digest}"
+  curl -fsSL \
+    -H "Authorization: Bearer ${token}" \
+    -H "Accept: application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json" \
+    "$blob_url" 2>/dev/null
 }
 
 docker_probe() {
@@ -1055,7 +1108,40 @@ if [[ -n "$ARTIFACT_IMAGE" ]]; then
          grep -Eq '"architecture"[[:space:]]*:[[:space:]]*"amd64"' <<<"$ARTIFACT_MANIFEST_JSON"; then
       pass "8.2d" "Artifact manifest resolves to linux/amd64"
     else
-      warn "8.2d" "Artifact manifest inspected, but linux/amd64 could not be confirmed"
+      ARTIFACT_CONFIG_DIGEST="$(printf '%s\n' "$ARTIFACT_MANIFEST_JSON" | awk '
+        /"config"[[:space:]]*:/ {
+          in_config=1
+          line=$0
+          if (match(line, /"digest"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
+            digest_fragment=substr(line, RSTART, RLENGTH)
+            sub(/.*"digest"[[:space:]]*:[[:space:]]*"/, "", digest_fragment)
+            sub(/".*/, "", digest_fragment)
+            print digest_fragment
+            exit
+          }
+          next
+        }
+        in_config && /"digest"[[:space:]]*:/ {
+          line=$0
+          sub(/.*"digest"[[:space:]]*:[[:space:]]*"/, "", line)
+          sub(/".*/, "", line)
+          print line
+          exit
+        }
+        in_config && /}/ { in_config=0 }
+      ')"
+      ARTIFACT_CONFIG_JSON=""
+      if [[ -n "$ARTIFACT_CONFIG_DIGEST" ]]; then
+        ARTIFACT_CONFIG_JSON="$(artifact_config_blob_with_gcloud_token "$ARTIFACT_IMAGE" "$ARTIFACT_CONFIG_DIGEST" || true)"
+      fi
+
+      if [[ -n "$ARTIFACT_CONFIG_JSON" ]] && \
+         grep -Eq '"os"[[:space:]]*:[[:space:]]*"linux"' <<<"$ARTIFACT_CONFIG_JSON" && \
+         grep -Eq '"architecture"[[:space:]]*:[[:space:]]*"amd64"' <<<"$ARTIFACT_CONFIG_JSON"; then
+        pass "8.2d" "Artifact config blob resolves to linux/amd64"
+      else
+        warn "8.2d" "Artifact manifest inspected, but linux/amd64 could not be confirmed"
+      fi
     fi
   else
     warn "8.2d" "docker manifest subcommand not available; cannot verify linux/amd64 in registry manifest"

@@ -1,34 +1,48 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Blogs{% endblock %}
+{% block body_class %}lovable-theme lovable-blogs-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="hero hero-compact">
-    <p class="eyebrow">Blogs</p>
-    <h1>Read community stories and guides.</h1>
-    {% if user.is_authenticated %}
-    <p>Members can read, write, and manage their published posts.</p>
-    {% else %}
-    <p>Guests can read full content. Comment, review, and bookmark actions are member-only.</p>
-    {% endif %}
-
-    {% if user.is_authenticated %}
-    <div class="inline-actions">
-        <a class="btn btn-primary" href="/blogs/create/">Create blog</a>
-    </div>
-    {% endif %}
+<section class="lovable-blog-hero">
+    <h1>Blogs</h1>
+    <p>Stories, tips, and experiences from the Tapne community.</p>
 </section>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Most-read blogs</h2>
-    </header>
-    <div class="card-grid">
+<section class="lovable-section lovable-mt-1">
+    {% if blogs %}
+    <div class="lovable-blog-grid">
         {% for blog in blogs %}
-        {% include "partials/cards/blog_card.html" with blog=blog %}
-        {% empty %}
-        <div class="empty-state">No blogs have been published yet. New stories will appear here.</div>
+        <article class="lovable-blog-teaser">
+            <a href="{{ blog.url|default:'/blogs/' }}">
+                <div class="lovable-blog-teaser-media">
+                    <img src="{{ blog.cover_image_url|default:'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80' }}" alt="{{ blog.title|default:'Blog' }}">
+                </div>
+            </a>
+            <div class="lovable-blog-teaser-body">
+                {% if blog.trip_title %}
+                <span class="lovable-chip">{{ blog.trip_title }}</span>
+                {% endif %}
+                <h3><a href="{{ blog.url|default:'/blogs/' }}">{{ blog.title|default:"Untitled blog" }}</a></h3>
+                <div class="lovable-blog-teaser-meta">
+                    <span>By @{{ blog.author_username|default:"author" }}</span>
+                    <span>
+                        {% if blog.published_at_label %}
+                        {{ blog.published_at_label }}
+                        {% elif blog.created_at_label %}
+                        {{ blog.created_at_label }}
+                        {% else %}
+                        Recent
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </article>
         {% endfor %}
     </div>
+    {% else %}
+    <div class="empty-state">No blogs have been published yet. New stories will appear here.</div>
+    {% endif %}
 </section>
 {% endblock %}

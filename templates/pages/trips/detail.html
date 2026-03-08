@@ -1,322 +1,389 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Trip Details{% endblock %}
+{% block body_class %}lovable-theme lovable-trip-detail-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<article class="detail-shell">
-    <p class="eyebrow">Trip details</p>
-    <h1>{{ trip.title|default:"Trip title" }}</h1>
-    {% if trip.banner_image_url %}
-    <img class="trip-detail-banner" src="{{ trip.banner_image_url }}" alt="{{ trip.title|default:'Trip banner' }}">
-    {% endif %}
-
-    <p class="detail-meta">
-        Host:
-        {% if trip.host_username %}
-        <a href="/u/{{ trip.host_username }}/">@{{ trip.host_username }}</a>
-        {% else %}
-        @host
-        {% endif %}
-    </p>
-
-    {% if trip.destination %}
-    <p class="detail-meta">Destination: {{ trip.destination }}</p>
-    {% endif %}
-
-    <dl class="card-meta-grid">
-        <div>
-            <dt>Dates</dt>
-            <dd>{{ trip.date_label|default:"Dates announced soon" }}</dd>
-        </div>
-        <div>
-            <dt>Season</dt>
-            <dd>{{ trip.season_label|default:"Year-round" }}</dd>
-        </div>
-        <div>
-            <dt>Duration</dt>
-            <dd>{{ trip.duration_label|default:"TBD" }}</dd>
-        </div>
-        <div>
-            <dt>Budget</dt>
-            <dd>{{ trip.budget_label|default:"$$ Mid-range" }} · {{ trip.budget_range_label|default:"Estimate shared after signup" }}</dd>
-        </div>
-        <div>
-            <dt>Trip type</dt>
-            <dd>{{ trip.trip_type_label|default:"Adventure" }}</dd>
-        </div>
-        <div>
-            <dt>Group size</dt>
-            <dd>{{ trip.group_size_label|default:"6-10 travelers" }}</dd>
-        </div>
-        <div>
-            <dt>Difficulty</dt>
-            <dd>{{ trip.difficulty_label|default:"Moderate" }}</dd>
-        </div>
-        <div>
-            <dt>Pace</dt>
-            <dd>{{ trip.pace_label|default:"Balanced" }}</dd>
-        </div>
-    </dl>
-    <p class="detail-meta">Includes: {{ trip.includes_label|default:"Host planning support and route guidance. Bookings are self-managed." }}</p>
-
-    {% if trip.description_html and trip_detail_mode == "member-full" %}
-    <div class="trip-rich-description">{{ trip.description_html|safe }}</div>
-    {% else %}
-    <p>{{ trip.description|default:"Trip description is not available yet." }}</p>
-    {% endif %}
-
-    <div class="inline-actions">
-        {% if can_manage_trip %}
-        <a class="btn btn-secondary" href="/trips/{{ trip.id }}/edit/">Edit trip</a>
-        <a class="btn btn-primary" href="{% url 'enrollment:hosting-inbox' %}">Hosting inbox</a>
-        <form method="post" action="/trips/{{ trip.id }}/delete/" class="inline-form">
-            {% csrf_token %}
-            <button class="btn btn-ghost" type="submit">Delete trip</button>
-        </form>
-        {% elif user.is_authenticated %}
-        <form method="post" action="{% url 'enrollment:trip-request' trip_id=trip.id %}" class="inline-form">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button class="btn btn-primary" type="submit">Request to join</button>
-        </form>
-        <form method="post" action="{% url 'social:bookmark' %}" class="inline-form">
-            {% csrf_token %}
-            <input type="hidden" name="type" value="trip">
-            <input type="hidden" name="id" value="{{ trip.id }}">
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button class="btn btn-ghost" type="submit">Bookmark</button>
-        </form>
-        <a class="btn btn-secondary" href="#comments">Comment</a>
-        <a class="btn btn-secondary" href="#reviews">Review</a>
-        {% else %}
-        <button class="btn btn-primary js-guest-action" type="button" data-action-label="join this trip">Request to join</button>
-        <button class="btn btn-ghost js-guest-action" type="button" data-action-label="bookmark this trip">Bookmark</button>
-        <button class="btn btn-secondary js-guest-action" type="button" data-action-label="comment on this trip">Comment</button>
-        <button class="btn btn-secondary js-guest-action" type="button" data-action-label="review this trip">Review</button>
-        {% endif %}
-    </div>
-</article>
-
-<section id="media" class="detail-shell stack-gap-top">
-    <p class="eyebrow">Trip media</p>
-    <h2>Photos and videos</h2>
-    <p class="detail-meta">{{ trip_media_reason|default:"Trip media shared by the host and reviewers." }}</p>
-
-    {% if trip_media_can_upload %}
-    <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="search-form">
-        {% csrf_token %}
-        <input type="hidden" name="target_type" value="trip">
-        <input type="hidden" name="target_id" value="{{ trip.id }}">
-        <input type="hidden" name="next" value="{{ request.get_full_path }}#media">
-
-        <label for="trip-media-file">Upload media</label>
-        <input id="trip-media-file" class="form-input" type="file" name="file" accept="image/*,video/*" required>
-
-        <label for="trip-media-caption">Caption (optional)</label>
-        <input id="trip-media-caption" class="form-input" type="text" name="caption" maxlength="280" placeholder="Add context for this media item.">
-
-        <button class="btn btn-primary" type="submit">Upload</button>
-    </form>
-    {% elif user.is_authenticated %}
-    <p class="muted-inline">Only the host can upload media for this trip.</p>
-    {% else %}
-    <button class="btn btn-primary js-guest-action" type="button" data-action-label="upload trip media">Log in to upload media</button>
-    {% endif %}
-
-    {% if trip_media_items %}
-    <div class="media-grid">
-        {% for item in trip_media_items %}
-        <article class="card media-card">
-            {% if item.kind == "image" %}
-            <img class="media-preview-image" src="{{ item.file_url }}" alt="{{ item.caption|default:item.filename }}">
-            {% else %}
-            <video class="media-preview-video" controls preload="metadata">
-                <source src="{{ item.file_url }}" type="{{ item.content_type }}">
-            </video>
-            {% endif %}
-
-            {% if item.caption %}
-            <p class="card-description">{{ item.caption }}</p>
-            {% endif %}
-            <p class="card-subtitle">{{ item.size_label }} · {{ item.content_type|default:item.kind }}</p>
-
-            <div class="inline-actions">
-                <a class="btn btn-secondary" href="{{ item.file_url }}" target="_blank" rel="noopener">Open</a>
-                {% if item.can_manage %}
-                <form method="post" action="{% url 'media:delete' attachment_id=item.id %}" class="inline-form media-delete-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}#media">
-                    <button class="btn btn-ghost" type="submit">Delete</button>
-                </form>
+<article>
+    <section class="lovable-trip-detail-hero">
+        <img src="{{ trip.banner_image_url|default:'' }}" alt="{{ trip.title|default:'Trip banner' }}">
+        <div class="lovable-trip-detail-hero-overlay">
+            <a class="btn btn-secondary" href="/trips/">Back to Trips</a>
+            <div class="inline-actions lovable-mt-075">
+                <span class="lovable-chip">{{ trip.trip_type_label|default:"Adventure" }}</span>
+                {% if trip.trip_vibe %}
+                {% for vibe in trip.trip_vibe|slice:":3" %}
+                <span class="lovable-chip">{{ vibe }}</span>
+                {% endfor %}
                 {% endif %}
             </div>
-        </article>
-        {% endfor %}
-    </div>
-    {% else %}
-    <p class="empty-state">No photos yet. Hosts usually add 3-5 images of route vibe, stays, food, and key stops.</p>
-    {% endif %}
-</section>
-
-<section id="comments" class="detail-shell stack-gap-top">
-    <p class="eyebrow">Trip comments</p>
-    <h2>Conversation</h2>
-    <p class="detail-meta">{{ interaction_comment_reason|default:"Questions and discussion from members planning this trip." }}</p>
-
-    {% if user.is_authenticated %}
-    <form method="post" action="{% url 'interactions:comment' %}" class="search-form">
-        {% csrf_token %}
-        <input type="hidden" name="target_type" value="trip">
-        <input type="hidden" name="target_id" value="{{ trip.id }}">
-        <input type="hidden" name="next" value="{{ request.get_full_path }}#comments">
-        <label for="trip-comment-text">Add a comment</label>
-        <input id="trip-comment-text" class="form-input" type="text" name="text" maxlength="2000" placeholder="Share your question or note for this trip.">
-        <button class="btn btn-primary" type="submit">Post comment</button>
-    </form>
-    {% else %}
-    <button class="btn btn-primary js-guest-action" type="button" data-action-label="comment on this trip">Log in to comment</button>
-    {% endif %}
-
-    {% if interaction_comments %}
-    <div class="comments-stack">
-        {% for item in interaction_comments %}
-        <article class="card comment-item">
-            <p class="card-subtitle">@{{ item.author_username }} · {{ item.created_at|date:"M j, Y H:i" }}</p>
-            <p class="card-description">{{ item.text }}</p>
-
-            {% if item.replies %}
-            <div class="reply-stack">
-                {% for reply in item.replies %}
-                <div class="card">
-                    <p class="card-subtitle">@{{ reply.author_username }} · {{ reply.created_at|date:"M j, Y H:i" }}</p>
-                    <p class="card-description">{{ reply.text }}</p>
-                </div>
-                {% endfor %}
+            <h1>{{ trip.title|default:"Trip title" }}</h1>
+            <div class="lovable-trip-detail-hero-meta">
+                <span>{{ trip.destination|default:"TBD" }}</span>
+                <span>{{ trip.date_label|default:"Dates announced soon" }}</span>
+                <span>{{ trip.duration_label|default:"Duration TBA" }}</span>
+                <span>
+                    {% if trip.spots_left_label %}
+                    {{ trip.spots_left_label }}
+                    {% elif trip.group_size_label %}
+                    {{ trip.group_size_label }}
+                    {% else %}
+                    Limited spots
+                    {% endif %}
+                </span>
             </div>
-            {% endif %}
-
-            {% if user.is_authenticated %}
-            <form method="post" action="{% url 'interactions:reply' %}" class="search-form">
-                {% csrf_token %}
-                <input type="hidden" name="comment_id" value="{{ item.id }}">
-                <input type="hidden" name="next" value="{{ request.get_full_path }}#comments">
-                <label for="reply-trip-{{ item.id }}">Reply to @{{ item.author_username }}</label>
-                <input id="reply-trip-{{ item.id }}" class="form-input" type="text" name="text" maxlength="2000" placeholder="Write a reply.">
-                <button class="btn btn-ghost" type="submit">Reply</button>
-            </form>
-            {% else %}
-            <button class="btn btn-ghost js-guest-action" type="button" data-action-label="reply to this comment">Reply</button>
-            {% endif %}
-        </article>
-        {% endfor %}
-    </div>
-    {% else %}
-    <p class="empty-state">No comments yet. Be the first to leave a note.</p>
-    {% endif %}
-</section>
-
-<section id="reviews" class="detail-shell stack-gap-top">
-    <p class="eyebrow">Trip reviews</p>
-    <h2>Ratings</h2>
-    <p class="detail-meta">{{ review_reason|default:"Member ratings and feedback for this trip." }}</p>
-    <p class="detail-meta">Average rating: {{ review_average_rating|floatformat:1 }}/5 from {{ review_count }} review{{ review_count|pluralize }}</p>
-
-    {% if review_rating_buckets %}
-    <dl class="card-meta-grid">
-        {% for bucket in review_rating_buckets %}
-        <div>
-            <dt>{{ bucket.rating }}/5</dt>
-            <dd>{{ bucket.count }}</dd>
         </div>
-        {% endfor %}
-    </dl>
-    {% endif %}
+    </section>
 
-    {% if user.is_authenticated %}
-    <form method="post" action="{% url 'reviews:create' %}" class="search-form">
-        {% csrf_token %}
-        <input type="hidden" name="target_type" value="trip">
-        <input type="hidden" name="target_id" value="{{ trip.id }}">
-        <input type="hidden" name="next" value="{{ request.get_full_path }}#reviews">
-
-        <label for="trip-review-rating">Rating</label>
-        <select id="trip-review-rating" class="form-input" name="rating">
-            <option value="5">5 - Excellent</option>
-            <option value="4">4 - Strong</option>
-            <option value="3">3 - Solid</option>
-            <option value="2">2 - Needs work</option>
-            <option value="1">1 - Poor</option>
-        </select>
-
-        <label for="trip-review-headline">Headline (optional)</label>
-        <input id="trip-review-headline" class="form-input" type="text" name="headline" maxlength="160" placeholder="Summarize your experience in one line.">
-
-        <label for="trip-review-body">Your review</label>
-        <input id="trip-review-body" class="form-input" type="text" name="body" maxlength="4000" placeholder="What worked well, what should improve?">
-
-        <div class="inline-actions">
-            <button class="btn btn-primary" type="submit">
-                {% if review_viewer_row %}Update review{% else %}Post review{% endif %}
-            </button>
-            <a class="btn btn-ghost" href="{% url 'reviews:target-list' target_type='trip' target_id=trip.id %}">Open full reviews page</a>
+    <nav class="lovable-detail-section-nav" aria-label="Trip sections">
+        <div class="lovable-detail-section-nav-links">
+            <a href="#snapshot">Overview</a>
+            <a href="#highlights">Highlights</a>
+            <a href="#itinerary">Itinerary</a>
+            <a href="#included">Included</a>
+            <a href="#carry">Packing</a>
+            <a href="#policies">Policies</a>
+            <a href="#faqs">FAQs</a>
+            <a href="#host">Host</a>
         </div>
-    </form>
-    {% else %}
-    <div class="inline-actions">
-        <button class="btn btn-primary js-guest-action" type="button" data-action-label="review this trip">Log in to review</button>
-        <a class="btn btn-secondary" href="{% url 'reviews:target-list' target_type='trip' target_id=trip.id %}">Browse all reviews</a>
-    </div>
-    {% endif %}
+    </nav>
 
-    {% if review_items %}
-    <div class="comments-stack">
-        {% for item in review_items %}
-        <article class="card comment-item">
-            <p class="card-subtitle">
-                @{{ item.author_username }} · {{ item.created_at|date:"M j, Y H:i" }} · {{ item.rating }}/5
-                {% if item.is_mine %} · Your review{% endif %}
-            </p>
-            {% if item.headline %}
-            <p><strong>{{ item.headline }}</strong></p>
+    <div class="lovable-trip-detail-grid">
+        <section class="lovable-trip-main">
+            <section id="snapshot" class="lovable-detail-card">
+                <h2>Quick Overview</h2>
+                {% if trip.summary %}
+                <p class="lovable-detail-muted">{{ trip.summary }}</p>
+                {% endif %}
+                {% if trip.description_html and trip_detail_mode == "member-full" %}
+                <div class="trip-rich-description">{{ trip.description_html|safe }}</div>
+                {% elif trip.description %}
+                <p class="lovable-detail-muted">{{ trip.description }}</p>
+                {% endif %}
+
+                <div class="lovable-detail-grid-meta">
+                    <div>
+                        <span>Trip Type</span>
+                        <strong>{{ trip.trip_type_label|default:"Adventure" }}</strong>
+                    </div>
+                    <div>
+                        <span>Budget</span>
+                        <strong>
+                            {% if trip.cost_label %}
+                            {{ trip.cost_label }}
+                            {% elif trip.budget_label %}
+                            {{ trip.budget_label }}
+                            {% else %}
+                            Mid-range
+                            {% endif %}
+                        </strong>
+                    </div>
+                    <div>
+                        <span>Difficulty</span>
+                        <strong>{{ trip.difficulty_label|default:"Moderate" }}</strong>
+                    </div>
+                    <div>
+                        <span>Pace</span>
+                        <strong>{{ trip.pace_label|default:"Balanced" }}</strong>
+                    </div>
+                    <div>
+                        <span>Group Size</span>
+                        <strong>{{ trip.group_size_label|default:"6-10 travelers" }}</strong>
+                    </div>
+                    <div>
+                        <span>Book Before</span>
+                        <strong>{{ trip.booking_closes_label|default:"Anytime" }}</strong>
+                    </div>
+                </div>
+            </section>
+
+            {% if trip.highlights %}
+            <section id="highlights" class="lovable-detail-card">
+                <h2>Highlights</h2>
+                <ul>
+                    {% for item in trip.highlights %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
             {% endif %}
-            <p class="card-description">{{ item.body }}</p>
 
-            {% if item.media_attachments %}
-            <div class="media-inline-list">
-                {% for media_item in item.media_attachments %}
-                <div class="media-inline-item">
-                    <span class="media-pill">{{ media_item.kind|title }}</span>
-                    <a href="{{ media_item.file_url }}" target="_blank" rel="noopener">{{ media_item.filename }}</a>
-                    <span class="muted-inline">{{ media_item.size_label }}</span>
-                    {% if media_item.can_manage %}
-                    <form method="post" action="{% url 'media:delete' attachment_id=media_item.id %}" class="inline-form media-delete-form">
-                        {% csrf_token %}
-                        <input type="hidden" name="next" value="{{ request.get_full_path }}#reviews">
-                        <button class="btn btn-ghost" type="submit">Delete</button>
-                    </form>
+            {% if trip.itinerary_days %}
+            <section id="itinerary" class="lovable-detail-card">
+                <h2>Day-by-Day Itinerary</h2>
+                <div class="comments-stack">
+                    {% for day in trip.itinerary_days %}
+                    <article class="card">
+                        <p class="card-subtitle">Day {{ forloop.counter }}{% if day.is_flexible %} · Flexible{% endif %}</p>
+                        <p><strong>{{ day.title|default:"Plan" }}</strong></p>
+                        {% if day.description %}<p class="lovable-detail-muted">{{ day.description|safe }}</p>{% endif %}
+                        {% if day.stay %}<p class="lovable-detail-muted">Stay: {{ day.stay }}</p>{% endif %}
+                        {% if day.meals %}<p class="lovable-detail-muted">Meals: {{ day.meals }}</p>{% endif %}
+                        {% if day.activities %}<p class="lovable-detail-muted">Activities: {{ day.activities }}</p>{% endif %}
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            {% if trip.included_items or trip.not_included_items %}
+            <section id="included" class="lovable-detail-card">
+                <h2>Included and Not Included</h2>
+                <div class="lovable-detail-grid-meta">
+                    <div>
+                        <span>Included</span>
+                        {% if trip.included_items %}
+                        <ul>
+                            {% for item in trip.included_items %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="lovable-detail-muted">Not specified.</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <span>Not Included</span>
+                        {% if trip.not_included_items %}
+                        <ul>
+                            {% for item in trip.not_included_items %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="lovable-detail-muted">Not specified.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
+            {% if trip.things_to_carry %}
+            <section id="carry" class="lovable-detail-card">
+                <h2>Things to Carry</h2>
+                <div class="inline-actions lovable-mt-0">
+                    {% for item in trip.things_to_carry %}
+                    <span class="lovable-chip">{{ item }}</span>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            {% if trip.cancellation_policy or trip.code_of_conduct or trip.general_policies %}
+            <section id="policies" class="lovable-detail-card">
+                <h2>Policies and Safety</h2>
+                {% if trip.cancellation_policy %}
+                <p><strong>Cancellation:</strong> {{ trip.cancellation_policy|safe }}</p>
+                {% endif %}
+                {% if trip.code_of_conduct %}
+                <p><strong>Code of Conduct:</strong> {{ trip.code_of_conduct|safe }}</p>
+                {% endif %}
+                {% if trip.general_policies %}
+                <p><strong>General Policy:</strong> {{ trip.general_policies|safe }}</p>
+                {% endif %}
+            </section>
+            {% endif %}
+
+            {% if trip.faqs %}
+            <section id="faqs" class="lovable-detail-card">
+                <h2>Frequently Asked Questions</h2>
+                <div class="comments-stack">
+                    {% for faq in trip.faqs %}
+                    <article class="card">
+                        <p><strong>{{ faq.question|default:"Question" }}</strong></p>
+                        <p class="lovable-detail-muted">{{ faq.answer|safe }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <section id="media" class="lovable-detail-card">
+                <h2>Trip Media</h2>
+                <p class="lovable-detail-muted">{{ trip_media_reason|default:"Trip media shared by the host and reviewers." }}</p>
+
+                {% if trip_media_can_upload %}
+                <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="search-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="target_type" value="trip">
+                    <input type="hidden" name="target_id" value="{{ trip.id }}">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}#media">
+
+                    <label for="trip-media-file">Upload media</label>
+                    <input id="trip-media-file" class="form-input" type="file" name="file" accept="image/*,video/*" required>
+
+                    <label for="trip-media-caption">Caption (optional)</label>
+                    <input id="trip-media-caption" class="form-input" type="text" name="caption" maxlength="280" placeholder="Add context for this media item.">
+
+                    <button class="btn btn-primary" type="submit">Upload</button>
+                </form>
+                {% endif %}
+
+                {% if trip_media_items %}
+                <div class="media-grid lovable-mt-075">
+                    {% for item in trip_media_items %}
+                    <article class="card media-card">
+                        {% if item.kind == "image" %}
+                        <img class="media-preview-image" src="{{ item.file_url }}" alt="{% if item.caption %}{{ item.caption }}{% elif item.filename %}{{ item.filename }}{% else %}Trip media{% endif %}">
+                        {% else %}
+                        <video class="media-preview-video" controls preload="metadata">
+                            <source src="{{ item.file_url }}" type="{{ item.content_type }}">
+                        </video>
+                        {% endif %}
+                        {% if item.caption %}<p>{{ item.caption }}</p>{% endif %}
+                    </article>
+                    {% endfor %}
+                </div>
+                {% elif not trip_media_can_upload %}
+                <p class="empty-state lovable-mt-08">No media items yet.</p>
+                {% endif %}
+            </section>
+
+            <section id="comments" class="lovable-detail-card">
+                <h2>Conversation</h2>
+                <p class="lovable-detail-muted">{{ interaction_comment_reason|default:"Questions and discussion from members planning this trip." }}</p>
+
+                {% if user.is_authenticated %}
+                <form method="post" action="{% url 'interactions:comment' %}" class="search-form lovable-mt-07">
+                    {% csrf_token %}
+                    <input type="hidden" name="target_type" value="trip">
+                    <input type="hidden" name="target_id" value="{{ trip.id }}">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}#comments">
+                    <label for="trip-comment-text">Add a comment</label>
+                    <input id="trip-comment-text" class="form-input" type="text" name="text" maxlength="2000" placeholder="Share your question or note for this trip.">
+                    <button class="btn btn-primary" type="submit">Post comment</button>
+                </form>
+                {% endif %}
+
+                {% if interaction_comments %}
+                <div class="comments-stack lovable-mt-08">
+                    {% for item in interaction_comments %}
+                    <article class="card comment-item">
+                        <p class="card-subtitle">@{{ item.author_username }} · {{ item.created_at|date:"M j, Y H:i" }}</p>
+                        <p class="card-description">{{ item.text }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="empty-state lovable-mt-08">No comments yet. Be the first to leave a note.</p>
+                {% endif %}
+            </section>
+
+            <section id="reviews" class="lovable-detail-card">
+                <h2>Ratings and Reviews</h2>
+                <p class="lovable-detail-muted">Average rating: {{ review_average_rating|floatformat:1 }}/5 from {{ review_count }} review{{ review_count|pluralize }}</p>
+
+                {% if user.is_authenticated %}
+                <form method="post" action="{% url 'reviews:create' %}" class="search-form lovable-mt-07">
+                    {% csrf_token %}
+                    <input type="hidden" name="target_type" value="trip">
+                    <input type="hidden" name="target_id" value="{{ trip.id }}">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}#reviews">
+
+                    <label for="trip-review-rating">Rating</label>
+                    <select id="trip-review-rating" class="form-input" name="rating">
+                        <option value="5">5 - Excellent</option>
+                        <option value="4">4 - Strong</option>
+                        <option value="3">3 - Solid</option>
+                        <option value="2">2 - Needs work</option>
+                        <option value="1">1 - Poor</option>
+                    </select>
+
+                    <label for="trip-review-body">Your review</label>
+                    <input id="trip-review-body" class="form-input" type="text" name="body" maxlength="4000" placeholder="What worked well, what should improve?">
+
+                    <button class="btn btn-primary" type="submit">{% if review_viewer_row %}Update review{% else %}Post review{% endif %}</button>
+                </form>
+                {% endif %}
+
+                {% if review_items %}
+                <div class="comments-stack lovable-mt-08">
+                    {% for item in review_items %}
+                    <article class="card comment-item">
+                        <p class="card-subtitle">@{{ item.author_username }} · {{ item.created_at|date:"M j, Y H:i" }} · {{ item.rating }}/5</p>
+                        {% if item.headline %}<p><strong>{{ item.headline }}</strong></p>{% endif %}
+                        <p class="card-description">{{ item.body }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="empty-state lovable-mt-08">No reviews yet. Be the first to share your experience.</p>
+                {% endif %}
+            </section>
+        </section>
+
+        <aside class="lovable-sticky-booking">
+            <section class="lovable-detail-card">
+                <p class="lovable-detail-muted lovable-m-0">Price per person</p>
+                <div class="lovable-booking-price">
+                    {% if trip.price_per_person %}
+                    {{ trip.currency|default:'INR' }} {{ trip.price_per_person }}
+                    {% elif trip.total_trip_price %}
+                    {{ trip.currency|default:'INR' }} {{ trip.total_trip_price }}
+                    {% elif trip.cost_label %}
+                    {{ trip.cost_label }}
+                    {% elif trip.budget_label %}
+                    {{ trip.budget_label }}
+                    {% else %}
+                    Price on request
                     {% endif %}
                 </div>
-                {% endfor %}
-            </div>
-            {% endif %}
 
-            {% if user.is_authenticated and item.is_mine %}
-            <form method="post" action="{% url 'media:upload' %}" enctype="multipart/form-data" class="media-form-inline">
-                {% csrf_token %}
-                <input type="hidden" name="target_type" value="review">
-                <input type="hidden" name="target_id" value="{{ item.id }}">
-                <input type="hidden" name="next" value="{{ request.get_full_path }}#reviews">
-                <label for="review-media-trip-{{ item.id }}">Attach media to this review</label>
-                <input id="review-media-trip-{{ item.id }}" class="form-input" type="file" name="file" accept="image/*,video/*" required>
-                <input class="form-input" type="text" name="caption" maxlength="280" placeholder="Optional caption">
-                <button class="btn btn-ghost" type="submit">Attach media</button>
-            </form>
-            {% endif %}
-        </article>
-        {% endfor %}
+                <div class="lovable-booking-list">
+                    <div class="lovable-booking-row"><span>Dates</span><strong>{{ trip.date_label|default:"TBA" }}</strong></div>
+                    <div class="lovable-booking-row"><span>Duration</span><strong>{{ trip.duration_label|default:"TBA" }}</strong></div>
+                    <div class="lovable-booking-row"><span>Spots</span><strong>
+                        {% if trip.spots_left_label %}
+                        {{ trip.spots_left_label }}
+                        {% elif trip.group_size_label %}
+                        {{ trip.group_size_label }}
+                        {% else %}
+                        Limited
+                        {% endif %}
+                    </strong></div>
+                    {% if trip.booking_closes_label %}
+                    <div class="lovable-booking-row"><span>Book before</span><strong>{{ trip.booking_closes_label }}</strong></div>
+                    {% endif %}
+                </div>
+
+                <div class="inline-actions lovable-mt-0">
+                    {% if can_manage_trip %}
+                    <a class="btn btn-secondary" href="/trips/{{ trip.id }}/edit/">Edit Trip</a>
+                    <form method="post" action="/trips/{{ trip.id }}/delete/" class="inline-form">
+                        {% csrf_token %}
+                        <button class="btn btn-ghost" type="submit">Delete</button>
+                    </form>
+                    {% elif user.is_authenticated %}
+                    <form method="post" action="{% url 'enrollment:trip-request' trip_id=trip.id %}" class="inline-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button class="btn btn-primary" type="submit">Request to Join</button>
+                    </form>
+                    <form method="post" action="{% if trip.is_bookmarked %}{% url 'social:unbookmark' %}{% else %}{% url 'social:bookmark' %}{% endif %}" class="inline-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="type" value="trip">
+                        <input type="hidden" name="id" value="{{ trip.id }}">
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button class="btn btn-secondary" type="submit">{% if trip.is_bookmarked %}Bookmarked{% else %}Bookmark{% endif %}</button>
+                    </form>
+                    {% else %}
+                    <button class="btn btn-primary js-guest-action" type="button" data-action-label="join this trip">Request to Join</button>
+                    <button class="btn btn-secondary js-guest-action" type="button" data-action-label="bookmark this trip">Bookmark</button>
+                    {% endif %}
+                </div>
+
+                <div class="lovable-subtle-divider">
+                    <div id="host"></div>
+                    <p class="lovable-detail-muted lovable-m-0">Hosted by</p>
+                    {% if trip.host_username %}
+                    <p class="lovable-mt-035"><a href="/u/{{ trip.host_username }}/">@{{ trip.host_username }}</a></p>
+                    {% else %}
+                    <p class="lovable-mt-035">@host</p>
+                    {% endif %}
+                </div>
+            </section>
+        </aside>
     </div>
-    {% else %}
-    <p class="empty-state">No reviews yet. Be the first to share your experience.</p>
-    {% endif %}
-</section>
+</article>
 {% endblock %}

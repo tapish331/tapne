@@ -1,12 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Outfit:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
 /* tapne shared UI system
    Centralized theme color variables live here. */
 :root {
-    --font-display: "Outfit", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    --font-body: "Outfit", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    --font-ui: "Outfit", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+    --font-display: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-body: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-ui: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     /* Centralized typography scale tokens. */
     --font-size-070: 0.7rem;
     --font-size-071: 0.71rem;
@@ -44,10 +44,10 @@
     --font-size-fluid-3xl: clamp(1.45rem, 2.6vw, 2.2rem);
     --font-size-fluid-hero: clamp(1.9rem, 3.3vw, 2.8rem);
 
-    --radius-xs: 0.45rem;
-    --radius-sm: 0.7rem;
-    --radius-md: 1rem;
-    --radius-lg: 1.35rem;
+    --radius-xs: 0.375rem;
+    --radius-sm: 0.5rem;
+    --radius-md: 0.625rem;
+    --radius-lg: 0.75rem;
     --radius-pill: 999px;
 
     --space-1: 0.35rem;
@@ -62,18 +62,18 @@
     --ease-float: 250ms cubic-bezier(0.2, 0.85, 0.2, 1);
 
     /* Centralized accent and semantic color tokens. */
-    --accent: #69b8b2;
-    --accent-strong: #3f8f89;
-    --accent-soft: #e1f4f2;
-    --accent-soft-strong: #c9ebe8;
-    --accent-rgb: 105, 184, 178;
-    --accent-ink: #2f7772;
-    --warning: #5f9f99;
-    --warning-rgb: 95, 159, 153;
-    --warning-ink: #2f6863;
-    --danger: #b44436;
-    --danger-rgb: 180, 68, 54;
-    --support-rgb: 87, 170, 163;
+    --accent: #30a69a;
+    --accent-strong: #1d635c;
+    --accent-soft: #dbf0ee;
+    --accent-soft-strong: #c9e7e3;
+    --accent-rgb: 48, 166, 154;
+    --accent-ink: #1d635c;
+    --warning: #267f76;
+    --warning-rgb: 38, 127, 118;
+    --warning-ink: #164c47;
+    --danger: #df3a3a;
+    --danger-rgb: 223, 58, 58;
+    --support-rgb: 48, 166, 154;
     --support: rgb(var(--support-rgb));
 
     /* Status and component semantic tokens. */
@@ -86,65 +86,65 @@
     --auth-note-text: var(--warning-ink);
 
     /* Theme-semantic tokens overridden by [data-theme]. */
-    --bg-layer: #eef5fb;
-    --bg-base: #f6fbff;
+    --bg-layer: #f9fbfa;
+    --bg-base: #f9fbfa;
     --bg-canvas: #ffffff;
-    --surface-glass: rgba(255, 255, 255, 0.78);
+    --surface-glass: rgba(255, 255, 255, 0.8);
     --surface-1: #ffffff;
-    --surface-2: #f2f7fc;
-    --surface-3: #e8f0f8;
-    --line: #ccd9e8;
-    --line-strong: #b6c8dc;
-    --text-1: #12273a;
-    --text-2: #284760;
-    --text-3: #506983;
-    --text-inverse: #f5f9ff;
-    --rich-text-default-fore-color: #0f172a;
+    --surface-2: #ecf4f2;
+    --surface-3: #edf2f1;
+    --line: #dae7e4;
+    --line-strong: #c5d6d3;
+    --text-1: #131c20;
+    --text-2: #1d2930;
+    --text-3: #6a7981;
+    --text-inverse: #ffffff;
+    --rich-text-default-fore-color: #131c20;
     --rich-text-default-hilite-color: #fde68a;
     --text-on-media-strong: #fff;
     --text-on-media-soft: rgba(255, 255, 255, 0.93);
     --text-muted-contrast: color-mix(in srgb, var(--text-3) 75%, var(--line-strong));
-    --overlay: rgba(8, 15, 24, 0.66);
-    --hero-glow-a: rgba(105, 184, 178, 0.2);
-    --hero-glow-b: rgba(163, 220, 215, 0.2);
-    --hero-grid: rgba(18, 39, 58, 0.06);
-    --home-hero-overlay-top: rgba(246, 251, 255, 0.8);
-    --home-hero-overlay-bottom: rgba(246, 251, 255, 0.62);
-    --shadow-soft: 0 12px 28px rgba(12, 33, 52, 0.08);
-    --shadow-card: 0 20px 50px rgba(12, 33, 52, 0.12);
-    --shadow-float: 0 28px 76px rgba(12, 33, 52, 0.22);
-    --selection: rgba(105, 184, 178, 0.28);
+    --overlay: rgba(19, 28, 32, 0.66);
+    --hero-glow-a: rgba(48, 166, 154, 0.18);
+    --hero-glow-b: rgba(219, 240, 238, 0.2);
+    --hero-grid: rgba(19, 28, 32, 0.06);
+    --home-hero-overlay-top: rgba(249, 251, 250, 0.82);
+    --home-hero-overlay-bottom: rgba(249, 251, 250, 0.64);
+    --shadow-soft: 0 12px 28px rgba(19, 28, 32, 0.08);
+    --shadow-card: 0 20px 50px rgba(19, 28, 32, 0.12);
+    --shadow-float: 0 28px 76px rgba(19, 28, 32, 0.2);
+    --selection: rgba(48, 166, 154, 0.28);
 }
 
 html[data-theme="dark"] {
-    --bg-layer: #0c1a28;
-    --bg-base: #101f2f;
-    --bg-canvas: #152739;
-    --surface-glass: rgba(20, 39, 57, 0.72);
-    --surface-1: #14293d;
-    --surface-2: #19344b;
-    --surface-3: #20425d;
-    --line: #34536c;
-    --line-strong: #446b88;
-    --text-1: #e6f1ff;
-    --text-2: #c2d5e8;
-    --text-3: #93aeca;
-    --text-inverse: #091421;
-    --rich-text-default-fore-color: #e6f1ff;
+    --bg-layer: #101618;
+    --bg-base: #101618;
+    --bg-canvas: #1a2023;
+    --surface-glass: rgba(26, 32, 35, 0.78);
+    --surface-1: #1a2023;
+    --surface-2: #273035;
+    --surface-3: #292f32;
+    --line: #2d3539;
+    --line-strong: #3a4549;
+    --text-1: #e9edeb;
+    --text-2: #d5ddda;
+    --text-3: #838f95;
+    --text-inverse: #ffffff;
+    --rich-text-default-fore-color: #e9edeb;
     --rich-text-default-hilite-color: #8a6b00;
-    --overlay: rgba(4, 8, 12, 0.78);
+    --overlay: rgba(6, 10, 12, 0.78);
     --hero-glow-a: rgba(var(--accent-rgb), 0.3);
     --hero-glow-b: rgba(var(--accent-rgb), 0.24);
-    --hero-grid: rgba(230, 241, 255, 0.08);
-    --home-hero-overlay-top: rgba(7, 16, 27, 0.68);
-    --home-hero-overlay-bottom: rgba(7, 16, 27, 0.52);
-    --shadow-soft: 0 14px 30px rgba(1, 6, 12, 0.33);
-    --shadow-card: 0 24px 58px rgba(1, 6, 12, 0.42);
+    --hero-grid: rgba(233, 237, 235, 0.08);
+    --home-hero-overlay-top: rgba(16, 22, 24, 0.68);
+    --home-hero-overlay-bottom: rgba(16, 22, 24, 0.52);
+    --shadow-soft: 0 14px 30px rgba(2, 6, 7, 0.34);
+    --shadow-card: 0 24px 58px rgba(2, 6, 7, 0.44);
     --shadow-float: 0 36px 92px rgba(0, 0, 0, 0.56);
     --selection: rgba(var(--accent-rgb), 0.36);
-    --danger: #dc796d;
-    --danger-rgb: 220, 121, 109;
-    --warning-ink: #d7f4f1;
+    --danger: #cf3030;
+    --danger-rgb: 207, 48, 48;
+    --warning-ink: #d5ddda;
 }
 
 html {

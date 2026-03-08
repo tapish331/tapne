@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import md5
 from typing import Any, TypedDict, cast
 
 from django.conf import settings
@@ -61,6 +62,21 @@ class Blog(models.Model):
     def get_absolute_url(self) -> str:
         return f"/blogs/{self.slug}/"
 
+    def _default_cover_image_url(self) -> str:
+        cover_pool: tuple[str, ...] = (
+            "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80",
+            "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80",
+            "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=900&q=80",
+            "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=900&q=80",
+            "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=900&q=80",
+            "https://images.unsplash.com/photo-1626014303715-48c7b1a7a814?w=900&q=80",
+        )
+        if not cover_pool:
+            return ""
+        slug_key = str(self.slug or self.pk or "tapne-blog")
+        index = int(md5(slug_key.encode("utf-8")).hexdigest(), 16) % len(cover_pool)
+        return cover_pool[index]
+
     def to_blog_data(self) -> BlogData:
         return {
             "id": int(self.pk or 0),
@@ -73,6 +89,8 @@ class Blog(models.Model):
             "reviews_count": int(self.reviews_count or 0),
             "url": self.get_absolute_url(),
             "body": self.body,
+            "cover_image_url": self._default_cover_image_url(),
+            "published_label": self.created_at.strftime("%b %d, %Y"),
         }
 
 

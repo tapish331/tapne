@@ -1,236 +1,167 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Home{% endblock %}
+{% block body_class %}lovable-theme lovable-home-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="hero home-hero">
-    <h1>Find your kind of people. <span class="home-hero-accent">Then travel.</span></h1>
-    <p class="home-hero-subheading">Join community-led trips with like-minded travelers. Discover adventures, make friends, and explore the world together.</p>
+<div class="lovable-home-shell">
+    <section class="lovable-home-hero">
+        <h1>Find your kind of people. <span>Then travel.</span></h1>
+        <p class="lovable-home-subtitle">Join community-led trips with like-minded travelers. Discover adventures, make friends, and explore the world together.</p>
 
-    {% with selected_type=request.GET.type|default:"all" %}
-    <form class="search-form home-hero-search" method="get" action="/search/" data-navbar-dock-source>
-        <label class="sr-only" for="homeSearchType">Search type</label>
-        <select id="homeSearchType" name="type">
-            <option value="all" {% if selected_type == "all" %}selected{% endif %}>All</option>
-            <option value="trips" {% if selected_type == "trips" %}selected{% endif %}>Trips</option>
-            <option value="users" {% if selected_type == "users" %}selected{% endif %}>User</option>
-            <option value="blogs" {% if selected_type == "blogs" %}selected{% endif %}>Blogs</option>
-        </select>
-        <label class="sr-only" for="homeSearchQuery">Search query</label>
-        <input
-            id="homeSearchQuery"
-            name="q"
-            type="search"
-            placeholder="Try Bali, @host, or food guide..."
-            value="{{ request.GET.q|default:'' }}"
-        >
-        <button class="btn btn-primary" type="submit">Search</button>
-    </form>
-    {% endwith %}
+        <form class="lovable-home-search" method="get" action="/search/" data-navbar-dock-source>
+            <input type="hidden" name="type" value="all">
+            <label class="sr-only" for="homeSearchQuery">Search query</label>
+            <input
+                id="homeSearchQuery"
+                name="q"
+                type="search"
+                placeholder="Search trips or travelers..."
+                value="{{ request.GET.q|default:'' }}"
+            >
+            <button class="btn btn-primary" type="submit">Search</button>
+        </form>
 
-    <div class="home-hero-stats" aria-label="Community metrics">
-        <div class="home-hero-stat">
-            <span class="home-hero-stat-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"></path>
-                    <circle cx="12" cy="10" r="2.6"></circle>
-                </svg>
-            </span>
-            <span class="home-hero-stat-value">{{ total_unique_destinations }}</span>
-            <span class="home-hero-stat-label">Destinations</span>
+        <div class="lovable-home-stats" aria-label="Community metrics">
+            <div class="lovable-home-stat">
+                <strong>{{ total_unique_destinations }}</strong>
+                <span>Destinations</span>
+            </div>
+            <div class="lovable-home-stat">
+                <strong>{{ total_authenticated_users }}</strong>
+                <span>Travelers</span>
+            </div>
+            <div class="lovable-home-stat">
+                <strong>{{ total_trips_created }}</strong>
+                <span>Trips Created</span>
+            </div>
         </div>
-        <div class="home-hero-stat">
-            <span class="home-hero-stat-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                    <circle cx="8" cy="9" r="3"></circle>
-                    <circle cx="16.5" cy="10" r="2.4"></circle>
-                    <path d="M3.5 18.2c.8-2.5 2.8-4 5.5-4s4.8 1.5 5.6 4"></path>
-                    <path d="M13.7 18.2c.6-1.8 2.1-2.9 4.2-2.9 1.1 0 2.1.3 2.8.9"></path>
-                </svg>
-            </span>
-            <span class="home-hero-stat-value">{{ total_authenticated_users }}</span>
-            <span class="home-hero-stat-label">Travelers</span>
-        </div>
-        <div class="home-hero-stat">
-            <span class="home-hero-stat-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                    <circle cx="12" cy="12" r="8"></circle>
-                    <path d="M10 14l2-6 2 2-4 4z"></path>
-                    <circle cx="12" cy="12" r="1.2"></circle>
-                </svg>
-            </span>
-            <span class="home-hero-stat-value">{{ total_trips_created }}</span>
-            <span class="home-hero-stat-label">Trips Created</span>
-        </div>
-    </div>
-</section>
+    </section>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Upcoming trips</h2>
-        <a href="/trips/">Browse all trips</a>
-    </header>
-    {% if trips %}
-    <div class="card-carousel-shell" data-card-carousel>
-        <button
-            class="card-carousel-arrow card-carousel-arrow-prev"
-            type="button"
-            aria-label="Scroll upcoming trips left"
-            aria-controls="homeUpcomingTripsCarousel"
-            data-carousel-prev
-        >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M14.5 5.8L8.3 12l6.2 6.2"></path>
-            </svg>
-        </button>
-        <div id="homeUpcomingTripsCarousel" class="card-carousel" aria-label="Upcoming trips carousel" tabindex="0">
-            {% for trip in trips|slice:":8" %}
-            {% include "partials/cards/trip_card.html" with trip=trip card_variant="home-upcoming" %}
+    <section class="lovable-section">
+        <header class="lovable-section-header">
+            <div>
+                <h2>Explore Trips</h2>
+                <p>Discover community trips created by travellers.</p>
+            </div>
+            <a class="btn btn-ghost lovable-view-all-desktop" href="/trips/">View all</a>
+        </header>
+
+        {% if trips %}
+        <div class="lovable-card-carousel lovable-horizontal-carousel" aria-label="Explore trips carousel">
+            {% for trip in trips|slice:":6" %}
+            <div class="lovable-carousel-item lovable-carousel-item-trip">
+                <article class="lovable-trip-teaser">
+                    <a href="{{ trip.url|default:'/trips/' }}">
+                        <div class="lovable-trip-teaser-media">
+                            <img src="{{ trip.banner_image_url|default:'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80' }}" alt="{{ trip.title|default:'Trip' }}">
+                        </div>
+                    </a>
+                    <div class="lovable-trip-teaser-body">
+                        <span class="lovable-chip">{{ trip.trip_type_label|default:"Adventure" }}</span>
+                        <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
+                        <p class="lovable-trip-meta">{{ trip.destination|default:"TBD" }} · {{ trip.date_label|default:"Dates soon" }}</p>
+                        <p class="lovable-trip-meta">
+                            {% if trip.spots_left_label %}
+                            {{ trip.spots_left_label }}
+                            {% elif trip.group_size_label %}
+                            {{ trip.group_size_label }}
+                            {% else %}
+                            Limited spots
+                            {% endif %}
+                        </p>
+                    </div>
+                </article>
+            </div>
             {% endfor %}
         </div>
-        <button
-            class="card-carousel-arrow card-carousel-arrow-next"
-            type="button"
-            aria-label="Scroll upcoming trips right"
-            aria-controls="homeUpcomingTripsCarousel"
-            data-carousel-next
-        >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M9.5 5.8L15.7 12l-6.2 6.2"></path>
-            </svg>
-        </button>
-    </div>
-    {% else %}
-    <div class="empty-state">No upcoming trips yet. Create the first trip to seed this section.</div>
-    {% endif %}
-</section>
+        <div class="inline-actions lovable-mt-06">
+            <a class="btn btn-secondary lovable-view-all-mobile" href="/trips/">View all trips</a>
+        </div>
+        {% else %}
+        <div class="empty-state">No upcoming trips yet. Create the first trip to seed this section.</div>
+        {% endif %}
+    </section>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Destinations</h2>
-        <a href="/search/?type=trips">Explore destinations</a>
-    </header>
-    {% if destinations %}
-    <div class="card-carousel-shell" data-card-carousel>
-        <button
-            class="card-carousel-arrow card-carousel-arrow-prev"
-            type="button"
-            aria-label="Scroll destinations left"
-            aria-controls="homeDestinationsCarousel"
-            data-carousel-prev
-        >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M14.5 5.8L8.3 12l6.2 6.2"></path>
-            </svg>
-        </button>
-        <div id="homeDestinationsCarousel" class="card-carousel" aria-label="Destinations carousel" tabindex="0">
-            {% for destination in destinations|slice:":8" %}
-            {% include "partials/cards/destination_card.html" with destination=destination %}
+    <section class="lovable-home-section-muted">
+        <header class="lovable-section-header">
+            <div>
+                <h2>Explore Destinations</h2>
+                <p>Find trips by destination.</p>
+            </div>
+        </header>
+
+        {% if destinations %}
+        <div class="lovable-card-carousel" aria-label="Destinations carousel">
+            {% for destination in destinations|slice:":10" %}
+            <article class="lovable-destination-teaser">
+                <a href="{{ destination.search_url|default:'/search/?type=trips' }}" aria-label="Explore {{ destination.name }}">
+                    <div class="lovable-destination-teaser-media">
+                        <img src="{{ destination.featured_trip_banner_image_url|default:'https://images.unsplash.com/photo-1626014303715-48c7b1a7a814?w=900&q=80' }}" alt="{{ destination.name|default:'Destination' }}">
+                    </div>
+                    <div class="lovable-destination-teaser-overlay">
+                        <div>
+                            <p class="lovable-destination-teaser-title">{{ destination.name|default:"Destination" }}</p>
+                            <p>{{ destination.trip_count|default:0 }} trip{{ destination.trip_count|pluralize }}</p>
+                        </div>
+                    </div>
+                </a>
+            </article>
             {% endfor %}
         </div>
-        <button
-            class="card-carousel-arrow card-carousel-arrow-next"
-            type="button"
-            aria-label="Scroll destinations right"
-            aria-controls="homeDestinationsCarousel"
-            data-carousel-next
-        >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M9.5 5.8L15.7 12l-6.2 6.2"></path>
-            </svg>
-        </button>
-    </div>
-    {% else %}
-    <div class="empty-state">No destinations yet. Add trip locations to populate this section.</div>
-    {% endif %}
-</section>
+        {% else %}
+        <div class="empty-state">No destinations yet. Add trip locations to populate this section.</div>
+        {% endif %}
+    </section>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Blogs</h2>
-        <a href="/blogs/">Read all blogs</a>
-    </header>
-    {% if blogs %}
-    <div class="card-carousel-shell" data-card-carousel>
-        <button
-            class="card-carousel-arrow card-carousel-arrow-prev"
-            type="button"
-            aria-label="Scroll blogs left"
-            aria-controls="homeBlogsCarousel"
-            data-carousel-prev
-        >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M14.5 5.8L8.3 12l6.2 6.2"></path>
-            </svg>
-        </button>
-        <div id="homeBlogsCarousel" class="card-carousel" aria-label="Blogs carousel" tabindex="0">
-            {% for blog in blogs|slice:":8" %}
-            {% include "partials/cards/blog_card.html" with blog=blog %}
+    <section class="lovable-section">
+        <header class="lovable-section-header">
+            <div>
+                <h2>From the Community</h2>
+                <p>Stories, tips, and experiences from fellow travelers.</p>
+            </div>
+            <a class="btn btn-ghost lovable-view-all-desktop" href="/blogs/">View all</a>
+        </header>
+
+        {% if blogs %}
+        <div class="lovable-card-carousel lovable-horizontal-carousel" aria-label="Community blogs carousel">
+            {% for blog in blogs|slice:":6" %}
+            <div class="lovable-carousel-item lovable-carousel-item-blog">
+                <article class="lovable-blog-teaser">
+                    <a href="{{ blog.url|default:'/blogs/' }}">
+                        <div class="lovable-blog-teaser-media">
+                            <img src="{{ blog.cover_image_url|default:'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80' }}" alt="{{ blog.title|default:'Blog' }}">
+                        </div>
+                    </a>
+                    <div class="lovable-blog-teaser-body">
+                        {% if blog.trip_title %}
+                        <span class="lovable-chip">{{ blog.trip_title }}</span>
+                        {% endif %}
+                        <h3><a href="{{ blog.url|default:'/blogs/' }}">{{ blog.title|default:"Untitled blog" }}</a></h3>
+                        <div class="lovable-blog-teaser-meta">
+                            <span>By @{{ blog.author_username|default:"author" }}</span>
+                            <span>
+                                {% if blog.published_at_label %}
+                                {{ blog.published_at_label }}
+                                {% elif blog.created_at_label %}
+                                {{ blog.created_at_label }}
+                                {% else %}
+                                Recent
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                </article>
+            </div>
             {% endfor %}
         </div>
-        <button
-            class="card-carousel-arrow card-carousel-arrow-next"
-            type="button"
-            aria-label="Scroll blogs right"
-            aria-controls="homeBlogsCarousel"
-            data-carousel-next
-        >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M9.5 5.8L15.7 12l-6.2 6.2"></path>
-            </svg>
-        </button>
-    </div>
-    {% else %}
-    <div class="empty-state">No blogs yet. Publish a first post to populate this feed.</div>
-    {% endif %}
-</section>
+        <div class="inline-actions lovable-mt-1">
+            <a class="btn btn-secondary" href="/blogs/">View All Blogs</a>
+        </div>
+        {% else %}
+        <div class="empty-state">No blogs yet. Publish a first post to populate this feed.</div>
+        {% endif %}
+    </section>
+</div>
 {% endblock %}
-
-{% block body_extra %}
-{{ block.super }}
-<script>
-    (function initHomeCarousels() {
-        var carouselShells = document.querySelectorAll("[data-card-carousel]");
-        if (!carouselShells.length) {
-            return;
-        }
-
-        function bindCarousel(shell) {
-            var track = shell.querySelector(".card-carousel");
-            var prevButton = shell.querySelector("[data-carousel-prev]");
-            var nextButton = shell.querySelector("[data-carousel-next]");
-            if (!track || !prevButton || !nextButton) {
-                return;
-            }
-
-            function stepSize() {
-                return Math.max(Math.floor(track.clientWidth * 0.85), 260);
-            }
-
-            function updateState() {
-                var maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
-                var atStart = track.scrollLeft <= 2;
-                var atEnd = track.scrollLeft >= maxScrollLeft - 2;
-                prevButton.disabled = atStart;
-                nextButton.disabled = atEnd;
-                shell.classList.toggle("is-static", maxScrollLeft <= 2);
-            }
-
-            prevButton.addEventListener("click", function () {
-                track.scrollBy({ left: -stepSize(), behavior: "smooth" });
-            });
-            nextButton.addEventListener("click", function () {
-                track.scrollBy({ left: stepSize(), behavior: "smooth" });
-            });
-            track.addEventListener("scroll", updateState, { passive: true });
-            window.addEventListener("resize", updateState);
-            updateState();
-        }
-
-        for (var i = 0; i < carouselShells.length; i += 1) {
-            bindCarousel(carouselShells[i]);
-        }
-    })();
-</script>
-{% endblock %}
-
