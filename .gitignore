@@ -5,3 +5,5 @@ __pycache__/
 .venv/
 staticfiles/
 mediafiles/
+artifacts/
+test_settings.sqlite3

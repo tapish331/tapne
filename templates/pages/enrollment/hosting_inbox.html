@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Hosting Inbox{% endblock %}
+{% block body_class %}hosting-inbox-page{% endblock %}
 
 {% block content %}
 <section class="hero hero-compact">
@@ -9,11 +10,11 @@
     <p>{{ hosting_inbox_reason|default:"Approve or deny member join requests from your hosted trip catalog." }}</p>
 </section>
 
-<section class="section-grid">
+<section class="section-grid filter-section">
     <header class="section-header">
         <h2>Status filters</h2>
     </header>
-    <div class="inline-actions">
+    <div class="inline-actions filter-chip-stack">
         <a class="btn {% if active_status == 'pending' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'enrollment:hosting-inbox' %}?status=pending">Pending ({{ hosting_counts.pending|default:0 }})</a>
         <a class="btn {% if active_status == 'approved' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'enrollment:hosting-inbox' %}?status=approved">Approved ({{ hosting_counts.approved|default:0 }})</a>
         <a class="btn {% if active_status == 'denied' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'enrollment:hosting-inbox' %}?status=denied">Denied ({{ hosting_counts.denied|default:0 }})</a>

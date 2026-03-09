@@ -37,6 +37,11 @@ coverage.xml
 *.sqlite3
 db.sqlite3
 staticfiles/
+artifacts/
+mediafiles/
+
+# Local skill/audit assets not needed in runtime image
+skills/
 
 # Node artifacts (if present)
 node_modules/

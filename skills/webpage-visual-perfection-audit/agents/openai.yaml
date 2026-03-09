@@ -1,0 +1,4 @@
+interface:
+  display_name: "Webpage Visual Perfection Audit"
+  short_description: "Audit rendered pages for visual flaws"
+  default_prompt: "Use $webpage-visual-perfection-audit to audit every user-facing webpage visually and report all non-perfect UI issues with severity and fixes."

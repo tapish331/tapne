@@ -470,6 +470,138 @@
             });
     }
 
+    function initializeHomeCarousels() {
+        Array.prototype.slice.call(document.querySelectorAll("[data-lv-carousel-shell]"))
+            .forEach(function wireCarousel(shell) {
+                if (!(shell instanceof HTMLElement)) {
+                    return;
+                }
+
+                var track = shell.querySelector("[data-lv-carousel-track]");
+                if (!(track instanceof HTMLElement)) {
+                    return;
+                }
+
+                var prevButton = shell.querySelector("[data-lv-carousel-prev]");
+                var nextButton = shell.querySelector("[data-lv-carousel-next]");
+
+                var hasQueuedUpdate = false;
+                function queueControlUpdate() {
+                    if (hasQueuedUpdate) {
+                        return;
+                    }
+                    hasQueuedUpdate = true;
+                    window.requestAnimationFrame(function flushCarouselUpdate() {
+                        hasQueuedUpdate = false;
+                        updateControlState();
+                    });
+                }
+
+                function updateControlState() {
+                    var maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
+                    var canScroll = maxScroll > 16;
+                    var atStart = track.scrollLeft <= 2;
+                    var atEnd = track.scrollLeft >= (maxScroll - 2);
+                    shell.classList.toggle("is-static", !canScroll);
+
+                    if (prevButton instanceof HTMLButtonElement) {
+                        prevButton.disabled = !canScroll || atStart;
+                    }
+                    if (nextButton instanceof HTMLButtonElement) {
+                        nextButton.disabled = !canScroll || atEnd;
+                    }
+                }
+
+                function scrollByStep(direction) {
+                    var step = Math.max(240, Math.floor(track.clientWidth * 0.86));
+                    track.scrollBy({ left: step * direction, behavior: "smooth" });
+                    queueControlUpdate();
+                }
+
+                if (prevButton instanceof HTMLButtonElement) {
+                    prevButton.addEventListener("click", function onPrevClick() {
+                        scrollByStep(-1);
+                    });
+                }
+
+                if (nextButton instanceof HTMLButtonElement) {
+                    nextButton.addEventListener("click", function onNextClick() {
+                        scrollByStep(1);
+                    });
+                }
+
+                var dragActive = false;
+                var dragPointerId = null;
+                var dragStartX = 0;
+                var dragStartScrollLeft = 0;
+                var dragged = false;
+
+                track.addEventListener("pointerdown", function onPointerDown(event) {
+                    if (event.pointerType === "mouse" && event.button !== 0) {
+                        return;
+                    }
+                    dragActive = true;
+                    dragPointerId = event.pointerId;
+                    dragStartX = event.clientX;
+                    dragStartScrollLeft = track.scrollLeft;
+                    dragged = false;
+                    track.classList.add("is-dragging");
+                    if (typeof track.setPointerCapture === "function") {
+                        try {
+                            track.setPointerCapture(event.pointerId);
+                        } catch (_error) {
+                            // Ignore pointer capture errors and continue drag behavior.
+                        }
+                    }
+                });
+
+                track.addEventListener("pointermove", function onPointerMove(event) {
+                    if (!dragActive) {
+                        return;
+                    }
+                    if (dragPointerId !== null && event.pointerId !== dragPointerId) {
+                        return;
+                    }
+                    var delta = event.clientX - dragStartX;
+                    if (Math.abs(delta) > 5) {
+                        dragged = true;
+                    }
+                    track.scrollLeft = dragStartScrollLeft - delta;
+                    queueControlUpdate();
+                });
+
+                function endDrag(event) {
+                    if (!dragActive) {
+                        return;
+                    }
+                    if (event && dragPointerId !== null && event.pointerId !== dragPointerId) {
+                        return;
+                    }
+                    dragActive = false;
+                    dragPointerId = null;
+                    track.classList.remove("is-dragging");
+                    queueControlUpdate();
+                }
+
+                track.addEventListener("pointerup", endDrag);
+                track.addEventListener("pointercancel", endDrag);
+                track.addEventListener("lostpointercapture", endDrag);
+
+                track.addEventListener("click", function onTrackClick(event) {
+                    if (!dragged) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    dragged = false;
+                }, true);
+
+                track.addEventListener("scroll", queueControlUpdate, { passive: true });
+                window.addEventListener("resize", queueControlUpdate);
+                queueControlUpdate();
+            });
+    }
+
     function normalizePath(pathValue, fallbackPath) {
         try {
             var normalizedUrl = new URL(pathValue || "", window.location.origin);
@@ -1349,6 +1481,7 @@
     initializeMemberMenu();
     initializeNavbarSearchDocking();
     initializeLovableSearchFields();
+    initializeHomeCarousels();
     initializeAsyncStateForms();
 
     if (authModal) {

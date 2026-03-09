@@ -51,7 +51,7 @@
         </div>
     </section>
 
-    <section class="lovable-section">
+    <section class="lovable-section" data-home-section="trips">
         <header class="lovable-section-header">
             <div>
                 <h2>Explore Trips</h2>
@@ -61,40 +61,80 @@
         </header>
 
         {% if trips %}
-        <div class="lovable-card-carousel lovable-horizontal-carousel" aria-label="Explore trips carousel">
-            {% for trip in trips|slice:":6" %}
-            <div class="lovable-carousel-item lovable-carousel-item-trip">
-                <article class="lovable-trip-teaser">
-                    <a href="{{ trip.url|default:'/trips/' }}">
-                        <div class="lovable-trip-teaser-media">
-                            <img src="{{ trip.banner_image_url|default:'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80' }}" alt="{{ trip.title|default:'Trip' }}">
-                            <div class="lovable-card-media-overlay">
-                                <span class="lovable-chip lovable-chip-on-media">{{ trip.trip_type_label|default:"Adventure" }}</span>
+        {% with trip_items=trips|slice:":6" %}
+        <div class="lovable-carousel-shell" data-lv-carousel-shell>
+            <button
+                class="lovable-carousel-control lovable-carousel-control-prev"
+                type="button"
+                data-lv-carousel-prev
+                aria-label="Scroll Explore Trips left"
+                title="Scroll left"
+            >
+                &#8592;
+            </button>
+            <div class="lovable-card-carousel lovable-horizontal-carousel" data-lv-carousel-track aria-label="Explore trips carousel">
+                {% for trip in trip_items %}
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser">
+                        <a href="{{ trip.url|default:'/trips/' }}">
+                            <div class="lovable-trip-teaser-media">
+                                <img src="{{ trip.banner_image_url|default:'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80' }}" alt="{{ trip.title|default:'Trip' }}">
+                                <div class="lovable-card-media-overlay">
+                                    <span class="lovable-chip lovable-chip-on-media">{{ trip.trip_type_label|default:"Adventure" }}</span>
+                                </div>
                             </div>
+                        </a>
+                        <div class="lovable-trip-teaser-body">
+                            <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
+                            <p class="lovable-trip-meta">
+                                <span>&#128205; {{ trip.destination|default:"TBD" }}</span>
+                                <span>&#128197; {{ trip.date_label|default:"Dates soon" }}</span>
+                            </p>
+                            <p class="lovable-trip-meta">
+                                <span>&#128101;
+                                {% if trip.spots_left_label %}
+                                {{ trip.spots_left_label }}
+                                {% elif trip.group_size_label %}
+                                {{ trip.group_size_label }}
+                                {% else %}
+                                Limited spots
+                                {% endif %}
+                                </span>
+                            </p>
                         </div>
-                    </a>
-                    <div class="lovable-trip-teaser-body">
-                        <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
-                        <p class="lovable-trip-meta">
-                            <span>&#128205; {{ trip.destination|default:"TBD" }}</span>
-                            <span>&#128197; {{ trip.date_label|default:"Dates soon" }}</span>
-                        </p>
-                        <p class="lovable-trip-meta">
-                            <span>&#128101;
-                            {% if trip.spots_left_label %}
-                            {{ trip.spots_left_label }}
-                            {% elif trip.group_size_label %}
-                            {{ trip.group_size_label }}
-                            {% else %}
-                            Limited spots
-                            {% endif %}
-                            </span>
-                        </p>
-                    </div>
-                </article>
+                    </article>
+                </div>
+                {% endfor %}
+                {% if trip_items|length == 1 %}
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More trips coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next adventure</div>
+                    </article>
+                </div>
+                {% elif trip_items|length == 2 %}
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More trips coming soon</div>
+                    </article>
+                </div>
+                {% endif %}
             </div>
-            {% endfor %}
+            <button
+                class="lovable-carousel-control lovable-carousel-control-next"
+                type="button"
+                data-lv-carousel-next
+                aria-label="Scroll Explore Trips right"
+                title="Scroll right"
+            >
+                &#8594;
+            </button>
         </div>
+        {% endwith %}
         <div class="inline-actions lovable-mt-06">
             <a class="btn btn-secondary lovable-view-all-mobile" href="/trips/">View all trips &#8594;</a>
         </div>
@@ -103,7 +143,7 @@
         {% endif %}
     </section>
 
-    <section class="lovable-home-section-muted">
+    <section class="lovable-home-section-muted" data-home-section="destinations">
         <header class="lovable-section-header">
             <div>
                 <h2>Explore Destinations</h2>
@@ -113,29 +153,87 @@
         </header>
 
         {% if destinations %}
-        <div class="lovable-card-carousel" aria-label="Destinations carousel">
-            {% for destination in destinations|slice:":10" %}
-            <article class="lovable-destination-teaser">
-                <a href="{{ destination.search_url|default:'/search/?type=trips' }}" aria-label="Explore {{ destination.name }}">
-                    <div class="lovable-destination-teaser-media">
-                        <img src="{{ destination.featured_trip_banner_image_url|default:'https://images.unsplash.com/photo-1626014303715-48c7b1a7a814?w=900&q=80' }}" alt="{{ destination.name|default:'Destination' }}">
-                    </div>
-                    <div class="lovable-destination-teaser-overlay">
-                        <div>
-                            <p class="lovable-destination-teaser-title">{{ destination.name|default:"Destination" }}</p>
-                            <p>{{ destination.trip_count|default:0 }} trip{{ destination.trip_count|pluralize }}</p>
-                        </div>
-                    </div>
-                </a>
-            </article>
-            {% endfor %}
+        {% with destination_items=destinations|slice:":10" %}
+        <div class="lovable-carousel-shell" data-lv-carousel-shell>
+            <button
+                class="lovable-carousel-control lovable-carousel-control-prev"
+                type="button"
+                data-lv-carousel-prev
+                aria-label="Scroll Explore Destinations left"
+                title="Scroll left"
+            >
+                &#8592;
+            </button>
+            <div class="lovable-card-carousel lovable-horizontal-carousel" data-lv-carousel-track aria-label="Destinations carousel">
+                {% for destination in destination_items %}
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser">
+                        <a href="{{ destination.search_url|default:'/search/?type=trips' }}" aria-label="Explore {{ destination.name }}">
+                            <div class="lovable-destination-teaser-media">
+                                <img src="{{ destination.featured_trip_banner_image_url|default:'https://images.unsplash.com/photo-1626014303715-48c7b1a7a814?w=900&q=80' }}" alt="{{ destination.name|default:'Destination' }}">
+                            </div>
+                            <div class="lovable-destination-teaser-overlay">
+                                <div>
+                                    <p class="lovable-destination-teaser-title">{{ destination.name|default:"Destination" }}</p>
+                                    <p>{{ destination.trip_count|default:0 }} trip{{ destination.trip_count|pluralize }}</p>
+                                </div>
+                            </div>
+                        </a>
+                    </article>
+                </div>
+                {% endfor %}
+                {% if destination_items|length == 1 %}
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More destinations coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Explore fresh routes</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next destination</div>
+                    </article>
+                </div>
+                {% elif destination_items|length == 2 %}
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More destinations coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Explore fresh routes</div>
+                    </article>
+                </div>
+                {% elif destination_items|length == 3 %}
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More destinations coming soon</div>
+                    </article>
+                </div>
+                {% endif %}
+            </div>
+            <button
+                class="lovable-carousel-control lovable-carousel-control-next"
+                type="button"
+                data-lv-carousel-next
+                aria-label="Scroll Explore Destinations right"
+                title="Scroll right"
+            >
+                &#8594;
+            </button>
         </div>
+        {% endwith %}
         {% else %}
         <div class="empty-state">No destinations yet. Add trip locations to populate this section.</div>
         {% endif %}
     </section>
 
-    <section class="lovable-section">
+    <section class="lovable-section" data-home-section="community">
         <header class="lovable-section-header">
             <div>
                 <h2>From the Community</h2>
@@ -145,53 +243,93 @@
         </header>
 
         {% if blogs %}
-        <div class="lovable-card-carousel lovable-horizontal-carousel" aria-label="Community blogs carousel">
-            {% for blog in blogs|slice:":6" %}
-            <div class="lovable-carousel-item lovable-carousel-item-blog">
-                <article class="lovable-blog-teaser">
-                    <a href="{{ blog.url|default:'/blogs/' }}">
-                        <div class="lovable-blog-teaser-media">
-                            <img src="{{ blog.cover_image_url|default:'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80' }}" alt="{{ blog.title|default:'Blog' }}">
-                            {% if blog.trip_title %}
-                            <div class="lovable-card-media-overlay">
-                                <span class="lovable-chip lovable-chip-on-media">{{ blog.trip_title }}</span>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </a>
-                    <div class="lovable-blog-teaser-body">
-                        <h3><a href="{{ blog.url|default:'/blogs/' }}">{{ blog.title|default:"Untitled blog" }}</a></h3>
-                        <div class="lovable-blog-teaser-meta">
-                            <span>By @{{ blog.author_username|default:"author" }}</span>
-                            <span>
-                                {% if blog.published_at_label %}
-                                {{ blog.published_at_label }}
-                                {% elif blog.created_at_label %}
-                                {{ blog.created_at_label }}
-                                {% else %}
-                                Recent
+        {% with blog_items=blogs|slice:":6" %}
+        <div class="lovable-carousel-shell" data-lv-carousel-shell>
+            <button
+                class="lovable-carousel-control lovable-carousel-control-prev"
+                type="button"
+                data-lv-carousel-prev
+                aria-label="Scroll From the Community left"
+                title="Scroll left"
+            >
+                &#8592;
+            </button>
+            <div class="lovable-card-carousel lovable-horizontal-carousel" data-lv-carousel-track aria-label="Community blogs carousel">
+                {% for blog in blog_items %}
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser">
+                        <a href="{{ blog.url|default:'/blogs/' }}">
+                            <div class="lovable-blog-teaser-media">
+                                <img src="{{ blog.cover_image_url|default:'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80' }}" alt="{{ blog.title|default:'Blog' }}">
+                                {% if blog.trip_title %}
+                                <div class="lovable-card-media-overlay">
+                                    <span class="lovable-chip lovable-chip-on-media">{{ blog.trip_title }}</span>
+                                </div>
                                 {% endif %}
-                            </span>
+                            </div>
+                        </a>
+                        <div class="lovable-blog-teaser-body">
+                            <h3><a href="{{ blog.url|default:'/blogs/' }}">{{ blog.title|default:"Untitled blog" }}</a></h3>
+                            <div class="lovable-blog-teaser-meta">
+                                <span>By @{{ blog.author_username|default:"author" }}</span>
+                                <span>
+                                    {% if blog.published_at_label %}
+                                    {{ blog.published_at_label }}
+                                    {% elif blog.created_at_label %}
+                                    {{ blog.created_at_label }}
+                                    {% else %}
+                                    Recent
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <p class="lovable-blog-reads">
+                                &#128065;
+                                {% if blog.read_count_label %}
+                                {{ blog.read_count_label }}
+                                {% elif blog.views_label %}
+                                {{ blog.views_label }}
+                                {% elif blog.traffic_score %}
+                                {{ blog.traffic_score }} reads
+                                {% else %}
+                                0 reads
+                                {% endif %}
+                            </p>
                         </div>
-                        <p class="lovable-blog-reads">
-                            &#128065;
-                            {% if blog.read_count_label %}
-                            {{ blog.read_count_label }}
-                            {% elif blog.views_label %}
-                            {{ blog.views_label }}
-                            {% elif blog.traffic_score %}
-                            {{ blog.traffic_score }} reads
-                            {% else %}
-                            0 reads
-                            {% endif %}
-                        </p>
-                    </div>
-                </article>
+                    </article>
+                </div>
+                {% endfor %}
+                {% if blog_items|length == 1 %}
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More community stories coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Share your next travel story</div>
+                    </article>
+                </div>
+                {% elif blog_items|length == 2 %}
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More community stories coming soon</div>
+                    </article>
+                </div>
+                {% endif %}
             </div>
-            {% endfor %}
+            <button
+                class="lovable-carousel-control lovable-carousel-control-next"
+                type="button"
+                data-lv-carousel-next
+                aria-label="Scroll From the Community right"
+                title="Scroll right"
+            >
+                &#8594;
+            </button>
         </div>
+        {% endwith %}
         <div class="inline-actions lovable-mt-1">
-            <a class="btn btn-secondary" href="/blogs/">View all blogs &#8594;</a>
+            <a class="btn btn-secondary lovable-view-all-mobile" href="/blogs/">View all blogs &#8594;</a>
         </div>
         {% else %}
         <div class="empty-state">No blogs yet. Publish a first post to populate this feed.</div>

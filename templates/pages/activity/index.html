@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Activity{% endblock %}
+{% block body_class %}activity-page{% endblock %}
 
 {% block content %}
 <section class="hero hero-compact">
@@ -9,11 +10,11 @@
     <p>{{ activity_reason|default:"Recent notifications across follow, enrollment, comments, bookmarks, and reviews." }}</p>
 </section>
 
-<section class="section-grid">
+<section class="section-grid filter-section">
     <header class="section-header">
         <h2>Filters</h2>
     </header>
-    <div class="inline-actions">
+    <div class="inline-actions filter-chip-stack">
         <a class="btn {% if activity_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=all">All ({{ activity_counts.all|default:0 }})</a>
         <a class="btn {% if activity_filter == 'follows' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=follows">Follows ({{ activity_counts.follows|default:0 }})</a>
         <a class="btn {% if activity_filter == 'enrollment' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'activity:index' %}?type=enrollment">Enrollment ({{ activity_counts.enrollment|default:0 }})</a>
