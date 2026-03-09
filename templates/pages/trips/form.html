@@ -441,11 +441,29 @@
                     <div class="age-pref-slider-values">
                         <div class="age-pref-slider-value">
                             <span>Min Age</span>
-                            <strong data-age-pref-min-value>13</strong>
+                            <input
+                                class="age-pref-slider-number"
+                                type="number"
+                                min="13"
+                                max="70"
+                                step="1"
+                                value="13"
+                                data-age-pref-input="min"
+                                aria-label="Minimum age"
+                            >
                         </div>
                         <div class="age-pref-slider-value">
                             <span>Max Age</span>
-                            <strong data-age-pref-max-value>70</strong>
+                            <input
+                                class="age-pref-slider-number"
+                                type="number"
+                                min="13"
+                                max="70"
+                                step="1"
+                                value="70"
+                                data-age-pref-input="max"
+                                aria-label="Maximum age"
+                            >
                         </div>
                     </div>
                 </div>
@@ -498,7 +516,7 @@
                 <div class="form-field">
                     {{ form.contact_preference }}
                     <label>Contact Preference</label>
-                    <div class="choice-limit-group">
+                    <div class="choice-limit-group trip-host-pill-group">
                         {{ form.contact_preference_choices }}
                     </div>
                 </div>

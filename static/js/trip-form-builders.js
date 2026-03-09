@@ -472,6 +472,13 @@
             dragImageNode = null;
         }
 
+        function isInteractiveTarget(node) {
+            if (!(node instanceof Element)) {
+                return false;
+            }
+            return !!node.closest("input, textarea, select, button, a, [contenteditable='true']");
+        }
+
         function resetActiveRow() {
             if (activeRow) {
                 activeRow.classList.remove("is-dragging");
@@ -485,11 +492,16 @@
         itemsHost.addEventListener("dragstart", function onDragStart(event) {
             var target = event.target;
             var handle = target && target.closest ? target.closest("[data-row-drag-handle]") : null;
-            if (!handle) {
-                event.preventDefault();
-                return;
+            var sourceRow = null;
+            if (handle) {
+                sourceRow = handle.closest(rowSelector);
+            } else if (target && target.closest) {
+                sourceRow = target.closest(rowSelector);
+                if (isInteractiveTarget(target)) {
+                    event.preventDefault();
+                    return;
+                }
             }
-            var sourceRow = handle.closest(rowSelector);
             if (!sourceRow) {
                 event.preventDefault();
                 return;
@@ -595,6 +607,7 @@
         var row = document.createElement("div");
         row.className = "dynamic-list-row dynamic-row-inline";
         row.setAttribute("data-list-row", "1");
+        row.setAttribute("draggable", "true");
 
         var handle = createDragHandle("Drag to reorder item");
         var remove = createRowRemoveButton("Remove item", function onRemove() {
@@ -735,6 +748,7 @@
         var row = document.createElement("div");
         row.className = "dynamic-day-row";
         row.setAttribute("data-day-row", "1");
+        row.setAttribute("draggable", "true");
 
         var tools = document.createElement("div");
         tools.className = "dynamic-day-meta";
@@ -878,6 +892,7 @@
         var row = document.createElement("div");
         row.className = "dynamic-faq-row";
         row.setAttribute("data-faq-row", "1");
+        row.setAttribute("draggable", "true");
 
         var rowInline = document.createElement("div");
         rowInline.className = "dynamic-row-inline dynamic-row-inline-faq";
@@ -1167,6 +1182,34 @@
         });
     }
 
+    function initPillCheckboxGroups(form) {
+        Array.prototype.slice.call(form.querySelectorAll(".trip-host-pill-group")).forEach(function eachGroup(group) {
+            var checkboxes = Array.prototype.slice.call(group.querySelectorAll("input[type='checkbox']"));
+            if (checkboxes.length === 0) {
+                return;
+            }
+
+            function syncCheckedState() {
+                checkboxes.forEach(function eachCheckbox(input) {
+                    var label = input.closest("label");
+                    if (!label) {
+                        return;
+                    }
+                    label.classList.toggle("is-checked", !!input.checked);
+                });
+            }
+
+            checkboxes.forEach(function bindCheckbox(input) {
+                input.addEventListener("change", function onCheckboxChange() {
+                    syncCheckedState();
+                    requestProgressRefresh(group);
+                });
+            });
+
+            syncCheckedState();
+        });
+    }
+
     function initRichTextEditors(form) {
         Array.prototype.slice.call(form.querySelectorAll("textarea[data-rich-text]")).forEach(function eachTextarea(textarea) {
             ensureRichTextEditor(textarea, function onRichTextChange() {
@@ -1188,6 +1231,10 @@
             var label = root.querySelector("[data-age-pref-label]");
             var minValueText = root.querySelector("[data-age-pref-min-value]");
             var maxValueText = root.querySelector("[data-age-pref-max-value]");
+            var minValueInputNode = root.querySelector("[data-age-pref-input='min']");
+            var maxValueInputNode = root.querySelector("[data-age-pref-input='max']");
+            var minValueInput = minValueInputNode instanceof HTMLInputElement ? minValueInputNode : null;
+            var maxValueInput = maxValueInputNode instanceof HTMLInputElement ? maxValueInputNode : null;
             if (!hiddenInput || !shell || !track || !fill || !minThumb || !maxThumb) {
                 return;
             }
@@ -1280,6 +1327,16 @@
                 }
                 if (maxValueText) {
                     maxValueText.textContent = String(state.maxAge);
+                }
+                if (minValueInput) {
+                    minValueInput.value = String(state.minAge);
+                    minValueInput.setAttribute("min", String(minBound));
+                    minValueInput.setAttribute("max", String(state.maxAge));
+                }
+                if (maxValueInput) {
+                    maxValueInput.value = String(state.maxAge);
+                    maxValueInput.setAttribute("min", String(state.minAge));
+                    maxValueInput.setAttribute("max", String(maxBound));
                 }
                 minThumb.setAttribute("aria-valuemin", String(minBound));
                 minThumb.setAttribute("aria-valuemax", String(state.maxAge));
@@ -1496,6 +1553,39 @@
             maxThumb.addEventListener("keydown", function onMaxKeydown(event) {
                 handleKeyboard("max", event);
             });
+
+            function applyManualInput(kind, rawValue) {
+                var parsed = Number(String(rawValue || "").trim());
+                if (!isFinite(parsed)) {
+                    render();
+                    return;
+                }
+                var bounded = clampAge(parsed);
+                if (kind === "min") {
+                    state.minAge = Math.min(bounded, state.maxAge);
+                } else {
+                    state.maxAge = Math.max(bounded, state.minAge);
+                }
+                render();
+            }
+
+            if (minValueInput) {
+                minValueInput.addEventListener("change", function onMinInputChange() {
+                    applyManualInput("min", minValueInput.value);
+                });
+                minValueInput.addEventListener("input", function onMinInput() {
+                    applyManualInput("min", minValueInput.value);
+                });
+            }
+
+            if (maxValueInput) {
+                maxValueInput.addEventListener("change", function onMaxInputChange() {
+                    applyManualInput("max", maxValueInput.value);
+                });
+                maxValueInput.addEventListener("input", function onMaxInput() {
+                    applyManualInput("max", maxValueInput.value);
+                });
+            }
 
             window.addEventListener("resize", function onAgeSliderResize() {
                 renderWhenLaidOut(8);
@@ -2790,6 +2880,7 @@
     initMediaDropzones(form);
     initDestinationPicker(form);
     initChoiceLimitGroups(form);
+    initPillCheckboxGroups(form);
     initAgePreferenceSliders(form);
     initRichTextEditors(form);
     initSectionIndex(form);

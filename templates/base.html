@@ -100,28 +100,31 @@
                     <a href="/blogs/">Blogs</a>
                 </nav>
 
-                {% with nav_search_type=request.GET.type|default:"all" nav_search_query=request.GET.q|default:"" %}
+                {% with nav_search_query=request.GET.q|default:"" %}
                 {% if request.path == "/" or request.path == "/search/" %}
                 <div class="header-search-slot lv-navbar-search-slot" data-navbar-search-slot data-navbar-search-dock-only="true"></div>
                 {% else %}
                 <div class="header-search-slot lv-navbar-search-slot" data-navbar-search-slot>
-                    <form class="search-form header-search-form lv-navbar-search" method="get" action="/search/">
-                        <label class="sr-only" for="navSearchType">Search type</label>
-                        <select id="navSearchType" name="type">
-                            <option value="all" {% if nav_search_type == "all" %}selected{% endif %}>All</option>
-                            <option value="trips" {% if nav_search_type == "trips" %}selected{% endif %}>Trips</option>
-                            <option value="users" {% if nav_search_type == "users" %}selected{% endif %}>Users</option>
-                            <option value="blogs" {% if nav_search_type == "blogs" %}selected{% endif %}>Blogs</option>
-                        </select>
+                    <form class="header-search-form lv-navbar-search lv-search-form" method="get" action="/search/">
+                        <input type="hidden" name="type" value="all">
                         <label class="sr-only" for="navSearchQuery">Search query</label>
-                        <input
-                            id="navSearchQuery"
-                            name="q"
-                            type="search"
-                            placeholder="Search trips, users, blogs..."
-                            value="{{ nav_search_query }}"
-                        >
-                        <button class="btn btn-primary" type="submit">Search</button>
+                        <div class="lv-search-shell" data-lv-search-shell>
+                            <input
+                                id="navSearchQuery"
+                                name="q"
+                                type="search"
+                                placeholder="Search trips, users, blogs..."
+                                value="{{ nav_search_query }}"
+                                data-lv-search-input
+                            >
+                            <button class="lv-search-clear" type="button" data-lv-search-clear aria-label="Clear search input" title="Clear search input" hidden>&times;</button>
+                            <button class="lv-search-submit" type="submit" aria-label="Search" title="Search">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <circle cx="11" cy="11" r="7"></circle>
+                                    <path d="m16.5 16.5 4.5 4.5"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </form>
                 </div>
                 {% endif %}
@@ -202,10 +205,12 @@
                     <a href="/trips/">Trips</a>
                     <a href="/blogs/">Blogs</a>
                     {% if user.is_authenticated %}
+                    <a href="/trips/create/">Create Trip</a>
                     <a href="/accounts/me/">My Profile</a>
                     <a href="/interactions/dm/">Inbox</a>
                     <a href="/social/bookmarks/">Bookmarks</a>
                     <a href="/settings/">Settings</a>
+                    <a href="/enroll/hosting/inbox/">Hosting Inbox</a>
                     {% else %}
                     <button class="btn btn-primary lv-mobile-login-btn" type="button" data-modal-open="auth" data-auth-mode="login">Login</button>
                     {% endif %}
@@ -282,7 +287,7 @@
             });
 
             window.addEventListener("resize", function onResize() {
-                if (window.innerWidth > 900) {
+                if (window.innerWidth > 1024) {
                     setOpen(false);
                 }
             });

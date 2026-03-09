@@ -10,29 +10,41 @@
         <h1>Find your kind of people. <span>Then travel.</span></h1>
         <p class="lovable-home-subtitle">Join community-led trips with like-minded travelers. Discover adventures, make friends, and explore the world together.</p>
 
-        <form class="lovable-home-search" method="get" action="/search/" data-navbar-dock-source>
+        <form class="lovable-home-search lv-search-form" method="get" action="/search/" data-navbar-dock-source>
             <input type="hidden" name="type" value="all">
             <label class="sr-only" for="homeSearchQuery">Search query</label>
-            <input
-                id="homeSearchQuery"
-                name="q"
-                type="search"
-                placeholder="Search trips or travelers..."
-                value="{{ request.GET.q|default:'' }}"
-            >
-            <button class="btn btn-primary" type="submit">Search</button>
+            <div class="lv-search-shell" data-lv-search-shell>
+                <input
+                    id="homeSearchQuery"
+                    name="q"
+                    type="search"
+                    placeholder="Search trips or travelers..."
+                    value="{{ request.GET.q|default:'' }}"
+                    data-lv-search-input
+                >
+                <button class="lv-search-clear" type="button" data-lv-search-clear aria-label="Clear search input" title="Clear search input" hidden>&times;</button>
+                <button class="lv-search-submit" type="submit" aria-label="Search" title="Search">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m16.5 16.5 4.5 4.5"></path>
+                    </svg>
+                </button>
+            </div>
         </form>
 
         <div class="lovable-home-stats" aria-label="Community metrics">
             <div class="lovable-home-stat">
+                <span class="lovable-home-stat-icon" aria-hidden="true">&#128205;</span>
                 <strong>{{ total_unique_destinations }}</strong>
                 <span>Destinations</span>
             </div>
             <div class="lovable-home-stat">
+                <span class="lovable-home-stat-icon" aria-hidden="true">&#128101;</span>
                 <strong>{{ total_authenticated_users }}</strong>
                 <span>Travelers</span>
             </div>
             <div class="lovable-home-stat">
+                <span class="lovable-home-stat-icon" aria-hidden="true">&#128506;</span>
                 <strong>{{ total_trips_created }}</strong>
                 <span>Trips Created</span>
             </div>
@@ -45,7 +57,7 @@
                 <h2>Explore Trips</h2>
                 <p>Discover community trips created by travellers.</p>
             </div>
-            <a class="btn btn-ghost lovable-view-all-desktop" href="/trips/">View all</a>
+            <a class="btn btn-ghost lovable-view-all-desktop" href="/trips/">View all &#8594;</a>
         </header>
 
         {% if trips %}
@@ -56,13 +68,19 @@
                     <a href="{{ trip.url|default:'/trips/' }}">
                         <div class="lovable-trip-teaser-media">
                             <img src="{{ trip.banner_image_url|default:'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80' }}" alt="{{ trip.title|default:'Trip' }}">
+                            <div class="lovable-card-media-overlay">
+                                <span class="lovable-chip lovable-chip-on-media">{{ trip.trip_type_label|default:"Adventure" }}</span>
+                            </div>
                         </div>
                     </a>
                     <div class="lovable-trip-teaser-body">
-                        <span class="lovable-chip">{{ trip.trip_type_label|default:"Adventure" }}</span>
                         <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
-                        <p class="lovable-trip-meta">{{ trip.destination|default:"TBD" }} · {{ trip.date_label|default:"Dates soon" }}</p>
                         <p class="lovable-trip-meta">
+                            <span>&#128205; {{ trip.destination|default:"TBD" }}</span>
+                            <span>&#128197; {{ trip.date_label|default:"Dates soon" }}</span>
+                        </p>
+                        <p class="lovable-trip-meta">
+                            <span>&#128101;
                             {% if trip.spots_left_label %}
                             {{ trip.spots_left_label }}
                             {% elif trip.group_size_label %}
@@ -70,6 +88,7 @@
                             {% else %}
                             Limited spots
                             {% endif %}
+                            </span>
                         </p>
                     </div>
                 </article>
@@ -77,7 +96,7 @@
             {% endfor %}
         </div>
         <div class="inline-actions lovable-mt-06">
-            <a class="btn btn-secondary lovable-view-all-mobile" href="/trips/">View all trips</a>
+            <a class="btn btn-secondary lovable-view-all-mobile" href="/trips/">View all trips &#8594;</a>
         </div>
         {% else %}
         <div class="empty-state">No upcoming trips yet. Create the first trip to seed this section.</div>
@@ -90,6 +109,7 @@
                 <h2>Explore Destinations</h2>
                 <p>Find trips by destination.</p>
             </div>
+            <a class="btn btn-ghost lovable-view-all-desktop" href="/trips/">View all &#8594;</a>
         </header>
 
         {% if destinations %}
@@ -121,7 +141,7 @@
                 <h2>From the Community</h2>
                 <p>Stories, tips, and experiences from fellow travelers.</p>
             </div>
-            <a class="btn btn-ghost lovable-view-all-desktop" href="/blogs/">View all</a>
+            <a class="btn btn-ghost lovable-view-all-desktop" href="/blogs/">View all &#8594;</a>
         </header>
 
         {% if blogs %}
@@ -132,12 +152,14 @@
                     <a href="{{ blog.url|default:'/blogs/' }}">
                         <div class="lovable-blog-teaser-media">
                             <img src="{{ blog.cover_image_url|default:'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80' }}" alt="{{ blog.title|default:'Blog' }}">
+                            {% if blog.trip_title %}
+                            <div class="lovable-card-media-overlay">
+                                <span class="lovable-chip lovable-chip-on-media">{{ blog.trip_title }}</span>
+                            </div>
+                            {% endif %}
                         </div>
                     </a>
                     <div class="lovable-blog-teaser-body">
-                        {% if blog.trip_title %}
-                        <span class="lovable-chip">{{ blog.trip_title }}</span>
-                        {% endif %}
                         <h3><a href="{{ blog.url|default:'/blogs/' }}">{{ blog.title|default:"Untitled blog" }}</a></h3>
                         <div class="lovable-blog-teaser-meta">
                             <span>By @{{ blog.author_username|default:"author" }}</span>
@@ -151,13 +173,25 @@
                                 {% endif %}
                             </span>
                         </div>
+                        <p class="lovable-blog-reads">
+                            &#128065;
+                            {% if blog.read_count_label %}
+                            {{ blog.read_count_label }}
+                            {% elif blog.views_label %}
+                            {{ blog.views_label }}
+                            {% elif blog.traffic_score %}
+                            {{ blog.traffic_score }} reads
+                            {% else %}
+                            0 reads
+                            {% endif %}
+                        </p>
                     </div>
                 </article>
             </div>
             {% endfor %}
         </div>
         <div class="inline-actions lovable-mt-1">
-            <a class="btn btn-secondary" href="/blogs/">View All Blogs</a>
+            <a class="btn btn-secondary" href="/blogs/">View all blogs &#8594;</a>
         </div>
         {% else %}
         <div class="empty-state">No blogs yet. Publish a first post to populate this feed.</div>

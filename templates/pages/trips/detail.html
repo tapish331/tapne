@@ -6,10 +6,13 @@
 
 {% block content %}
 <article>
+    <div class="inline-actions lovable-mb-035">
+        <a class="btn btn-secondary" href="/trips/">&#8592; Back to Trips</a>
+    </div>
+
     <section class="lovable-trip-detail-hero">
         <img src="{{ trip.banner_image_url|default:'' }}" alt="{{ trip.title|default:'Trip banner' }}">
         <div class="lovable-trip-detail-hero-overlay">
-            <a class="btn btn-secondary" href="/trips/">Back to Trips</a>
             <div class="inline-actions lovable-mt-075">
                 <span class="lovable-chip">{{ trip.trip_type_label|default:"Adventure" }}</span>
                 {% if trip.trip_vibe %}
@@ -20,10 +23,10 @@
             </div>
             <h1>{{ trip.title|default:"Trip title" }}</h1>
             <div class="lovable-trip-detail-hero-meta">
-                <span>{{ trip.destination|default:"TBD" }}</span>
-                <span>{{ trip.date_label|default:"Dates announced soon" }}</span>
-                <span>{{ trip.duration_label|default:"Duration TBA" }}</span>
-                <span>
+                <span><strong aria-hidden="true">&#128205;</strong> {{ trip.destination|default:"TBD" }}</span>
+                <span><strong aria-hidden="true">&#128197;</strong> {{ trip.date_label|default:"Dates announced soon" }}</span>
+                <span><strong aria-hidden="true">&#9201;</strong> {{ trip.duration_label|default:"Duration TBA" }}</span>
+                <span><strong aria-hidden="true">&#128101;</strong>
                     {% if trip.spots_left_label %}
                     {{ trip.spots_left_label }}
                     {% elif trip.group_size_label %}
@@ -112,16 +115,20 @@
             {% if trip.itinerary_days %}
             <section id="itinerary" class="lovable-detail-card">
                 <h2>Day-by-Day Itinerary</h2>
-                <div class="comments-stack">
+                <div class="lovable-itinerary-list">
                     {% for day in trip.itinerary_days %}
-                    <article class="card">
-                        <p class="card-subtitle">Day {{ forloop.counter }}{% if day.is_flexible %} · Flexible{% endif %}</p>
-                        <p><strong>{{ day.title|default:"Plan" }}</strong></p>
-                        {% if day.description %}<p class="lovable-detail-muted">{{ day.description|safe }}</p>{% endif %}
-                        {% if day.stay %}<p class="lovable-detail-muted">Stay: {{ day.stay }}</p>{% endif %}
-                        {% if day.meals %}<p class="lovable-detail-muted">Meals: {{ day.meals }}</p>{% endif %}
-                        {% if day.activities %}<p class="lovable-detail-muted">Activities: {{ day.activities }}</p>{% endif %}
-                    </article>
+                    <details class="lovable-itinerary-item" {% if forloop.first %}open{% endif %}>
+                        <summary>
+                            <span><strong>Day {{ forloop.counter }}</strong> {{ day.title|default:"Plan" }}</span>
+                            {% if day.is_flexible %}<span class="lovable-chip">Flexible</span>{% endif %}
+                        </summary>
+                        <div class="lovable-itinerary-content">
+                            {% if day.description %}<p class="lovable-detail-muted">{{ day.description|safe }}</p>{% endif %}
+                            {% if day.stay %}<p class="lovable-detail-muted">&#127968; Stay: {{ day.stay }}</p>{% endif %}
+                            {% if day.meals %}<p class="lovable-detail-muted">&#127869; Meals: {{ day.meals }}</p>{% endif %}
+                            {% if day.activities %}<p class="lovable-detail-muted">&#127919; Activities: {{ day.activities }}</p>{% endif %}
+                        </div>
+                    </details>
                     {% endfor %}
                 </div>
             </section>
@@ -315,7 +322,7 @@
 
         <aside class="lovable-sticky-booking">
             <section class="lovable-detail-card">
-                <p class="lovable-detail-muted lovable-m-0">Price per person</p>
+                <p class="lovable-detail-muted lovable-m-0">Trip Price</p>
                 <div class="lovable-booking-price">
                     {% if trip.price_per_person %}
                     {{ trip.currency|default:'INR' }} {{ trip.price_per_person }}

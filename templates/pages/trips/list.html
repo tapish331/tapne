@@ -6,25 +6,34 @@
 
 {% block content %}
 <section class="lovable-trip-list-hero">
-    <h1>Explore Trips</h1>
-    <p>Discover your next adventure with amazing people.</p>
-    {% if user.is_authenticated %}
-    <div class="inline-actions lovable-mt-06">
+    <div class="lovable-trip-list-intro">
+        <div>
+            <h1>Explore Trips</h1>
+            <p>Discover your next adventure with amazing people.</p>
+        </div>
+        {% if user.is_authenticated %}
         <a class="btn btn-primary" href="/trips/create/">Create Trip</a>
+        {% endif %}
     </div>
-    {% endif %}
 </section>
 
-<form class="lovable-trip-filter-bar lovable-trip-filter-bar-simple" method="get" action="{% url 'trips:list' %}">
-    <div class="lovable-filter-search-shell">
-        <span aria-hidden="true">&#128269;</span>
+<form class="lovable-trip-filter-bar lovable-trip-filter-bar-simple lv-search-form" method="get" action="{% url 'trips:list' %}">
+    <div class="lovable-filter-search-shell lv-search-shell" data-lv-search-shell>
         <input
             id="trip-filter-destination"
             name="destination"
             type="text"
             value="{{ trip_filters.destination|default:'' }}"
             placeholder="Search destinations or trips..."
+            data-lv-search-input
         >
+        <button class="lv-search-clear" type="button" data-lv-search-clear aria-label="Clear search input" title="Clear search input" hidden>&times;</button>
+        <button class="lv-search-submit" type="submit" aria-label="Search" title="Search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m16.5 16.5 4.5 4.5"></path>
+            </svg>
+        </button>
     </div>
 
     <select id="trip-filter-type" name="trip_type">
@@ -38,61 +47,61 @@
     <input type="hidden" name="difficulty" value="{{ trip_filters.difficulty|default:'all' }}">
 
     <div class="inline-actions lovable-justify-end">
-        <button class="btn btn-primary" type="submit">Apply</button>
         {% if trip_has_active_filters %}
-        <a class="btn btn-ghost" href="{% url 'trips:list' %}">Clear</a>
+        <a class="btn btn-ghost" href="{% url 'trips:list' %}">Clear filters</a>
         {% endif %}
     </div>
 </form>
 
 <section class="lovable-trip-list" aria-label="Available trips">
     {% for trip in trips %}
-    <article class="lovable-trip-row">
-        <a class="lovable-trip-row-media lovable-trip-row-media-hide-mobile" href="{{ trip.url|default:'/trips/' }}">
-            <img src="{{ trip.banner_image_url|default:'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80' }}" alt="{{ trip.title|default:'Trip' }}">
-        </a>
-        <div class="lovable-trip-row-body">
-            <div class="inline-actions lovable-m-0 lovable-justify-between lovable-items-start">
-                <span class="lovable-chip">{{ trip.trip_type_label|default:"Adventure" }}</span>
-                <a class="btn btn-secondary" href="{{ trip.url|default:'/trips/' }}">View Details</a>
+    <a class="lovable-trip-row-link" href="{{ trip.url|default:'/trips/' }}">
+        <article class="lovable-trip-row">
+            <div class="lovable-trip-row-media lovable-trip-row-media-hide-mobile">
+                <img src="{{ trip.banner_image_url|default:'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=900&q=80' }}" alt="{{ trip.title|default:'Trip' }}">
+                <div class="lovable-card-media-overlay">
+                    <span class="lovable-chip lovable-chip-on-media">{{ trip.trip_type_label|default:"Adventure" }}</span>
+                </div>
             </div>
-            <h2><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h2>
-            <p class="lovable-trip-row-desc">
-                {% if trip.summary %}
-                {{ trip.summary|truncatechars:220 }}
-                {% elif trip.description %}
-                {{ trip.description|truncatechars:220 }}
-                {% else %}
-                Trip details are coming soon.
-                {% endif %}
-            </p>
-            <div class="lovable-trip-row-meta">
-                <span>&#128205; {{ trip.destination|default:"TBD" }}</span>
-                <span>&#128197; {{ trip.date_label|default:"Dates announced soon" }}</span>
-                <span>&#8377;
-                    {% if trip.cost_label %}
-                    {{ trip.cost_label }}
-                    {% elif trip.budget_label %}
-                    {{ trip.budget_label }}
+            <div class="lovable-trip-row-body">
+                <h2>{{ trip.title|default:"Untitled trip" }}</h2>
+                <p class="lovable-trip-row-desc">
+                    {% if trip.summary %}
+                    {{ trip.summary|truncatechars:220 }}
+                    {% elif trip.description %}
+                    {{ trip.description|truncatechars:220 }}
                     {% else %}
-                    Mid-range
+                    Trip details are coming soon.
                     {% endif %}
-                </span>
-                <span>&#128101;
-                    {% if trip.spots_left_label %}
-                    {{ trip.spots_left_label }}
-                    {% elif trip.group_size_label %}
-                    {{ trip.group_size_label }}
-                    {% else %}
-                    Limited spots
+                </p>
+                <div class="lovable-trip-row-meta">
+                    <span>&#128205; {{ trip.destination|default:"TBD" }}</span>
+                    <span>&#128197; {{ trip.date_label|default:"Dates announced soon" }}</span>
+                    <span>&#8377;
+                        {% if trip.cost_label %}
+                        {{ trip.cost_label }}
+                        {% elif trip.budget_label %}
+                        {{ trip.budget_label }}
+                        {% else %}
+                        Mid-range
+                        {% endif %}
+                    </span>
+                    <span>&#128101;
+                        {% if trip.spots_left_label %}
+                        {{ trip.spots_left_label }}
+                        {% elif trip.group_size_label %}
+                        {{ trip.group_size_label }}
+                        {% else %}
+                        Limited spots
+                        {% endif %}
+                    </span>
+                    {% if trip.host_username %}
+                    <span class="lovable-trip-row-host">&#128100; @{{ trip.host_username }}</span>
                     {% endif %}
-                </span>
-                {% if trip.host_username %}
-                <span class="lovable-trip-row-host">@{{ trip.host_username }}</span>
-                {% endif %}
+                </div>
             </div>
-        </div>
-    </article>
+        </article>
+    </a>
     {% empty %}
     <div class="empty-state">
         {% if trip_has_active_filters %}

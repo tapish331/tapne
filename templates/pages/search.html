@@ -13,22 +13,20 @@
     {% endif %}
 </section>
 
-{% with selected_type=active_type|default:"all" %}
-<form class="search-form" method="get" action="/search/" data-navbar-dock-source>
-    <label for="q">Search</label>
-    <input id="q" name="q" type="search" placeholder="Try Bali, @host, or food guide..." value="{{ search_query|default:'' }}">
-
-    <label for="type">Type</label>
-    <select id="type" name="type">
-        <option value="all" {% if selected_type == "all" %}selected{% endif %}>All</option>
-        <option value="trips" {% if selected_type == "trips" %}selected{% endif %}>Trips</option>
-        <option value="users" {% if selected_type == "users" %}selected{% endif %}>Users</option>
-        <option value="blogs" {% if selected_type == "blogs" %}selected{% endif %}>Blogs</option>
-    </select>
-
-    <button class="btn btn-primary" type="submit">Search</button>
+<form class="search-form lv-search-form" method="get" action="/search/" data-navbar-dock-source>
+    <input type="hidden" name="type" value="all">
+    <label class="sr-only" for="q">Search</label>
+    <div class="lv-search-shell" data-lv-search-shell>
+        <input id="q" name="q" type="search" placeholder="Try Bali, @host, or food guide..." value="{{ search_query|default:'' }}" data-lv-search-input>
+        <button class="lv-search-clear" type="button" data-lv-search-clear aria-label="Clear search input" title="Clear search input" hidden>&times;</button>
+        <button class="lv-search-submit" type="submit" aria-label="Search" title="Search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m16.5 16.5 4.5 4.5"></path>
+            </svg>
+        </button>
+    </div>
 </form>
-{% endwith %}
 
 {% if trips %}
 <section class="section-grid">

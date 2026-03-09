@@ -37,6 +37,18 @@
                         {% endif %}
                     </span>
                 </div>
+                <p class="lovable-blog-reads">
+                    &#128065;
+                    {% if blog.read_count_label %}
+                    {{ blog.read_count_label }}
+                    {% elif blog.views_label %}
+                    {{ blog.views_label }}
+                    {% elif blog.traffic_score %}
+                    {{ blog.traffic_score }} reads
+                    {% else %}
+                    0 reads
+                    {% endif %}
+                </p>
             </div>
         </article>
         {% endfor %}

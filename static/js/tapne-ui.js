@@ -434,6 +434,42 @@
         queueDockUpdate();
     }
 
+    function initializeLovableSearchFields() {
+        Array.prototype.slice.call(document.querySelectorAll("[data-lv-search-shell]"))
+            .forEach(function wireSearchShell(shell) {
+                if (!(shell instanceof HTMLElement)) {
+                    return;
+                }
+                var input = shell.querySelector("[data-lv-search-input]");
+                var clearButton = shell.querySelector("[data-lv-search-clear]");
+                if (!(input instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                function syncClearVisibility() {
+                    if (!(clearButton instanceof HTMLButtonElement)) {
+                        return;
+                    }
+                    var hasText = String(input.value || "").trim().length > 0;
+                    clearButton.hidden = !hasText;
+                }
+
+                if (clearButton instanceof HTMLButtonElement) {
+                    clearButton.addEventListener("click", function onClearClick() {
+                        input.value = "";
+                        input.dispatchEvent(new Event("input", { bubbles: true }));
+                        if (typeof input.focus === "function") {
+                            input.focus();
+                        }
+                    });
+                }
+
+                input.addEventListener("input", syncClearVisibility);
+                input.addEventListener("change", syncClearVisibility);
+                syncClearVisibility();
+            });
+    }
+
     function normalizePath(pathValue, fallbackPath) {
         try {
             var normalizedUrl = new URL(pathValue || "", window.location.origin);
@@ -1312,6 +1348,7 @@
     initializeThemeControls();
     initializeMemberMenu();
     initializeNavbarSearchDocking();
+    initializeLovableSearchFields();
     initializeAsyncStateForms();
 
     if (authModal) {
