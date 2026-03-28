@@ -246,10 +246,20 @@
             <p class="footer-brand">Tapne</p>
             <nav class="footer-links lv-footer-links" aria-label="Footer links">
                 <a href="/trips/">Explore</a>
-                <a href="/trips/create/">Create Trip</a>
                 {% if user.is_authenticated %}
+                <a href="/trips/create/">Create Trip</a>
                 <a href="/accounts/me/">My Profile</a>
                 {% else %}
+                <button
+                    class="text-link-button"
+                    type="button"
+                    data-modal-open="auth"
+                    data-auth-mode="login"
+                    data-auth-reason="continue"
+                    data-auth-next="/trips/create/"
+                >
+                    Create Trip
+                </button>
                 <button class="text-link-button" type="button" data-modal-open="auth" data-auth-mode="login">Login</button>
                 {% endif %}
             </nav>

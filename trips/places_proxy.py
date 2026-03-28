@@ -172,6 +172,22 @@ def _cache_key(prefix: str, value: str) -> str:
     return f"tapne:trips:destination:{prefix}:{digest}"
 
 
+def _get_cached_value(cache_key: str) -> object | None:
+    try:
+        return cache.get(cache_key)
+    except Exception:
+        return None
+
+
+def _set_cached_value(cache_key: str, payload: object, *, ttl_seconds: int) -> None:
+    if ttl_seconds <= 0:
+        return
+    try:
+        cache.set(cache_key, payload, timeout=ttl_seconds)
+    except Exception:
+        pass
+
+
 def _request_json(
     *,
     url: str,
@@ -302,7 +318,7 @@ def autocomplete_places(query: object, *, session_token: object = "") -> list[De
         return []
 
     cache_key = _cache_key("autocomplete", normalized_query.lower())
-    cached = cache.get(cache_key)
+    cached = _get_cached_value(cache_key)
     if isinstance(cached, list):
         return cast(list[DestinationSuggestion], cached)
 
@@ -393,8 +409,7 @@ def autocomplete_places(query: object, *, session_token: object = "") -> list[De
             break
 
     ttl_seconds = places_autocomplete_cache_ttl_seconds()
-    if ttl_seconds > 0:
-        cache.set(cache_key, suggestions, timeout=ttl_seconds)
+    _set_cached_value(cache_key, suggestions, ttl_seconds=ttl_seconds)
     return suggestions
 
 
@@ -421,7 +436,7 @@ def place_details(place_id: object, *, session_token: object = "") -> Destinatio
         )
 
     cache_key = _cache_key("details", normalized_place_id.lower())
-    cached = cache.get(cache_key)
+    cached = _get_cached_value(cache_key)
     if isinstance(cached, dict):
         return cast(DestinationDetails, cached)
 
@@ -493,6 +508,5 @@ def place_details(place_id: object, *, session_token: object = "") -> Destinatio
     }
 
     ttl_seconds = places_details_cache_ttl_seconds()
-    if ttl_seconds > 0:
-        cache.set(cache_key, payload, timeout=ttl_seconds)
+    _set_cached_value(cache_key, payload, ttl_seconds=ttl_seconds)
     return payload

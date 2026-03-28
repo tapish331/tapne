@@ -47,19 +47,26 @@ param(
     [string]$CloudSqlUser = "tapne",
 
     [ValidateNotNullOrEmpty()]
-    [string]$CloudSqlTier = "db-custom-1-3840",
+    [string]$CloudSqlTier = "db-f1-micro",
 
     [ValidateRange(10, 65536)]
-    [int]$CloudSqlStorageGb = 20,
+    [int]$CloudSqlStorageGb = 10,
+
+    [ValidateSet("SSD", "HDD")]
+    [string]$CloudSqlStorageType = "HDD",
 
     [ValidateNotNullOrEmpty()]
     [string]$CloudSqlDatabaseVersion = "POSTGRES_15",
+
+    [string]$CloudSqlReplacementInstance = "",
 
     [ValidateNotNullOrEmpty()]
     [string]$RedisInstance = "tapne-redis",
 
     [ValidateRange(1, 300)]
     [int]$RedisSizeGb = 1,
+
+    [bool]$EnableRedis = $false,
 
     [ValidateNotNullOrEmpty()]
     [string]$Network = "default",
@@ -183,6 +190,7 @@ $bucketRef = "gs://{0}" -f $BucketName
 $secretNames = @{
     SecretKey         = "tapne-secret-key"
     DatabaseUrl       = "tapne-database-url"
+    DatabaseUrlCandidate = "tapne-database-url-candidate"
     RedisUrl          = "tapne-redis-url"
     CeleryBrokerUrl   = "tapne-celery-broker-url"
     CeleryResultStore = "tapne-celery-result-backend"
@@ -1622,6 +1630,531 @@ function Set-SecretValue {
     }
 }
 
+function Get-CloudSqlConnectionNameFromDatabaseUrl {
+    param([string]$DatabaseUrl)
+
+    if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
+        return ""
+    }
+
+    if ($DatabaseUrl -match '[?&]host=/cloudsql/(?<connection>[^&]+)') {
+        return [System.Uri]::UnescapeDataString([string]$Matches["connection"])
+    }
+
+    return ""
+}
+
+function Get-CloudSqlInstanceNameFromConnectionName {
+    param([string]$ConnectionName)
+
+    if ([string]::IsNullOrWhiteSpace($ConnectionName)) {
+        return ""
+    }
+
+    $segments = @($ConnectionName.Trim() -split ":")
+    if ($segments.Count -lt 3) {
+        return ""
+    }
+
+    return [string]$segments[-1]
+}
+
+function Get-CloudSqlDiskTypeName {
+    param([string]$StorageType)
+
+    $normalizedStorageType = ""
+    if ($null -ne $StorageType) {
+        $normalizedStorageType = $StorageType.Trim().ToUpperInvariant()
+    }
+
+    switch ($normalizedStorageType) {
+        "HDD" { return "PD_HDD" }
+        default { return "PD_SSD" }
+    }
+}
+
+function Get-CloudSqlSafeNameComponent {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+
+    $normalized = $Value.Trim().ToLowerInvariant()
+    $normalized = $normalized -replace '^db-', ''
+    $normalized = $normalized -replace '[^a-z0-9]+', '-'
+    $normalized = $normalized.Trim('-')
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return "instance"
+    }
+    return $normalized
+}
+
+function Get-DesiredCloudSqlReplacementInstanceName {
+    param(
+        [string]$BaseInstanceName,
+        [string]$Tier,
+        [string]$StorageType,
+        [int]$StorageGb,
+        [string]$ExplicitReplacementInstance
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitReplacementInstance)) {
+        return $ExplicitReplacementInstance.Trim()
+    }
+
+    $tierToken = Get-CloudSqlSafeNameComponent -Value $Tier
+    $storageToken = Get-CloudSqlSafeNameComponent -Value ("{0}{1}" -f $StorageType, $StorageGb)
+    $candidate = ("{0}-{1}-{2}" -f $BaseInstanceName.Trim(), $tierToken, $storageToken).ToLowerInvariant()
+    $candidate = $candidate -replace '[^a-z0-9-]+', '-'
+    $candidate = $candidate.Trim('-')
+    if ($candidate.Length -gt 98) {
+        $candidate = $candidate.Substring(0, 98).TrimEnd('-')
+    }
+    return $candidate
+}
+
+function Get-CloudSqlInstanceInfo {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$InstanceName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InstanceName)) {
+        return $null
+    }
+
+    $describe = Invoke-External -FilePath $GcloudCli -Arguments @(
+        "sql", "instances", "describe", $InstanceName,
+        "--project", $Project,
+        "--format=json"
+    )
+    if ($describe.ExitCode -ne 0) {
+        return $null
+    }
+
+    $rawJson = ($describe.Output -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($rawJson)) {
+        return $null
+    }
+
+    try {
+        $instance = $rawJson | ConvertFrom-Json -Depth 100
+    }
+    catch {
+        throw ("Failed parsing Cloud SQL instance JSON for '{0}': {1}" -f $InstanceName, $_.Exception.Message)
+    }
+
+    $storageSize = 0
+    $storageSizeText = ""
+    if ($null -ne $instance.settings -and $null -ne $instance.settings.dataDiskSizeGb) {
+        $storageSizeText = [string]$instance.settings.dataDiskSizeGb
+        [void][int]::TryParse($storageSizeText, [ref]$storageSize)
+    }
+
+    return [pscustomobject]@{
+        Name                       = [string]$instance.name
+        Tier                       = [string]$instance.settings.tier
+        StorageSizeGb              = $storageSize
+        StorageType                = [string]$instance.settings.dataDiskType
+        PrivateNetwork             = [string]$instance.settings.ipConfiguration.privateNetwork
+        Ipv4Enabled                = [bool]$instance.settings.ipConfiguration.ipv4Enabled
+        BackupEnabled              = [bool]$instance.settings.backupConfiguration.enabled
+        BackupStartTime            = [string]$instance.settings.backupConfiguration.startTime
+        PointInTimeRecoveryEnabled = [bool]$instance.settings.backupConfiguration.pointInTimeRecoveryEnabled
+        ConnectionName             = [string]$instance.connectionName
+        ServiceAccountEmailAddress = [string]$instance.serviceAccountEmailAddress
+        Region                     = [string]$instance.region
+        DatabaseVersion            = [string]$instance.databaseVersion
+    }
+}
+
+function Set-CloudSqlInstance {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$Region,
+        [string]$InstanceName,
+        [string]$DatabaseVersion,
+        [string]$Tier,
+        [int]$StorageGb,
+        [string]$StorageType,
+        [bool]$UsePrivateIp,
+        [string]$Network,
+        [bool]$EnableBackups,
+        [string]$BackupStartTime,
+        [bool]$EnablePointInTimeRecovery
+    )
+
+    $instanceInfo = Get-CloudSqlInstanceInfo -GcloudCli $GcloudCli -Project $Project -InstanceName $InstanceName
+    $wasCreated = $false
+
+    if ($null -eq $instanceInfo) {
+        $sqlCreateArgs = @(
+            "sql", "instances", "create", $InstanceName,
+            "--project", $Project,
+            "--region", $Region,
+            "--database-version", $DatabaseVersion,
+            "--tier", $Tier,
+            "--storage-size", $StorageGb,
+            "--storage-type", $StorageType,
+            "--storage-auto-increase"
+        )
+        if ($UsePrivateIp) {
+            $sqlCreateArgs += @(
+                "--network", $Network,
+                "--no-assign-ip"
+            )
+        }
+        else {
+            $sqlCreateArgs += "--assign-ip"
+        }
+        if ($EnableBackups) {
+            $sqlCreateArgs += @("--backup-start-time", $BackupStartTime)
+        }
+        else {
+            $sqlCreateArgs += "--no-backup"
+        }
+        if ($EnablePointInTimeRecovery) {
+            $sqlCreateArgs += "--enable-point-in-time-recovery"
+        }
+        $sqlCreateArgs += "--quiet"
+
+        Invoke-RequiredWithCloudSqlWait -GcloudCli $GcloudCli -Arguments $sqlCreateArgs -Project $Project -FailureMessage ("Failed creating Cloud SQL instance '{0}'." -f $InstanceName)
+        Write-Ok ("Created Cloud SQL instance: {0}" -f $InstanceName)
+        $wasCreated = $true
+        $instanceInfo = Get-CloudSqlInstanceInfo -GcloudCli $GcloudCli -Project $Project -InstanceName $InstanceName
+        if ($null -eq $instanceInfo) {
+            throw ("Cloud SQL instance '{0}' could not be described after creation." -f $InstanceName)
+        }
+    }
+    else {
+        Write-Ok ("Cloud SQL instance already exists: {0}" -f $InstanceName)
+        $expectedDiskType = Get-CloudSqlDiskTypeName -StorageType $StorageType
+        $needsPatch = $false
+        $sqlPatchArgs = @(
+            "sql", "instances", "patch", $InstanceName,
+            "--project", $Project
+        )
+
+        if ($instanceInfo.Tier -ne $Tier) {
+            $sqlPatchArgs += @("--tier", $Tier)
+            $needsPatch = $true
+        }
+        if ($instanceInfo.StorageSizeGb -lt $StorageGb) {
+            $sqlPatchArgs += @("--storage-size", $StorageGb)
+            $needsPatch = $true
+        }
+        elseif ($instanceInfo.StorageSizeGb -gt $StorageGb) {
+            Write-Info ("Cloud SQL storage is {0} GB but requested minimum is {1} GB. Cloud SQL doesn't support shrinking storage in place, so the existing disk size will be kept." -f $instanceInfo.StorageSizeGb, $StorageGb)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($instanceInfo.StorageType) -and $instanceInfo.StorageType -ne $expectedDiskType) {
+            Write-Info ("Cloud SQL storage type is {0}. Existing storage type will be kept because in-place disk-type migration isn't handled by this deploy script." -f $instanceInfo.StorageType)
+        }
+
+        if ($UsePrivateIp) {
+            if ([string]::IsNullOrWhiteSpace($instanceInfo.PrivateNetwork) -or $instanceInfo.Ipv4Enabled) {
+                $sqlPatchArgs += @(
+                    "--network", $Network,
+                    "--no-assign-ip"
+                )
+                $needsPatch = $true
+            }
+        }
+        elseif (-not $instanceInfo.Ipv4Enabled) {
+            $sqlPatchArgs += "--assign-ip"
+            $needsPatch = $true
+        }
+
+        if ($EnableBackups) {
+            if (-not $instanceInfo.BackupEnabled -or $instanceInfo.BackupStartTime -ne $BackupStartTime) {
+                $sqlPatchArgs += @("--backup-start-time", $BackupStartTime)
+                $needsPatch = $true
+            }
+        }
+        elseif ($instanceInfo.BackupEnabled) {
+            $sqlPatchArgs += "--no-backup"
+            $needsPatch = $true
+        }
+
+        if ($EnablePointInTimeRecovery -and -not $instanceInfo.PointInTimeRecoveryEnabled) {
+            $sqlPatchArgs += "--enable-point-in-time-recovery"
+            $needsPatch = $true
+        }
+
+        if ($needsPatch) {
+            $sqlPatchArgs += "--quiet"
+            Invoke-RequiredWithCloudSqlWait -GcloudCli $GcloudCli -Arguments $sqlPatchArgs -Project $Project -FailureMessage ("Failed patching Cloud SQL instance '{0}'." -f $InstanceName)
+            Write-Ok ("Cloud SQL settings ensured for instance: {0}" -f $InstanceName)
+            $instanceInfo = Get-CloudSqlInstanceInfo -GcloudCli $GcloudCli -Project $Project -InstanceName $InstanceName
+        }
+        else {
+            Write-Ok ("Cloud SQL settings already match desired state for instance: {0}" -f $InstanceName)
+        }
+    }
+
+    return [pscustomobject]@{
+        Info    = $instanceInfo
+        Created = $wasCreated
+    }
+}
+
+function Set-CloudSqlDatabaseAndUser {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$InstanceName,
+        [string]$DatabaseName,
+        [string]$UserName,
+        [securestring]$Password
+    )
+
+    $passwordBstr = [IntPtr]::Zero
+    $passwordPlainText = ""
+    try {
+        if ($null -ne $Password) {
+            $passwordBstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+            $passwordPlainText = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordBstr)
+        }
+
+        $dbList = Invoke-Required -FilePath $GcloudCli -Arguments @(
+            "sql", "databases", "list",
+            "--instance", $InstanceName,
+            "--project", $Project,
+            "--format=value(name)"
+        ) -FailureMessage ("Failed listing Cloud SQL databases for instance '{0}'." -f $InstanceName) -PassThru
+
+        if ($dbList -contains $DatabaseName) {
+            Write-Ok ("Database already exists: {0}" -f $DatabaseName)
+        }
+        else {
+            Invoke-Required -FilePath $GcloudCli -Arguments @(
+                "sql", "databases", "create", $DatabaseName,
+                "--instance", $InstanceName,
+                "--project", $Project,
+                "--quiet"
+            ) -FailureMessage ("Failed creating Cloud SQL database '{0}' on instance '{1}'." -f $DatabaseName, $InstanceName)
+            Write-Ok ("Created database: {0}" -f $DatabaseName)
+        }
+
+        $userList = Invoke-Required -FilePath $GcloudCli -Arguments @(
+            "sql", "users", "list",
+            "--instance", $InstanceName,
+            "--project", $Project,
+            "--format=value(name)"
+        ) -FailureMessage ("Failed listing Cloud SQL users for instance '{0}'." -f $InstanceName) -PassThru
+
+        if ($userList -contains $UserName) {
+            Invoke-Required -FilePath $GcloudCli -Arguments @(
+                "sql", "users", "set-password", $UserName,
+                "--instance", $InstanceName,
+                "--project", $Project,
+                "--password", $passwordPlainText,
+                "--quiet"
+            ) -FailureMessage ("Failed setting password for user '{0}' on instance '{1}'." -f $UserName, $InstanceName)
+            Write-Ok ("Updated password for DB user: {0}" -f $UserName)
+        }
+        else {
+            Invoke-Required -FilePath $GcloudCli -Arguments @(
+                "sql", "users", "create", $UserName,
+                "--instance", $InstanceName,
+                "--project", $Project,
+                "--password", $passwordPlainText,
+                "--quiet"
+            ) -FailureMessage ("Failed creating DB user '{0}' on instance '{1}'." -f $UserName, $InstanceName)
+            Write-Ok ("Created DB user: {0}" -f $UserName)
+        }
+    }
+    finally {
+        if ($passwordBstr -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordBstr)
+        }
+    }
+}
+
+function Add-BucketIamBinding {
+    param(
+        [string]$GcloudCli,
+        [string]$BucketRef,
+        [string]$Member,
+        [string]$Role
+    )
+
+    Invoke-Required -FilePath $GcloudCli -Arguments @(
+        "storage", "buckets", "add-iam-policy-binding", $BucketRef,
+        "--member", $Member,
+        "--role", $Role,
+        "--quiet"
+    ) -FailureMessage ("Failed binding {0} on bucket {1}." -f $Role, $BucketRef)
+}
+
+function Grant-CloudSqlBucketAccess {
+    param(
+        [string]$GcloudCli,
+        [string]$BucketRef,
+        [string]$ServiceAccountEmail
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ServiceAccountEmail)) {
+        throw "Cloud SQL service account email is required for import/export bucket access."
+    }
+
+    Add-BucketIamBinding -GcloudCli $GcloudCli -BucketRef $BucketRef -Member ("serviceAccount:{0}" -f $ServiceAccountEmail) -Role "roles/storage.objectAdmin"
+    Write-Ok ("Bucket access ensured for Cloud SQL service account: {0}" -f $ServiceAccountEmail)
+}
+
+function Export-CloudSqlDatabase {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$InstanceName,
+        [string]$DatabaseName,
+        [string]$DestinationUri
+    )
+
+    Invoke-RequiredWithCloudSqlWait -GcloudCli $GcloudCli -Arguments @(
+        "sql", "export", "sql", $InstanceName, $DestinationUri,
+        "--project", $Project,
+        "--database", $DatabaseName,
+        "--offload",
+        "--quiet"
+    ) -Project $Project -FailureMessage ("Failed exporting Cloud SQL database '{0}' from instance '{1}'." -f $DatabaseName, $InstanceName)
+}
+
+function Import-CloudSqlDatabase {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$InstanceName,
+        [string]$DatabaseName,
+        [string]$UserName,
+        [string]$SourceUri
+    )
+
+    Invoke-RequiredWithCloudSqlWait -GcloudCli $GcloudCli -Arguments @(
+        "sql", "import", "sql", $InstanceName, $SourceUri,
+        "--project", $Project,
+        "--database", $DatabaseName,
+        "--user", $UserName,
+        "--quiet"
+    ) -Project $Project -FailureMessage ("Failed importing Cloud SQL database '{0}' into instance '{1}'." -f $DatabaseName, $InstanceName)
+}
+
+function Remove-CloudSqlInstance {
+    param(
+        [string]$GcloudCli,
+        [string]$Project,
+        [string]$InstanceName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InstanceName)) {
+        return $false
+    }
+
+    $instanceInfo = Get-CloudSqlInstanceInfo -GcloudCli $GcloudCli -Project $Project -InstanceName $InstanceName
+    if ($null -eq $instanceInfo) {
+        Write-Info ("Cloud SQL instance already absent, skipping delete: {0}" -f $InstanceName)
+        return $false
+    }
+
+    Invoke-RequiredWithCloudSqlWait -GcloudCli $GcloudCli -Arguments @(
+        "sql", "instances", "delete", $InstanceName,
+        "--project", $Project,
+        "--quiet"
+    ) -Project $Project -FailureMessage ("Failed deleting Cloud SQL instance '{0}'." -f $InstanceName)
+
+    Write-Ok ("Deleted Cloud SQL instance: {0}" -f $InstanceName)
+    return $true
+}
+
+function Get-RedisInstanceReferences {
+    param(
+        [string]$GcloudCli,
+        [string]$Project
+    )
+
+    $regionsResult = Invoke-Required -FilePath $GcloudCli -Arguments @(
+        "redis", "regions", "list",
+        "--project", $Project,
+        "--format=value(name)"
+    ) -FailureMessage "Failed listing Redis regions." -PassThru
+
+    $regionRefs = @($regionsResult | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($regionRefs.Count -eq 0) {
+        return @()
+    }
+
+    $references = New-Object System.Collections.Generic.List[object]
+    foreach ($regionRef in $regionRefs) {
+        $fullRegionRef = ([string]$regionRef).Trim()
+        if ([string]::IsNullOrWhiteSpace($fullRegionRef)) {
+            continue
+        }
+
+        $regionSegments = @($fullRegionRef -split "/")
+        $regionName = [string]($regionSegments | Select-Object -Last 1)
+        if ([string]::IsNullOrWhiteSpace($regionName)) {
+            continue
+        }
+
+        $listResult = Invoke-Required -FilePath $GcloudCli -Arguments @(
+            "redis", "instances", "list",
+            "--project", $Project,
+            "--region", $regionName,
+            "--format=json(name,state)"
+        ) -FailureMessage ("Failed listing Redis instances in region {0}." -f $regionName) -PassThru
+
+        $rawJson = ($listResult -join [Environment]::NewLine).Trim()
+        if ([string]::IsNullOrWhiteSpace($rawJson) -or $rawJson -eq "[]") {
+            continue
+        }
+
+        try {
+            $instances = @($rawJson | ConvertFrom-Json -Depth 20)
+        }
+        catch {
+            throw ("Failed parsing Redis instance list JSON for region {0}: {1}" -f $regionName, $_.Exception.Message)
+        }
+
+        foreach ($instance in @($instances)) {
+            $fullName = ""
+            if ($null -ne $instance -and $null -ne $instance.name) {
+                $fullName = [string]$instance.name
+            }
+            $fullName = $fullName.Trim()
+            if ([string]::IsNullOrWhiteSpace($fullName)) {
+                continue
+            }
+
+            $segments = @($fullName -split "/")
+            if ($segments.Count -lt 6) {
+                continue
+            }
+
+            $instanceRegion = [string]$segments[3]
+            $instanceName = [string]$segments[5]
+            $instanceState = ""
+            if ($null -ne $instance -and $null -ne $instance.state) {
+                $instanceState = [string]$instance.state
+            }
+
+            if ([string]::IsNullOrWhiteSpace($instanceRegion) -or [string]::IsNullOrWhiteSpace($instanceName)) {
+                continue
+            }
+
+            [void]$references.Add([pscustomobject]@{
+                Name     = $instanceName
+                Region   = $instanceRegion
+                State    = $instanceState.Trim()
+                FullName = $fullName
+            })
+        }
+    }
+
+    return $references.ToArray()
+}
+
 function Wait-ForState {
     param(
         [scriptblock]$ReadState,
@@ -1677,8 +2210,8 @@ if ($null -ne $gcloudCmdCandidate) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; DisableBuildAttestations={6}; DisableContainerVulnerabilityScanning={7}; SkipMigrations={8}; RunBootstrapRuntime={9}; SkipSmokeTest={10}; PrivateCloudSqlIp={11}; CloudRunConcurrency={12}; CloudRunIngress={13}; GcsSignedUrls={14}; ConfigureMonitoring={15}; DjangoAllowedHosts={16}; CsrfTrustedOrigins={17}; CanonicalHost={18}; SmokeBaseUrl={19}; UptimeCheckHost={20}; UptimeCheckPath={21}" -f
-    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $CanonicalHost, $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
+    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; DisableBuildAttestations={6}; DisableContainerVulnerabilityScanning={7}; SkipMigrations={8}; RunBootstrapRuntime={9}; SkipSmokeTest={10}; PrivateCloudSqlIp={11}; CloudRunConcurrency={12}; CloudRunIngress={13}; GcsSignedUrls={14}; ConfigureMonitoring={15}; EnableRedis={16}; DjangoAllowedHosts={17}; CsrfTrustedOrigins={18}; CanonicalHost={19}; SmokeBaseUrl={20}; UptimeCheckHost={21}; UptimeCheckPath={22}" -f
+    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, $EnableRedis, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $CanonicalHost, $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
 )
 
 Write-Step "Preflight checks"
@@ -1787,146 +2320,6 @@ if ($UsePrivateCloudSqlIp) {
 }
 
 Write-Step "Ensuring Cloud SQL Postgres instance/database/user"
-$sqlDescribe = Invoke-External -FilePath $gcloudCli -Arguments @(
-    "sql", "instances", "describe", $CloudSqlInstance,
-    "--project", $ProjectId,
-    "--format=value(name)"
-)
-if ($sqlDescribe.ExitCode -ne 0) {
-    $sqlCreateArgs = @(
-        "sql", "instances", "create", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--region", $Region,
-        "--database-version", $CloudSqlDatabaseVersion,
-        "--tier", $CloudSqlTier,
-        "--storage-size", $CloudSqlStorageGb,
-        "--storage-auto-increase"
-    )
-    if ($UsePrivateCloudSqlIp) {
-        $sqlCreateArgs += @(
-            "--network", $Network,
-            "--no-assign-ip"
-        )
-    }
-    else {
-        $sqlCreateArgs += "--assign-ip"
-    }
-    if ($EnableCloudSqlBackups) {
-        $sqlCreateArgs += @("--backup-start-time", $CloudSqlBackupStartTime)
-    }
-    else {
-        $sqlCreateArgs += "--no-backup"
-    }
-    if ($EnableCloudSqlPointInTimeRecovery) {
-        $sqlCreateArgs += "--enable-point-in-time-recovery"
-    }
-    $sqlCreateArgs += "--quiet"
-
-    Invoke-RequiredWithCloudSqlWait -GcloudCli $gcloudCli -Arguments $sqlCreateArgs -Project $ProjectId -FailureMessage "Failed creating Cloud SQL instance."
-    Write-Ok ("Created Cloud SQL instance: {0}" -f $CloudSqlInstance)
-}
-else {
-    Write-Ok ("Cloud SQL instance already exists: {0}" -f $CloudSqlInstance)
-    $currentPrivateNetwork = ([string](Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "instances", "describe", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--format=value(settings.ipConfiguration.privateNetwork)"
-    ) -FailureMessage "Failed reading Cloud SQL private network setting." -PassThru | Select-Object -First 1)).Trim()
-    $currentIpv4Enabled = ([string](Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "instances", "describe", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--format=value(settings.ipConfiguration.ipv4Enabled)"
-    ) -FailureMessage "Failed reading Cloud SQL public IP setting." -PassThru | Select-Object -First 1)).Trim().ToLowerInvariant()
-    $currentBackupEnabled = ([string](Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "instances", "describe", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--format=value(settings.backupConfiguration.enabled)"
-    ) -FailureMessage "Failed reading Cloud SQL backup setting." -PassThru | Select-Object -First 1)).Trim().ToLowerInvariant()
-    $currentBackupStart = ([string](Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "instances", "describe", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--format=value(settings.backupConfiguration.startTime)"
-    ) -FailureMessage "Failed reading Cloud SQL backup start time." -PassThru | Select-Object -First 1)).Trim()
-    $currentPitrEnabled = ([string](Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "instances", "describe", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--format=value(settings.backupConfiguration.pointInTimeRecoveryEnabled)"
-    ) -FailureMessage "Failed reading Cloud SQL PITR setting." -PassThru | Select-Object -First 1)).Trim().ToLowerInvariant()
-
-    $needsPatch = $false
-    if ($UsePrivateCloudSqlIp) {
-        if ([string]::IsNullOrWhiteSpace($currentPrivateNetwork) -or $currentIpv4Enabled -ne "false") {
-            $needsPatch = $true
-        }
-    }
-    elseif ($currentIpv4Enabled -ne "true") {
-        $needsPatch = $true
-    }
-    if ($EnableCloudSqlBackups) {
-        if ($currentBackupEnabled -ne "true" -or $currentBackupStart -ne $CloudSqlBackupStartTime) {
-            $needsPatch = $true
-        }
-    }
-    elseif ($currentBackupEnabled -ne "false") {
-        $needsPatch = $true
-    }
-    if ($EnableCloudSqlPointInTimeRecovery -and $currentPitrEnabled -ne "true") {
-        $needsPatch = $true
-    }
-
-    if ($needsPatch) {
-        $sqlPatchArgs = @(
-            "sql", "instances", "patch", $CloudSqlInstance,
-            "--project", $ProjectId
-        )
-        if ($UsePrivateCloudSqlIp) {
-            $sqlPatchArgs += @(
-                "--network", $Network,
-                "--no-assign-ip"
-            )
-        }
-        else {
-            $sqlPatchArgs += "--assign-ip"
-        }
-        if ($EnableCloudSqlBackups) {
-            $sqlPatchArgs += @("--backup-start-time", $CloudSqlBackupStartTime)
-        }
-        else {
-            $sqlPatchArgs += "--no-backup"
-        }
-        if ($EnableCloudSqlPointInTimeRecovery) {
-            $sqlPatchArgs += "--enable-point-in-time-recovery"
-        }
-        $sqlPatchArgs += "--quiet"
-
-        Invoke-RequiredWithCloudSqlWait -GcloudCli $gcloudCli -Arguments $sqlPatchArgs -Project $ProjectId -FailureMessage "Failed applying Cloud SQL hardening settings."
-        Write-Ok "Cloud SQL hardening settings ensured (network/IP/backup/PITR)."
-    }
-    else {
-        Write-Ok "Cloud SQL hardening settings already match desired state."
-    }
-}
-
-$dbList = Invoke-Required -FilePath $gcloudCli -Arguments @(
-    "sql", "databases", "list",
-    "--instance", $CloudSqlInstance,
-    "--project", $ProjectId,
-    "--format=value(name)"
-) -FailureMessage "Failed listing Cloud SQL databases." -PassThru
-
-if ($dbList -contains $CloudSqlDatabase) {
-    Write-Ok ("Database already exists: {0}" -f $CloudSqlDatabase)
-}
-else {
-    Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "databases", "create", $CloudSqlDatabase,
-        "--instance", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--quiet"
-    ) -FailureMessage "Failed creating Cloud SQL database."
-    Write-Ok ("Created database: {0}" -f $CloudSqlDatabase)
-}
-
 $existingDbUrlFromSecret = Get-SecretLatestValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.DatabaseUrl
 $dbPassword = ""
 if (-not [string]::IsNullOrWhiteSpace($existingDbUrlFromSecret)) {
@@ -1937,95 +2330,203 @@ if (-not [string]::IsNullOrWhiteSpace($existingDbUrlFromSecret)) {
 if ([string]::IsNullOrWhiteSpace($dbPassword)) {
     $dbPassword = New-RandomToken -Length 28
 }
+$dbPasswordSecure = New-Object System.Security.SecureString
+foreach ($dbPasswordChar in $dbPassword.ToCharArray()) {
+    $dbPasswordSecure.AppendChar($dbPasswordChar)
+}
+$dbPasswordSecure.MakeReadOnly()
 
-$userList = Invoke-Required -FilePath $gcloudCli -Arguments @(
-    "sql", "users", "list",
-    "--instance", $CloudSqlInstance,
-    "--project", $ProjectId,
-    "--format=value(name)"
-) -FailureMessage "Failed listing Cloud SQL users." -PassThru
+$currentSecretConnectionName = Get-CloudSqlConnectionNameFromDatabaseUrl -DatabaseUrl $existingDbUrlFromSecret
+$currentSecretInstanceName = Get-CloudSqlInstanceNameFromConnectionName -ConnectionName $currentSecretConnectionName
+$previousCloudSqlInstance = ""
+$previousCloudSqlConnectionName = $currentSecretConnectionName
+$cloudSqlSourceInstance = ""
+$cloudSqlTargetInstance = ""
+$cloudSqlInstanceToDeleteAfterSuccessfulCutover = ""
+$deletedCloudSqlInstance = ""
+$pendingCloudSqlMigration = $false
+$stagedDatabaseUrl = ""
+$cloudSqlMigrationExportUri = ""
+$currentDatabaseUrlForRollback = $existingDbUrlFromSecret
+$currentCloudSqlInstanceName = $CloudSqlInstance
+$currentCloudSqlInstanceInfo = $null
+if (-not [string]::IsNullOrWhiteSpace($currentSecretInstanceName)) {
+    $currentCloudSqlInstanceName = $currentSecretInstanceName
+    $currentCloudSqlInstanceInfo = Get-CloudSqlInstanceInfo -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $currentCloudSqlInstanceName
+}
+if ($null -eq $currentCloudSqlInstanceInfo -and $currentCloudSqlInstanceName -ne $CloudSqlInstance) {
+    $currentCloudSqlInstanceName = $CloudSqlInstance
+    $currentCloudSqlInstanceInfo = Get-CloudSqlInstanceInfo -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $currentCloudSqlInstanceName
+}
 
-if ($userList -contains $CloudSqlUser) {
-    Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "users", "set-password", $CloudSqlUser,
-        "--instance", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--password", $dbPassword,
-        "--quiet"
-    ) -FailureMessage ("Failed setting password for user '{0}'." -f $CloudSqlUser)
-    Write-Ok ("Updated password for DB user: {0}" -f $CloudSqlUser)
+if (
+    $null -ne $currentCloudSqlInstanceInfo -and
+    -not [string]::IsNullOrWhiteSpace($currentCloudSqlInstanceInfo.Name) -and
+    $currentCloudSqlInstanceInfo.Name -ne $CloudSqlInstance
+) {
+    $normalizedCurrentCloudSqlInstanceName = $currentCloudSqlInstanceInfo.Name.Trim().ToLowerInvariant()
+    $normalizedRequestedCloudSqlInstanceName = $CloudSqlInstance.Trim().ToLowerInvariant()
+    if ($normalizedCurrentCloudSqlInstanceName.StartsWith($normalizedRequestedCloudSqlInstanceName + "-")) {
+        $obsoleteCloudSqlBaseInstanceInfo = Get-CloudSqlInstanceInfo -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $CloudSqlInstance
+        if ($null -ne $obsoleteCloudSqlBaseInstanceInfo -and $obsoleteCloudSqlBaseInstanceInfo.Name -ne $currentCloudSqlInstanceInfo.Name) {
+            $cloudSqlInstanceToDeleteAfterSuccessfulCutover = $obsoleteCloudSqlBaseInstanceInfo.Name
+            Write-Info ("A previous Cloud SQL instance remains from an earlier replacement cutover and will be deleted after a successful deploy: {0}" -f $cloudSqlInstanceToDeleteAfterSuccessfulCutover)
+        }
+    }
+}
+
+$requestedDiskType = Get-CloudSqlDiskTypeName -StorageType $CloudSqlStorageType
+$requiresSafeCloudSqlReplacement = $false
+if ($null -ne $currentCloudSqlInstanceInfo) {
+    $requiresSafeCloudSqlReplacement = (
+        $currentCloudSqlInstanceInfo.Tier -ne $CloudSqlTier -or
+        $currentCloudSqlInstanceInfo.StorageType -ne $requestedDiskType -or
+        $currentCloudSqlInstanceInfo.StorageSizeGb -gt $CloudSqlStorageGb
+    )
+}
+
+if ($null -eq $currentCloudSqlInstanceInfo) {
+    $ensureResult = Set-CloudSqlInstance `
+        -GcloudCli $gcloudCli `
+        -Project $ProjectId `
+        -Region $Region `
+        -InstanceName $CloudSqlInstance `
+        -DatabaseVersion $CloudSqlDatabaseVersion `
+        -Tier $CloudSqlTier `
+        -StorageGb $CloudSqlStorageGb `
+        -StorageType $CloudSqlStorageType `
+        -UsePrivateIp $UsePrivateCloudSqlIp `
+        -Network $Network `
+        -EnableBackups $EnableCloudSqlBackups `
+        -BackupStartTime $CloudSqlBackupStartTime `
+        -EnablePointInTimeRecovery $EnableCloudSqlPointInTimeRecovery
+    Set-CloudSqlDatabaseAndUser -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $CloudSqlInstance -DatabaseName $CloudSqlDatabase -UserName $CloudSqlUser -Password $dbPasswordSecure
+    $currentCloudSqlInstanceInfo = $ensureResult.Info
+    $currentCloudSqlInstanceName = $currentCloudSqlInstanceInfo.Name
+    $cloudSqlConnectionName = $currentCloudSqlInstanceInfo.ConnectionName
+    $CloudSqlInstance = $currentCloudSqlInstanceInfo.Name
+}
+elseif ($requiresSafeCloudSqlReplacement) {
+    $replacementInstanceName = Get-DesiredCloudSqlReplacementInstanceName -BaseInstanceName $CloudSqlInstance -Tier $CloudSqlTier -StorageType $CloudSqlStorageType -StorageGb $CloudSqlStorageGb -ExplicitReplacementInstance $CloudSqlReplacementInstance
+    $replacementInfo = Get-CloudSqlInstanceInfo -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $replacementInstanceName
+    if ($null -ne $replacementInfo -and $replacementInfo.Name -ne $currentCloudSqlInstanceInfo.Name) {
+        throw ("Replacement Cloud SQL instance '{0}' already exists. To avoid overwriting an unknown database, choose a different -CloudSqlReplacementInstance or delete the stale replacement instance first." -f $replacementInstanceName)
+    }
+
+    $ensureReplacement = Set-CloudSqlInstance `
+        -GcloudCli $gcloudCli `
+        -Project $ProjectId `
+        -Region $Region `
+        -InstanceName $replacementInstanceName `
+        -DatabaseVersion $CloudSqlDatabaseVersion `
+        -Tier $CloudSqlTier `
+        -StorageGb $CloudSqlStorageGb `
+        -StorageType $CloudSqlStorageType `
+        -UsePrivateIp $UsePrivateCloudSqlIp `
+        -Network $Network `
+        -EnableBackups $EnableCloudSqlBackups `
+        -BackupStartTime $CloudSqlBackupStartTime `
+        -EnablePointInTimeRecovery $EnableCloudSqlPointInTimeRecovery
+
+    if (-not $ensureReplacement.Created -and $ensureReplacement.Info.Name -ne $currentCloudSqlInstanceInfo.Name) {
+        throw ("Replacement Cloud SQL instance '{0}' already existed before this run. For the lowest-risk migration path, the script only imports into a newly created replacement instance." -f $replacementInstanceName)
+    }
+
+    Set-CloudSqlDatabaseAndUser -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $replacementInstanceName -DatabaseName $CloudSqlDatabase -UserName $CloudSqlUser -Password $dbPasswordSecure
+
+    $previousCloudSqlInstance = $currentCloudSqlInstanceInfo.Name
+    $cloudSqlSourceInstance = $currentCloudSqlInstanceInfo.Name
+    $cloudSqlTargetInstance = $ensureReplacement.Info.Name
+    $cloudSqlConnectionName = $ensureReplacement.Info.ConnectionName
+    $CloudSqlInstance = $ensureReplacement.Info.Name
+    $cloudSqlInstanceToDeleteAfterSuccessfulCutover = $previousCloudSqlInstance
+    $pendingCloudSqlMigration = $true
+
+    Write-Info ("Preparing safe Cloud SQL replacement migration from '{0}' to '{1}'." -f $cloudSqlSourceInstance, $cloudSqlTargetInstance)
 }
 else {
-    Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "sql", "users", "create", $CloudSqlUser,
-        "--instance", $CloudSqlInstance,
-        "--project", $ProjectId,
-        "--password", $dbPassword,
-        "--quiet"
-    ) -FailureMessage ("Failed creating DB user '{0}'." -f $CloudSqlUser)
-    Write-Ok ("Created DB user: {0}" -f $CloudSqlUser)
+    $ensureResult = Set-CloudSqlInstance `
+        -GcloudCli $gcloudCli `
+        -Project $ProjectId `
+        -Region $Region `
+        -InstanceName $currentCloudSqlInstanceName `
+        -DatabaseVersion $CloudSqlDatabaseVersion `
+        -Tier $CloudSqlTier `
+        -StorageGb $CloudSqlStorageGb `
+        -StorageType $CloudSqlStorageType `
+        -UsePrivateIp $UsePrivateCloudSqlIp `
+        -Network $Network `
+        -EnableBackups $EnableCloudSqlBackups `
+        -BackupStartTime $CloudSqlBackupStartTime `
+        -EnablePointInTimeRecovery $EnableCloudSqlPointInTimeRecovery
+    Set-CloudSqlDatabaseAndUser -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $currentCloudSqlInstanceName -DatabaseName $CloudSqlDatabase -UserName $CloudSqlUser -Password $dbPasswordSecure
+    $currentCloudSqlInstanceInfo = $ensureResult.Info
+    $cloudSqlConnectionName = $currentCloudSqlInstanceInfo.ConnectionName
+    $CloudSqlInstance = $currentCloudSqlInstanceInfo.Name
 }
 
-$cloudSqlConnectionName = (Invoke-Required -FilePath $gcloudCli -Arguments @(
-    "sql", "instances", "describe", $CloudSqlInstance,
-    "--project", $ProjectId,
-    "--format=value(connectionName)"
-) -FailureMessage "Failed reading Cloud SQL connection name." -PassThru | Select-Object -First 1).Trim()
 if ([string]::IsNullOrWhiteSpace($cloudSqlConnectionName)) {
     throw "Cloud SQL connection name is empty."
 }
 Write-Ok ("Cloud SQL connection: {0}" -f $cloudSqlConnectionName)
 
-Write-Step "Ensuring Memorystore Redis"
-$redisDescribe = Invoke-External -FilePath $gcloudCli -Arguments @(
-    "redis", "instances", "describe", $RedisInstance,
-    "--project", $ProjectId,
-    "--region", $Region,
-    "--format=value(name)"
-)
-if ($redisDescribe.ExitCode -ne 0) {
-    Invoke-Required -FilePath $gcloudCli -Arguments @(
-        "redis", "instances", "create", $RedisInstance,
-        "--project", $ProjectId,
-        "--region", $Region,
-        "--network", $Network,
-        "--size", $RedisSizeGb,
-        "--tier", "basic",
-        "--quiet"
-    ) -FailureMessage "Failed creating Redis instance."
-    Write-Ok ("Created Redis instance: {0}" -f $RedisInstance)
-}
-else {
-    Write-Ok ("Redis instance already exists: {0}" -f $RedisInstance)
-}
-
-Wait-ForState -Label ("Redis instance {0}" -f $RedisInstance) -Expected "READY" -ReadState {
-    (Invoke-Required -FilePath $gcloudCli -Arguments @(
+$redisHost = ""
+$redisPort = ""
+if ($EnableRedis) {
+    Write-Step "Ensuring Memorystore Redis"
+    $redisDescribe = Invoke-External -FilePath $gcloudCli -Arguments @(
         "redis", "instances", "describe", $RedisInstance,
         "--project", $ProjectId,
         "--region", $Region,
-        "--format=value(state)"
-    ) -FailureMessage "Failed reading Redis state." -PassThru | Select-Object -First 1).Trim()
-} -TimeoutSeconds 1800 -SleepSeconds 10
+        "--format=value(name)"
+    )
+    if ($redisDescribe.ExitCode -ne 0) {
+        Invoke-Required -FilePath $gcloudCli -Arguments @(
+            "redis", "instances", "create", $RedisInstance,
+            "--project", $ProjectId,
+            "--region", $Region,
+            "--network", $Network,
+            "--size", $RedisSizeGb,
+            "--tier", "basic",
+            "--quiet"
+        ) -FailureMessage "Failed creating Redis instance."
+        Write-Ok ("Created Redis instance: {0}" -f $RedisInstance)
+    }
+    else {
+        Write-Ok ("Redis instance already exists: {0}" -f $RedisInstance)
+    }
 
-$redisHost = (Invoke-Required -FilePath $gcloudCli -Arguments @(
-    "redis", "instances", "describe", $RedisInstance,
-    "--project", $ProjectId,
-    "--region", $Region,
-    "--format=value(host)"
-) -FailureMessage "Failed reading Redis host." -PassThru | Select-Object -First 1).Trim()
+    Wait-ForState -Label ("Redis instance {0}" -f $RedisInstance) -Expected "READY" -ReadState {
+        (Invoke-Required -FilePath $gcloudCli -Arguments @(
+            "redis", "instances", "describe", $RedisInstance,
+            "--project", $ProjectId,
+            "--region", $Region,
+            "--format=value(state)"
+        ) -FailureMessage "Failed reading Redis state." -PassThru | Select-Object -First 1).Trim()
+    } -TimeoutSeconds 1800 -SleepSeconds 10
 
-$redisPort = (Invoke-Required -FilePath $gcloudCli -Arguments @(
-    "redis", "instances", "describe", $RedisInstance,
-    "--project", $ProjectId,
-    "--region", $Region,
-    "--format=value(port)"
-) -FailureMessage "Failed reading Redis port." -PassThru | Select-Object -First 1).Trim()
+    $redisHost = (Invoke-Required -FilePath $gcloudCli -Arguments @(
+        "redis", "instances", "describe", $RedisInstance,
+        "--project", $ProjectId,
+        "--region", $Region,
+        "--format=value(host)"
+    ) -FailureMessage "Failed reading Redis host." -PassThru | Select-Object -First 1).Trim()
 
-if ([string]::IsNullOrWhiteSpace($redisHost) -or [string]::IsNullOrWhiteSpace($redisPort)) {
-    throw "Redis host/port could not be resolved."
+    $redisPort = (Invoke-Required -FilePath $gcloudCli -Arguments @(
+        "redis", "instances", "describe", $RedisInstance,
+        "--project", $ProjectId,
+        "--region", $Region,
+        "--format=value(port)"
+    ) -FailureMessage "Failed reading Redis port." -PassThru | Select-Object -First 1).Trim()
+
+    if ([string]::IsNullOrWhiteSpace($redisHost) -or [string]::IsNullOrWhiteSpace($redisPort)) {
+        throw "Redis host/port could not be resolved."
+    }
+    Write-Ok ("Redis endpoint: {0}:{1}" -f $redisHost, $redisPort)
 }
-Write-Ok ("Redis endpoint: {0}:{1}" -f $redisHost, $redisPort)
+else {
+    Write-Info "Skipping Memorystore Redis provisioning because -EnableRedis is false."
+}
 
 Write-Step "Ensuring Serverless VPC Access connector"
 $connectorDescribe = Invoke-External -FilePath $gcloudCli -Arguments @(
@@ -2099,6 +2600,29 @@ Remove-BucketIamBindingIfPresent -GcloudCli $gcloudCli -BucketRef $bucketRef -Me
 
 Write-Ok "Bucket IAM bindings ensured for runtime service account (least-privilege profile)."
 
+if ($pendingCloudSqlMigration) {
+    Write-Step "Safely migrating Cloud SQL data to replacement instance"
+
+    $sourceCloudSqlInfo = Get-CloudSqlInstanceInfo -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $cloudSqlSourceInstance
+    $targetCloudSqlInfo = Get-CloudSqlInstanceInfo -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $CloudSqlInstance
+    if ($null -eq $sourceCloudSqlInfo) {
+        throw ("Cloud SQL source instance '{0}' could not be described for migration." -f $cloudSqlSourceInstance)
+    }
+    if ($null -eq $targetCloudSqlInfo) {
+        throw ("Cloud SQL target instance '{0}' could not be described for migration." -f $CloudSqlInstance)
+    }
+
+    Grant-CloudSqlBucketAccess -GcloudCli $gcloudCli -BucketRef $bucketRef -ServiceAccountEmail $sourceCloudSqlInfo.ServiceAccountEmailAddress
+    Grant-CloudSqlBucketAccess -GcloudCli $gcloudCli -BucketRef $bucketRef -ServiceAccountEmail $targetCloudSqlInfo.ServiceAccountEmailAddress
+
+    $cloudSqlMigrationExportUri = "{0}/cloudsql-migrations/{1}/{2}-{3}.sql.gz" -f $bucketRef, $cloudSqlSourceInstance, (Get-Date -Format "yyyyMMddHHmmss"), $CloudSqlDatabase
+    Export-CloudSqlDatabase -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $cloudSqlSourceInstance -DatabaseName $CloudSqlDatabase -DestinationUri $cloudSqlMigrationExportUri
+    Write-Ok ("Exported Cloud SQL database to: {0}" -f $cloudSqlMigrationExportUri)
+
+    Import-CloudSqlDatabase -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $CloudSqlInstance -DatabaseName $CloudSqlDatabase -UserName $CloudSqlUser -SourceUri $cloudSqlMigrationExportUri
+    Write-Ok ("Imported Cloud SQL database into replacement instance: {0}" -f $CloudSqlInstance)
+}
+
 Write-Step "Ensuring required GCS dependency"
 Add-RequirementLine -FilePath $requirementsPath -RequiredLine "google-cloud-storage>=2.18,<3.0" -AutoFix $AutoFixGcsDependency
 
@@ -2142,15 +2666,25 @@ if ([string]::IsNullOrWhiteSpace($existingDjangoSecret)) {
 }
 
 $databaseUrl = "postgresql://{0}:{1}@/{2}?host=/cloudsql/{3}" -f $CloudSqlUser, $dbPassword, $CloudSqlDatabase, $cloudSqlConnectionName
-$redisUrl = "redis://{0}:{1}/0" -f $redisHost, $redisPort
-$celeryBrokerUrl = "redis://{0}:{1}/1" -f $redisHost, $redisPort
-$celeryResultBackend = "redis://{0}:{1}/2" -f $redisHost, $redisPort
 
 Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.SecretKey -SecretValue $existingDjangoSecret
-Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.DatabaseUrl -SecretValue $databaseUrl
-Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.RedisUrl -SecretValue $redisUrl
-Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.CeleryBrokerUrl -SecretValue $celeryBrokerUrl
-Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.CeleryResultStore -SecretValue $celeryResultBackend
+if ($pendingCloudSqlMigration) {
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.DatabaseUrlCandidate -SecretValue $databaseUrl
+    $stagedDatabaseUrl = $databaseUrl
+    Write-Info ("Staged replacement DATABASE_URL in secret: {0}" -f $secretNames.DatabaseUrlCandidate)
+}
+else {
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.DatabaseUrl -SecretValue $databaseUrl
+}
+if ($EnableRedis) {
+    $redisUrl = "redis://{0}:{1}/0" -f $redisHost, $redisPort
+    $celeryBrokerUrl = "redis://{0}:{1}/1" -f $redisHost, $redisPort
+    $celeryResultBackend = "redis://{0}:{1}/2" -f $redisHost, $redisPort
+
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.RedisUrl -SecretValue $redisUrl
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.CeleryBrokerUrl -SecretValue $celeryBrokerUrl
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.CeleryResultStore -SecretValue $celeryResultBackend
+}
 
 $requestedAllowedHosts = @(Split-CommaList -Values $DjangoAllowedHosts)
 $requestedCsrfTrustedOrigins = @(Split-CommaList -Values $CsrfTrustedOrigins)
@@ -2361,15 +2895,31 @@ $webEnv = @($baseEnv + @("COLLECTSTATIC_ON_BOOT=true"))
 $jobEnv = @($baseEnv + @("COLLECTSTATIC_ON_BOOT=false"))
 $webEnvArg = ConvertTo-GcloudDictArg -Entries $webEnv
 $jobEnvArg = ConvertTo-GcloudDictArg -Entries $jobEnv
-$secretMap = @(
+$jobDatabaseSecretName = $secretNames.DatabaseUrl
+if ($pendingCloudSqlMigration) {
+    $jobDatabaseSecretName = $secretNames.DatabaseUrlCandidate
+}
+$jobSecretMap = @(
     ("SECRET_KEY={0}:latest" -f $secretNames.SecretKey),
-    ("DATABASE_URL={0}:latest" -f $secretNames.DatabaseUrl),
-    ("REDIS_URL={0}:latest" -f $secretNames.RedisUrl),
-    ("CELERY_BROKER_URL={0}:latest" -f $secretNames.CeleryBrokerUrl),
-    ("CELERY_RESULT_BACKEND={0}:latest" -f $secretNames.CeleryResultStore)
+    ("DATABASE_URL={0}:latest" -f $jobDatabaseSecretName)
 )
+$webSecretMap = @(
+    ("SECRET_KEY={0}:latest" -f $secretNames.SecretKey),
+    ("DATABASE_URL={0}:latest" -f $secretNames.DatabaseUrl)
+)
+if ($EnableRedis) {
+    $redisSecretEntries = @(
+        ("REDIS_URL={0}:latest" -f $secretNames.RedisUrl),
+        ("CELERY_BROKER_URL={0}:latest" -f $secretNames.CeleryBrokerUrl),
+        ("CELERY_RESULT_BACKEND={0}:latest" -f $secretNames.CeleryResultStore)
+    )
+    $jobSecretMap += $redisSecretEntries
+    $webSecretMap += $redisSecretEntries
+}
 if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
-    $secretMap += ("GOOGLE_MAPS_API_KEY={0}:latest" -f $secretNames.GoogleMapsApiKey)
+    $googleMapsSecretEntry = ("GOOGLE_MAPS_API_KEY={0}:latest" -f $secretNames.GoogleMapsApiKey)
+    $jobSecretMap += $googleMapsSecretEntry
+    $webSecretMap += $googleMapsSecretEntry
 }
 
 if (-not $SkipMigrations) {
@@ -2383,7 +2933,7 @@ if (-not $SkipMigrations) {
         "--set-cloudsql-instances", $cloudSqlConnectionName,
         "--vpc-connector", $VpcConnector,
         "--vpc-egress", "private-ranges-only",
-        "--set-secrets", ($secretMap -join ","),
+        "--set-secrets", ($jobSecretMap -join ","),
         "--set-env-vars", $jobEnvArg,
         "--command", "python",
         "--args", "manage.py,migrate,--noinput",
@@ -2406,6 +2956,18 @@ else {
     Write-Info "Skipping migrations as requested (-SkipMigrations)."
 }
 
+$databaseUrlCutoverApplied = $false
+try {
+if ($pendingCloudSqlMigration) {
+    if ([string]::IsNullOrWhiteSpace($stagedDatabaseUrl)) {
+        throw "Cloud SQL migration staged database URL is empty."
+    }
+    Write-Step "Promoting staged Cloud SQL DATABASE_URL for web cutover"
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.DatabaseUrl -SecretValue $stagedDatabaseUrl
+    $databaseUrlCutoverApplied = $true
+    Write-Info ("Primary DATABASE_URL secret now points to replacement Cloud SQL instance: {0}" -f $CloudSqlInstance)
+}
+
 Write-Step "Deploying Cloud Run web service"
 $deployArgs = @(
     "run", "deploy", $ServiceName,
@@ -2421,10 +2983,10 @@ $deployArgs = @(
     "--timeout", $CloudRunTimeoutSeconds,
     "--min-instances", $CloudRunMinInstances,
     "--max-instances", $CloudRunMaxInstances,
-    "--add-cloudsql-instances", $cloudSqlConnectionName,
+    "--set-cloudsql-instances", $cloudSqlConnectionName,
     "--vpc-connector", $VpcConnector,
     "--vpc-egress", "private-ranges-only",
-    "--set-secrets", ($secretMap -join ","),
+    "--set-secrets", ($webSecretMap -join ","),
     "--set-env-vars", $webEnvArg,
     "--quiet"
 )
@@ -2516,7 +3078,7 @@ if ($RunBootstrapRuntime) {
         "--set-cloudsql-instances", $cloudSqlConnectionName,
         "--vpc-connector", $VpcConnector,
         "--vpc-egress", "private-ranges-only",
-        "--set-secrets", ($secretMap -join ","),
+        "--set-secrets", ($webSecretMap -join ","),
         "--set-env-vars", $jobEnvArg,
         "--command", "python",
         "--args", "manage.py,bootstrap_runtime,--verbose",
@@ -2576,6 +3138,91 @@ if (-not $SkipSmokeTest) {
 else {
     Write-Info "Skipping smoke tests as requested (-SkipSmokeTest)."
 }
+}
+catch {
+    if ($databaseUrlCutoverApplied -and -not [string]::IsNullOrWhiteSpace($currentDatabaseUrlForRollback)) {
+        Write-Warning "Cloud SQL cutover failed after promoting the new DATABASE_URL. Restoring the previous database secret and attempting a rollback deploy."
+        try {
+            Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.DatabaseUrl -SecretValue $currentDatabaseUrlForRollback
+            if (-not [string]::IsNullOrWhiteSpace($previousCloudSqlConnectionName)) {
+                $rollbackDeployArgs = @(
+                    "run", "deploy", $ServiceName,
+                    "--project", $ProjectId,
+                    "--region", $Region,
+                    "--image", $imageRef,
+                    "--service-account", $serviceAccountEmail,
+                    "--port", "8080",
+                    "--cpu", $CloudRunCpu,
+                    "--memory", $CloudRunMemory,
+                    "--concurrency", $CloudRunConcurrency,
+                    "--ingress", $CloudRunIngress,
+                    "--timeout", $CloudRunTimeoutSeconds,
+                    "--min-instances", $CloudRunMinInstances,
+                    "--max-instances", $CloudRunMaxInstances,
+                    "--set-cloudsql-instances", $previousCloudSqlConnectionName,
+                    "--vpc-connector", $VpcConnector,
+                    "--vpc-egress", "private-ranges-only",
+                    "--set-secrets", ($webSecretMap -join ","),
+                    "--set-env-vars", $webEnvArg,
+                    "--quiet"
+                )
+                if ($AllowUnauthenticated) {
+                    $rollbackDeployArgs += "--allow-unauthenticated"
+                }
+                else {
+                    $rollbackDeployArgs += "--no-allow-unauthenticated"
+                }
+                Invoke-Required -FilePath $gcloudCli -Arguments $rollbackDeployArgs -FailureMessage "Rollback Cloud Run deploy failed."
+                Write-Ok ("Rollback Cloud Run deploy completed against previous Cloud SQL connection: {0}" -f $previousCloudSqlConnectionName)
+            }
+        }
+        catch {
+            Write-Warning ("Rollback attempt failed: {0}" -f $_.Exception.Message)
+        }
+    }
+    throw
+}
+
+if (-not [string]::IsNullOrWhiteSpace($cloudSqlInstanceToDeleteAfterSuccessfulCutover)) {
+    if ($cloudSqlInstanceToDeleteAfterSuccessfulCutover -eq $CloudSqlInstance) {
+        throw ("Refusing to delete the active Cloud SQL instance '{0}'." -f $CloudSqlInstance)
+    }
+
+    Write-Step "Deleting replaced Cloud SQL instance after successful cutover"
+    $deletedInstance = Remove-CloudSqlInstance -GcloudCli $gcloudCli -Project $ProjectId -InstanceName $cloudSqlInstanceToDeleteAfterSuccessfulCutover
+    if ($deletedInstance) {
+        $deletedCloudSqlInstance = $cloudSqlInstanceToDeleteAfterSuccessfulCutover
+    }
+}
+
+if (-not $EnableRedis) {
+    Write-Step "Removing existing Memorystore Redis instances"
+    $redisInstancesToDelete = @(Get-RedisInstanceReferences -GcloudCli $gcloudCli -Project $ProjectId)
+    if ($redisInstancesToDelete.Count -eq 0) {
+        Write-Info "No Redis instances found to delete."
+    }
+    else {
+        foreach ($redisInstanceRef in $redisInstancesToDelete) {
+            $instanceName = [string]$redisInstanceRef.Name
+            $instanceRegion = [string]$redisInstanceRef.Region
+            $instanceState = [string]$redisInstanceRef.State
+
+            if ($instanceState -eq "DELETING") {
+                Write-Info ("Redis instance already deleting: {0} ({1})" -f $instanceName, $instanceRegion)
+                continue
+            }
+
+            Write-Info ("Deleting Redis instance {0} in {1}" -f $instanceName, $instanceRegion)
+            Invoke-Required -FilePath $gcloudCli -Arguments @(
+                "redis", "instances", "delete", $instanceName,
+                "--project", $ProjectId,
+                "--region", $instanceRegion,
+                "--quiet"
+            ) -FailureMessage ("Failed deleting Redis instance {0} in {1}." -f $instanceName, $instanceRegion)
+            Write-Ok ("Deleted Redis instance: {0} ({1})" -f $instanceName, $instanceRegion)
+        }
+    }
+}
 
 if ($ConfigureMonitoring) {
     Write-Step "Ensuring Cloud Monitoring uptime checks"
@@ -2602,7 +3249,21 @@ Write-Host ("  Service:        {0}" -f $ServiceName)
 Write-Host ("  Image:          {0}" -f $imageRef)
 Write-Host ("  Service URL:    {0}" -f $serviceUrl)
 Write-Host ("  SQL Instance:   {0} ({1})" -f $CloudSqlInstance, $cloudSqlConnectionName)
-Write-Host ("  Redis:          {0}:{1}" -f $redisHost, $redisPort)
+if ($pendingCloudSqlMigration) {
+    Write-Host ("  SQL Previous:   {0}" -f $previousCloudSqlInstance)
+    if (-not [string]::IsNullOrWhiteSpace($cloudSqlMigrationExportUri)) {
+        Write-Host ("  SQL Export:     {0}" -f $cloudSqlMigrationExportUri)
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($deletedCloudSqlInstance)) {
+    Write-Host ("  SQL Deleted:    {0}" -f $deletedCloudSqlInstance)
+}
+if ($EnableRedis) {
+    Write-Host ("  Redis:          {0}:{1}" -f $redisHost, $redisPort)
+}
+else {
+    Write-Host "  Redis:          disabled"
+}
 Write-Host ("  Bucket:         {0}" -f $bucketRef)
 Write-Host ("  VPC Connector:  {0}" -f $VpcConnector)
 Write-Host ("  Allowed Hosts:  {0}" -f $effectiveAllowedHosts)

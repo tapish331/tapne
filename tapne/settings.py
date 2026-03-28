@@ -261,7 +261,9 @@ SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
 CANONICAL_HOST = os.getenv("CANONICAL_HOST", "").strip().lower()
-_canonical_scheme = os.getenv("CANONICAL_SCHEME", "https").strip().lower()
+# Default canonical scheme should match local dev protocol in DEBUG runs.
+_canonical_scheme_default = "http" if DEBUG else "https"
+_canonical_scheme = os.getenv("CANONICAL_SCHEME", _canonical_scheme_default).strip().lower()
 CANONICAL_SCHEME = _canonical_scheme if _canonical_scheme in {"http", "https"} else "https"
 CANONICAL_HOST_REDIRECT_ENABLED = env_bool("CANONICAL_HOST_REDIRECT_ENABLED", not DEBUG)
 

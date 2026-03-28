@@ -1542,11 +1542,14 @@
             event.preventDefault();
             var buttonMode = normalizeFlag(button.getAttribute("data-auth-mode"));
             var buttonReason = normalizeFlag(button.getAttribute("data-auth-reason"));
+            var buttonNextPath = String(button.getAttribute("data-auth-next") || "").trim();
+            var normalizedOriginPath = window.location.href;
+            var resolvedNextPath = normalizePath(buttonNextPath, normalizedOriginPath);
             openAuthModal({
                 mode: buttonMode === "signup" ? "signup" : "login",
                 reason: buttonReason === "continue" ? "continue" : "",
-                originPath: window.location.href,
-                nextPath: window.location.href,
+                originPath: normalizedOriginPath,
+                nextPath: resolvedNextPath,
                 triggerElement: button
             });
         });
