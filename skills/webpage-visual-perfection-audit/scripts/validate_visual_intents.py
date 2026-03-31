@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 """Stage 4 stub: validate visual intents against rendered webpages.
 
 This script executes conformance checks from intent_catalog.json against
@@ -11,21 +12,31 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, cast
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit
 
-PLAYWRIGHT_IMPORT_ERROR: Exception | None = None
+PlaywrightFactory = Callable[[], Any]
+
+PlaywrightError: type[Exception] = Exception
+async_playwright: PlaywrightFactory | None = None
+playwright_import_error: Exception | None = None
+playwright_module: object | None = None
 try:
-    from playwright.async_api import Error as PlaywrightError
-    from playwright.async_api import async_playwright
+    playwright_module = importlib.import_module("playwright.async_api")
 except ImportError as exc:  # pragma: no cover - environment dependent
-    PlaywrightError = Exception  # type: ignore[assignment]
-    async_playwright = None  # type: ignore[assignment]
-    PLAYWRIGHT_IMPORT_ERROR = exc
+    playwright_import_error = exc
+else:
+    imported_playwright_error: object = getattr(playwright_module, "Error", Exception)
+    imported_async_playwright: object = getattr(playwright_module, "async_playwright", None)
+    if isinstance(imported_playwright_error, type) and issubclass(imported_playwright_error, Exception):
+        PlaywrightError = imported_playwright_error
+    if callable(imported_async_playwright):
+        async_playwright = cast(PlaywrightFactory, imported_async_playwright)
 
 
 MOBILE_USER_AGENT = (
@@ -119,6 +130,23 @@ def slugify(value: str) -> str:
 
 def to_rel(path: Path, base: Path) -> str:
     return path.resolve().relative_to(base.resolve()).as_posix()
+
+
+def as_json_dict(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return cast(dict[str, Any], value)
+    return {}
+
+
+def as_json_dict_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    items: list[dict[str, Any]] = []
+    raw_items = cast(list[object], value)
+    for item in raw_items:
+        if isinstance(item, dict):
+            items.append(cast(dict[str, Any], item))
+    return items
 
 
 def parse_px(value: Any) -> float | None:
@@ -543,7 +571,7 @@ async def evaluate_search_dark(page: Any, selector: str, thresholds: dict[str, A
 async def evaluate_intent(page: Any, intent: dict[str, Any], width: int) -> dict[str, Any]:
     intent_type = str(intent.get("intent_type", "")).strip()
     selector = str(intent.get("locator_css", "")).strip() or "body"
-    thresholds = intent.get("thresholds", {}) or {}
+    thresholds = as_json_dict(intent.get("thresholds", {}))
 
     if intent_type == "carousel_horizontal":
         return await evaluate_carousel_horizontal(page, selector, thresholds)
@@ -596,9 +624,10 @@ async def run(args: argparse.Namespace) -> int:
             "skills/webpage-visual-perfection-audit/requirements.txt"
         )
         print("  python -m playwright install chromium")
-        if PLAYWRIGHT_IMPORT_ERROR:
-            print(f"Import error: {PLAYWRIGHT_IMPORT_ERROR}")
+        if playwright_import_error:
+            print(f"Import error: {playwright_import_error}")
         return 2
+    playwright_factory = async_playwright
 
     base_url = normalize_base_url(args.base_url)
     pages_json_path = Path(args.pages_json).resolve()
@@ -623,11 +652,14 @@ async def run(args: argparse.Namespace) -> int:
     else:
         storage_state = ""
 
-    pages_payload = json.loads(pages_json_path.read_text(encoding="utf-8"))
-    catalog_payload = json.loads(intent_catalog_path.read_text(encoding="utf-8"))
+    raw_pages_payload = json.loads(pages_json_path.read_text(encoding="utf-8"))
+    raw_catalog_payload = json.loads(intent_catalog_path.read_text(encoding="utf-8"))
 
-    pages: list[dict[str, Any]] = pages_payload.get("pages", [])
-    intents: list[dict[str, Any]] = catalog_payload.get("intents", [])
+    pages_payload = as_json_dict(raw_pages_payload)
+    catalog_payload = as_json_dict(raw_catalog_payload)
+
+    pages = as_json_dict_list(pages_payload.get("pages", []))
+    intents = as_json_dict_list(catalog_payload.get("intents", []))
     if not pages or not intents:
         print("[error] pages or intents are empty.")
         return 1
@@ -653,7 +685,7 @@ async def run(args: argparse.Namespace) -> int:
 
     results: list[dict[str, Any]] = []
 
-    async with async_playwright() as p:
+    async with playwright_factory() as p:
         browser = await p.chromium.launch(headless=not args.headed)
 
         for (route_url, width), intents_for_page in sorted(plan.items(), key=lambda item: (item[0][0], item[0][1])):
@@ -742,7 +774,7 @@ async def run(args: argparse.Namespace) -> int:
         else:
             value["overall_status"] = "skipped"
 
-    conformance_payload = {
+    conformance_payload: dict[str, Any] = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "base_url": base_url,
         "pages_json": str(pages_json_path),

@@ -1,29 +1,61 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | How It Works{% endblock %}
+{% block body_class %}lovable-theme lovable-legal-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="hero hero-compact">
-    <p class="eyebrow">How it works</p>
-    <h1>How tapne works</h1>
-    <p>Guests can browse trips and blogs. Members unlock join requests, messaging, comments, reviews, and bookmarks.</p>
-</section>
+<div class="lv-stack lv-legal-shell">
+    <section class="lv-hero-panel">
+        <p class="lv-eyebrow">How it works</p>
+        <h1>How tapne works</h1>
+        <p>Guests can browse trips and blogs. Members unlock join requests, messaging, comments, reviews, and bookmarks.</p>
+    </section>
 
-<section class="detail-shell">
-    <h2>For guests</h2>
-    <ul class="simple-list">
-        <li>Browse trips, creators, and blogs.</li>
-        <li>Open detail pages to understand trip fit and host style.</li>
-        <li>Create an account when you are ready to participate.</li>
-    </ul>
-</section>
+    <section class="section-grid">
+        <header class="section-header">
+            <div>
+                <h2>For guests</h2>
+                <p class="detail-meta">Discovery first, account creation only when participation becomes necessary.</p>
+            </div>
+        </header>
+        <div class="lv-legal-grid">
+            <article class="lovable-detail-card">
+                <h2>Browse</h2>
+                <p class="detail-meta">Review trips, hosts, destinations, and blogs before making any commitment.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Compare</h2>
+                <p class="detail-meta">Open details pages to understand trip fit, logistics, vibe, and host style.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Join later</h2>
+                <p class="detail-meta">Create an account only when you want to interact, review, or request a seat.</p>
+            </article>
+        </div>
+    </section>
 
-<section class="detail-shell stack-gap-top">
-    <h2>For members and hosts</h2>
-    <ul class="simple-list">
-        <li>Members can request to join trips and interact across the platform.</li>
-        <li>Hosts can publish trips, review requests, and share updates.</li>
-        <li>Creators can publish blogs and build a public audience.</li>
-    </ul>
-</section>
+    <section class="section-grid">
+        <header class="section-header">
+            <div>
+                <h2>For members and hosts</h2>
+                <p class="detail-meta">Once signed in, the experience expands into participation and management flows.</p>
+            </div>
+        </header>
+        <div class="lv-legal-grid">
+            <article class="lovable-detail-card">
+                <h2>Members</h2>
+                <p class="detail-meta">Request to join trips, bookmark creators, write reviews, and message directly.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Hosts</h2>
+                <p class="detail-meta">Create trips, review applications, and manage hosted experiences.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Creators</h2>
+                <p class="detail-meta">Publish blog stories and build a public audience around your travel style.</p>
+            </article>
+        </div>
+    </section>
+</div>
 {% endblock %}

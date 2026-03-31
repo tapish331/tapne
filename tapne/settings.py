@@ -120,6 +120,7 @@ TEMPLATES: list[dict[str, Any]] = [
                 "django.contrib.messages.context_processors.messages",
                 "accounts.context_processors.auth_modal_forms",
                 "settings_app.context_processors.appearance_preferences",
+                "trips.context_processors.nav_trip_drafts",
             ],
         }
     }

@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from typing import Any, Final, TypedDict, cast
 
 import bleach
-from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxLengthValidator
@@ -471,7 +470,12 @@ class Trip(models.Model):
             trip_data["faqs"] = [dict(item) for item in cast(list[dict[str, object]], self.faqs)]
         return trip_data
 
-MINE_TABS: Final[tuple[str, ...]] = ("upcoming", "hosting", "past", "saved")
+MINE_TABS: Final[tuple[str, ...]] = ("drafts", "published", "past")
+MINE_TAB_ALIASES: Final[dict[str, str]] = {
+    "upcoming": "published",
+    "hosting": "published",
+    "saved": "drafts",
+}
 TRIP_DURATION_FILTER_OPTIONS: Final[tuple[tuple[str, str], ...]] = (
     ("all", "Any duration"),
     ("short", "1-3 days"),
@@ -700,9 +704,11 @@ def _trip_matches_filters(trip: TripData, filters: TripListFilters) -> bool:
 
 def normalize_mine_tab(raw_tab: str) -> str:
     normalized = raw_tab.strip().lower()
+    if normalized in MINE_TAB_ALIASES:
+        return MINE_TAB_ALIASES[normalized]
     if normalized in MINE_TABS:
         return normalized
-    return "upcoming"
+    return "drafts"
 
 
 def _live_trip_rows() -> list[Trip]:
@@ -711,52 +717,6 @@ def _live_trip_rows() -> list[Trip]:
         .filter(is_published=True)
         .order_by("starts_at", "pk")
     )
-
-
-def _saved_trip_ids_for_member(user: object, *, limit: int | None = None) -> list[int]:
-    try:
-        bookmark_model = apps.get_model("social", "Bookmark")
-    except LookupError:
-        return []
-
-    queryset = bookmark_model.objects.filter(
-        member=user,
-        target_type="trip",
-    ).order_by("-created_at", "-pk")
-
-    effective_limit = None if limit is None else max(1, int(limit or 1))
-    saved_ids: list[int] = []
-    seen_ids: set[int] = set()
-    for bookmark in queryset:
-        target_key = str(getattr(bookmark, "target_key", "") or "").strip()
-        if not target_key.isdigit():
-            continue
-
-        trip_id = int(target_key)
-        if trip_id <= 0 or trip_id in seen_ids:
-            continue
-
-        seen_ids.add(trip_id)
-        saved_ids.append(trip_id)
-
-        if effective_limit is not None and len(saved_ids) >= effective_limit:
-            break
-
-    return saved_ids
-
-
-def _saved_trip_rows_for_member(user: object, *, limit: int) -> list[Trip]:
-    saved_ids = _saved_trip_ids_for_member(user, limit=limit)
-    if not saved_ids:
-        return []
-
-    trip_rows = Trip.objects.select_related("host").filter(pk__in=saved_ids)
-    trip_map: dict[int, Trip] = {int(trip.pk): trip for trip in trip_rows}
-    return [trip_map[trip_id] for trip_id in saved_ids if trip_id in trip_map]
-
-
-def _saved_trip_count_for_member(user: object) -> int:
-    return len(_saved_trip_ids_for_member(user))
 
 
 def build_trip_list_payload_for_user(
@@ -893,7 +853,7 @@ def build_my_trips_payload_for_member(
         return {
             "trips": [],
             "active_tab": effective_tab,
-            "tab_counts": {"upcoming": 0, "hosting": 0, "past": 0, "saved": 0},
+            "tab_counts": {"drafts": 0, "published": 0, "past": 0},
             "mode": "guest-not-allowed",
             "reason": "This page is member-only.",
         }
@@ -901,34 +861,28 @@ def build_my_trips_payload_for_member(
     typed_user = cast(Any, user)
     hosted_qs = Trip.objects.select_related("host").filter(host=typed_user).order_by("starts_at", "pk")
     now = timezone.now()
+    draft_qs = hosted_qs.filter(is_published=False).order_by("-updated_at", "-pk")
+    published_qs = hosted_qs.filter(is_published=True, starts_at__gte=now)
+    past_qs = hosted_qs.filter(is_published=True, starts_at__lt=now).order_by("-starts_at", "-pk")
 
-    upcoming_qs = hosted_qs.filter(starts_at__gte=now)
-    past_qs = hosted_qs.filter(starts_at__lt=now)
-
-    if effective_tab == "hosting":
-        selected_rows = list(hosted_qs[:effective_limit])
-        reason = "All trips hosted by the current member account."
+    if effective_tab == "published":
+        selected_rows = list(published_qs[:effective_limit])
+        reason = "Published trips that are still upcoming."
     elif effective_tab == "past":
         selected_rows = list(past_qs[:effective_limit])
-        reason = "Hosted trips that have already started."
-    elif effective_tab == "saved":
-        selected_rows = _saved_trip_rows_for_member(typed_user, limit=effective_limit)
-        reason = "Saved tab is sourced from social bookmarks."
+        reason = "Published trips that have already started."
     else:
-        selected_rows = list(upcoming_qs[:effective_limit])
-        reason = "Upcoming hosted trips ordered by start time."
-
-    saved_count = _saved_trip_count_for_member(typed_user)
+        selected_rows = list(draft_qs[:effective_limit])
+        reason = "Drafts are unpublished hosted trips ordered by most recent edits."
 
     return {
         "trips": [enrich_trip_preview_fields(trip.to_trip_data()) for trip in selected_rows],
         "active_tab": effective_tab,
         "tab_counts": {
-            "upcoming": upcoming_qs.count(),
-            "hosting": hosted_qs.count(),
+            "drafts": draft_qs.count(),
+            "published": published_qs.count(),
             "past": past_qs.count(),
-            "saved": saved_count,
         },
-        "mode": "member-mine-hosted",
+        "mode": "member-mine-lovable",
         "reason": reason,
     }

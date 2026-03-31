@@ -1,40 +1,187 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | My Trips{% endblock %}
+{% block body_class %}lovable-theme lovable-my-trips-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
 <section class="hero hero-compact">
-    <p class="eyebrow">My trips</p>
-    <h1>Manage your hosted timeline.</h1>
-    <p>{{ mine_reason|default:"Organize your plans across upcoming, hosting, past, and saved tabs." }}</p>
-</section>
-
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Tabs</h2>
-    </header>
+    <p class="eyebrow">Creator workspace</p>
+    <h1>My Trips</h1>
+    <p>{{ mine_reason|default:"Manage drafts, published trips, and completed departures from one Lovable-style workspace." }}</p>
     <div class="inline-actions">
-        <a class="btn {% if active_tab == 'upcoming' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=upcoming">Upcoming ({{ tab_counts.upcoming|default:0 }})</a>
-        <a class="btn {% if active_tab == 'hosting' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=hosting">Hosting ({{ tab_counts.hosting|default:0 }})</a>
-        <a class="btn {% if active_tab == 'past' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=past">Past ({{ tab_counts.past|default:0 }})</a>
-        <a class="btn {% if active_tab == 'saved' %}btn-primary{% else %}btn-secondary{% endif %}" href="/trips/mine/?tab=saved">Saved ({{ tab_counts.saved|default:0 }})</a>
-        <a class="btn btn-secondary" href="{% url 'enrollment:hosting-inbox' %}">Hosting inbox</a>
-        <a class="btn btn-ghost" href="/trips/create/">Create trip</a>
+        <button class="btn btn-primary" type="button" data-lv-dialog-open="create-trip">Create Trip</button>
+        <a class="btn btn-secondary" href="{% url 'enrollment:hosting-inbox' %}">Hosting Inbox</a>
     </div>
 </section>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>{{ active_tab|title }} trips</h2>
-    </header>
+<section class="detail-shell">
+    <div class="lv-pill-tabs" role="tablist" aria-label="My trip tabs">
+        <a class="btn {% if active_tab == 'drafts' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'trips:mine' %}?tab=drafts">
+            Drafts ({{ tab_counts.drafts|default:0 }})
+        </a>
+        <a class="btn {% if active_tab == 'published' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'trips:mine' %}?tab=published">
+            Published ({{ tab_counts.published|default:0 }})
+        </a>
+        <a class="btn {% if active_tab == 'past' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'trips:mine' %}?tab=past">
+            Past Trips ({{ tab_counts.past|default:0 }})
+        </a>
+    </div>
+</section>
+
+{% if active_tab == "drafts" %}
+<section class="detail-shell">
+    <div class="section-header">
+        <div>
+            <h2>Drafts</h2>
+            <p class="detail-meta">Unpublished trips saved in Django appear here as drafts.</p>
+        </div>
+    </div>
+
+    {% if mine_trips %}
+    <div class="lv-draft-list">
+        {% for trip in mine_trips %}
+        <article class="lv-draft-card">
+            <div class="lv-draft-card-main">
+                <div class="lv-draft-card-head">
+                    <div>
+                        <h3>{{ trip.title|default:"Untitled Trip" }}</h3>
+                        <div class="lv-create-draft-meta">
+                            {% if trip.destination %}<span>&#128205; {{ trip.destination }}</span>{% endif %}
+                            {% if trip.date_label %}<span>&#128197; {{ trip.date_label }}</span>{% endif %}
+                            {% if trip.trip_type_label %}<span>{{ trip.trip_type_label }}</span>{% endif %}
+                        </div>
+                    </div>
+                    <span class="lovable-chip">{{ trip.completion_percent|default:0 }}% complete</span>
+                </div>
+                {% if trip.summary %}
+                <p class="detail-meta">{{ trip.summary|truncatechars:180 }}</p>
+                {% elif trip.description %}
+                <p class="detail-meta">{{ trip.description|truncatechars:180 }}</p>
+                {% endif %}
+                <div class="lv-draft-progress" aria-hidden="true">
+                    <span class="lv-draft-progress-fill" style="width: {{ trip.completion_percent|default:0 }}%"></span>
+                </div>
+                <div class="inline-actions">
+                    <a class="btn btn-primary" href="{{ trip.edit_url|default:trip.url|default:'/trips/create/' }}">Edit Draft</a>
+                    {% if trip.url %}
+                    <a class="btn btn-secondary" href="{{ trip.url }}">Preview</a>
+                    {% endif %}
+                    <button
+                        class="btn btn-ghost"
+                        type="button"
+                        data-trip-delete-open
+                        data-delete-url="{{ trip.delete_url|default:'' }}"
+                        data-delete-title="{{ trip.title|default:'Untitled Trip'|escape }}"
+                    >
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="lv-empty-state-card">
+        <p class="lv-empty-state-title">No drafts yet</p>
+        <p class="lv-empty-state-copy">Open the create-trip launcher to start your first itinerary draft.</p>
+    </div>
+    {% endif %}
+</section>
+{% else %}
+<section class="detail-shell">
+    <div class="section-header">
+        <div>
+            <h2>{% if active_tab == 'published' %}Published Trips{% else %}Past Trips{% endif %}</h2>
+            <p class="detail-meta">
+                {% if active_tab == 'published' %}
+                Upcoming published trips that members can discover and request.
+                {% else %}
+                Completed departures are archived here.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% if mine_trips %}
     <div class="card-grid">
         {% for trip in mine_trips %}
         {% include "partials/cards/trip_card.html" with trip=trip %}
-        {% empty %}
-        <div class="empty-state">
-            No trips found for this tab.
-        </div>
         {% endfor %}
     </div>
+    {% else %}
+    <div class="lv-empty-state-card">
+        <p class="lv-empty-state-title">{% if active_tab == 'published' %}No published trips{% else %}No past trips{% endif %}</p>
+        <p class="lv-empty-state-copy">
+            {% if active_tab == 'published' %}
+            Publish a trip and it will show up here.
+            {% else %}
+            Completed hosted trips will appear here once they start.
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
 </section>
+{% endif %}
+
+<div
+    class="lv-dialog"
+    data-lv-dialog-root="trip-delete-confirm"
+    hidden
+    aria-hidden="true"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="tripDeleteConfirmTitle"
+>
+    <div class="lv-dialog-backdrop" data-lv-dialog-close></div>
+    <section class="lv-dialog-panel" role="document" tabindex="-1">
+        <header class="lv-dialog-header">
+            <div>
+                <p class="lv-dialog-eyebrow">Destructive action</p>
+                <h2 id="tripDeleteConfirmTitle">Delete Draft</h2>
+            </div>
+            <button class="icon-btn" type="button" data-lv-dialog-close aria-label="Close delete draft dialog">&times;</button>
+        </header>
+        <div class="lv-dialog-body">
+            <p class="detail-meta" data-trip-delete-copy>Are you sure you want to delete this draft?</p>
+            <form method="post" data-trip-delete-form>
+                {% csrf_token %}
+                <div class="inline-actions">
+                    <button class="btn btn-secondary" type="button" data-lv-dialog-close>Cancel</button>
+                    <button class="btn btn-primary" type="submit">Delete Draft</button>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+{{ block.super }}
+<script>
+    (function initTripDeleteDialog() {
+        var deleteButtons = document.querySelectorAll("[data-trip-delete-open]");
+        var deleteForm = document.querySelector("[data-trip-delete-form]");
+        var deleteCopy = document.querySelector("[data-trip-delete-copy]");
+        if (!deleteButtons.length || !(deleteForm instanceof HTMLFormElement) || !(deleteCopy instanceof HTMLElement)) {
+            return;
+        }
+
+        deleteButtons.forEach(function attach(button) {
+            button.addEventListener("click", function onClick() {
+                var deleteUrl = button.getAttribute("data-delete-url") || "";
+                var tripTitle = button.getAttribute("data-delete-title") || "this draft";
+                if (!deleteUrl) {
+                    return;
+                }
+
+                deleteForm.setAttribute("action", deleteUrl);
+                deleteCopy.textContent = "Delete \"" + tripTitle + "\"? This cannot be undone.";
+                if (window.TAPNE_UI_DIALOGS && typeof window.TAPNE_UI_DIALOGS.open === "function") {
+                    window.TAPNE_UI_DIALOGS.open("trip-delete-confirm", button);
+                }
+            });
+        });
+    })();
+</script>
 {% endblock %}

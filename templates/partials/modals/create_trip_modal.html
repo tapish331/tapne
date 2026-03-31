@@ -1,0 +1,71 @@
+{% if user.is_authenticated %}
+<div
+    class="lv-dialog"
+    data-lv-dialog-root="create-trip"
+    hidden
+    aria-hidden="true"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="createTripModalTitle"
+>
+    <div class="lv-dialog-backdrop" data-lv-dialog-close></div>
+    <section class="lv-dialog-panel lv-dialog-panel-lg lv-create-modal-panel" role="document" tabindex="-1">
+        <header class="lv-dialog-header">
+            <div>
+                <p class="lv-dialog-eyebrow">Creator tools</p>
+                <h2 id="createTripModalTitle">Create a Trip</h2>
+            </div>
+            <button class="icon-btn" type="button" data-lv-dialog-close aria-label="Close create trip modal">&times;</button>
+        </header>
+
+        <div class="lv-dialog-body lv-create-modal-body">
+            <a class="lv-create-launcher" href="{% url 'trips:create' %}">
+                <span class="lv-create-launcher-icon" aria-hidden="true">+</span>
+                <span class="lv-create-launcher-copy">
+                    <strong>Start a New Trip</strong>
+                    <span>Open the Lovable-style trip builder and publish when ready.</span>
+                </span>
+                <span class="lv-create-launcher-arrow" aria-hidden="true">&#8594;</span>
+            </a>
+
+            <section class="lv-create-drafts">
+                <div class="lv-create-drafts-head">
+                    <div>
+                        <h3>Continue a Draft</h3>
+                        <p>Unpublished trips are treated as drafts in Django.</p>
+                    </div>
+                    {% if nav_recent_trip_draft_count > 3 %}
+                    <a class="btn btn-ghost" href="{% url 'trips:mine' %}?tab=drafts">View all drafts</a>
+                    {% endif %}
+                </div>
+
+                {% if nav_recent_trip_drafts %}
+                <div class="lv-create-draft-list">
+                    {% for draft in nav_recent_trip_drafts %}
+                    <a class="lv-create-draft-card" href="{{ draft.edit_url|default:draft.url|default:'/trips/create/' }}">
+                        <div class="lv-create-draft-main">
+                            <p class="lv-create-draft-title">{{ draft.title|default:"Untitled Trip" }}</p>
+                            <div class="lv-create-draft-meta">
+                                {% if draft.destination %}
+                                <span>&#128205; {{ draft.destination }}</span>
+                                {% endif %}
+                                {% if draft.date_label %}
+                                <span>&#128197; {{ draft.date_label }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <span class="lv-create-draft-arrow" aria-hidden="true">&#8594;</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="lv-empty-state-card">
+                    <p class="lv-empty-state-title">No drafts yet</p>
+                    <p class="lv-empty-state-copy">Start a trip and save it as a draft to resume later.</p>
+                </div>
+                {% endif %}
+            </section>
+        </div>
+    </section>
+</div>
+{% endif %}

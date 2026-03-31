@@ -1,82 +1,117 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Bookmarks{% endblock %}
+{% block body_class %}lovable-theme lovable-bookmarks-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="hero hero-compact">
-    <p class="eyebrow">Bookmarks</p>
-    <h1>Your saved trips, users, and blogs.</h1>
-    <p>{{ bookmark_reason|default:"Bookmarked items appear here in most-recent-first order." }}</p>
-    <p class="detail-meta">
-        Following: {{ follow_stats.following|default:0 }}
-        |
-        Followers: {{ follow_stats.followers|default:0 }}
-    </p>
-</section>
+<div class="lv-stack">
+    <section class="lv-hero-panel">
+        <p class="lv-eyebrow">Bookmarks</p>
+        <h1>Your saved trips, users, and blogs.</h1>
+        <p>{{ bookmark_reason|default:"Bookmarked items appear here in most-recent-first order." }}</p>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Saved trips ({{ bookmark_counts.trip|default:0 }})</h2>
-    </header>
-    <div class="card-grid">
-        {% for trip in bookmarked_trips %}
-        <div>
-            {% include "partials/cards/trip_card.html" with trip=trip %}
-            <form method="post" action="{% url 'social:unbookmark' %}" class="inline-form">
-                {% csrf_token %}
-                <input type="hidden" name="type" value="trip">
-                <input type="hidden" name="id" value="{{ trip.id }}">
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <button class="btn btn-ghost" type="submit">Remove bookmark</button>
-            </form>
+        <div class="lv-profile-stats">
+            <dl class="lv-profile-stat">
+                <dt>Trips saved</dt>
+                <dd>{{ bookmark_counts.trip|default:0 }}</dd>
+            </dl>
+            <dl class="lv-profile-stat">
+                <dt>Users saved</dt>
+                <dd>{{ bookmark_counts.user|default:0 }}</dd>
+            </dl>
+            <dl class="lv-profile-stat">
+                <dt>Blogs saved</dt>
+                <dd>{{ bookmark_counts.blog|default:0 }}</dd>
+            </dl>
+            <dl class="lv-profile-stat">
+                <dt>Following</dt>
+                <dd>{{ follow_stats.following|default:0 }}</dd>
+            </dl>
         </div>
-        {% empty %}
-        <div class="empty-state">No saved trips yet.</div>
-        {% endfor %}
-    </div>
-</section>
+    </section>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Saved users ({{ bookmark_counts.user|default:0 }})</h2>
-    </header>
-    <div class="card-grid">
-        {% for profile in bookmarked_profiles %}
-        <div>
-            {% include "partials/cards/user_card.html" with profile=profile %}
-            <form method="post" action="{% url 'social:unbookmark' %}" class="inline-form">
-                {% csrf_token %}
-                <input type="hidden" name="type" value="user">
-                <input type="hidden" name="id" value="{{ profile.username }}">
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <button class="btn btn-ghost" type="submit">Remove bookmark</button>
-            </form>
+    <nav class="lovable-detail-section-nav" aria-label="Bookmarks sections">
+        <div class="lovable-detail-section-nav-links">
+            <a href="#saved-trips">Trips</a>
+            <a href="#saved-users">Users</a>
+            <a href="#saved-blogs">Blogs</a>
         </div>
-        {% empty %}
-        <div class="empty-state">No saved users yet.</div>
-        {% endfor %}
-    </div>
-</section>
+    </nav>
 
-<section class="section-grid">
-    <header class="section-header">
-        <h2>Saved blogs ({{ bookmark_counts.blog|default:0 }})</h2>
-    </header>
-    <div class="card-grid">
-        {% for blog in bookmarked_blogs %}
-        <div>
-            {% include "partials/cards/blog_card.html" with blog=blog %}
-            <form method="post" action="{% url 'social:unbookmark' %}" class="inline-form">
-                {% csrf_token %}
-                <input type="hidden" name="type" value="blog">
-                <input type="hidden" name="id" value="{{ blog.slug }}">
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <button class="btn btn-ghost" type="submit">Remove bookmark</button>
-            </form>
+    <section id="saved-trips" class="section-grid">
+        <header class="section-header">
+            <div>
+                <h2>Saved trips</h2>
+                <p class="detail-meta">{{ bookmark_counts.trip|default:0 }} trip bookmark{{ bookmark_counts.trip|default:0|pluralize }} currently saved.</p>
+            </div>
+        </header>
+        <div class="card-grid">
+            {% for trip in bookmarked_trips %}
+            <div class="lv-stack">
+                {% include "partials/cards/trip_card.html" with trip=trip %}
+                <form method="post" action="{% url 'social:unbookmark' %}" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="type" value="trip">
+                    <input type="hidden" name="id" value="{{ trip.id }}">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn-ghost" type="submit">Remove bookmark</button>
+                </form>
+            </div>
+            {% empty %}
+            <div class="empty-state">No saved trips yet. Browse trips and bookmark the ones worth revisiting.</div>
+            {% endfor %}
         </div>
-        {% empty %}
-        <div class="empty-state">No saved blogs yet.</div>
-        {% endfor %}
-    </div>
-</section>
+    </section>
+
+    <section id="saved-users" class="section-grid">
+        <header class="section-header">
+            <div>
+                <h2>Saved users</h2>
+                <p class="detail-meta">{{ bookmark_counts.user|default:0 }} creator bookmark{{ bookmark_counts.user|default:0|pluralize }} currently saved.</p>
+            </div>
+        </header>
+        <div class="card-grid">
+            {% for profile in bookmarked_profiles %}
+            <div class="lv-stack">
+                {% include "partials/cards/user_card.html" with profile=profile %}
+                <form method="post" action="{% url 'social:unbookmark' %}" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="type" value="user">
+                    <input type="hidden" name="id" value="{{ profile.username }}">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn-ghost" type="submit">Remove bookmark</button>
+                </form>
+            </div>
+            {% empty %}
+            <div class="empty-state">No saved users yet. Bookmark hosts and creators you want to keep track of.</div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section id="saved-blogs" class="section-grid">
+        <header class="section-header">
+            <div>
+                <h2>Saved blogs</h2>
+                <p class="detail-meta">{{ bookmark_counts.blog|default:0 }} blog bookmark{{ bookmark_counts.blog|default:0|pluralize }} currently saved.</p>
+            </div>
+        </header>
+        <div class="card-grid">
+            {% for blog in bookmarked_blogs %}
+            <div class="lv-stack">
+                {% include "partials/cards/blog_card.html" with blog=blog %}
+                <form method="post" action="{% url 'social:unbookmark' %}" class="inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="type" value="blog">
+                    <input type="hidden" name="id" value="{{ blog.slug }}">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn-ghost" type="submit">Remove bookmark</button>
+                </form>
+            </div>
+            {% empty %}
+            <div class="empty-state">No saved blogs yet. Save useful stories and guides so they stay close.</div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
 {% endblock %}

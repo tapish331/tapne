@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 """Create a Playwright storage_state file for authenticated visual audits.
 
 This script logs into Tapne through the user-facing auth modal and saves
@@ -9,21 +10,33 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import os
 from pathlib import Path
-from typing import Any
-from urllib.parse import urljoin, urlsplit
+from typing import Any, Callable, cast
+from urllib.parse import urlsplit
 
-PLAYWRIGHT_IMPORT_ERROR: Exception | None = None
+PlaywrightFactory = Callable[[], Any]
+
+PlaywrightError: type[Exception] = Exception
+PlaywrightTimeoutError: type[Exception] = Exception
+async_playwright: PlaywrightFactory | None = None
+playwright_import_error: Exception | None = None
+playwright_module: object | None = None
 try:
-    from playwright.async_api import Error as PlaywrightError
-    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-    from playwright.async_api import async_playwright
+    playwright_module = importlib.import_module("playwright.async_api")
 except ImportError as exc:  # pragma: no cover - environment dependent
-    PlaywrightError = Exception  # type: ignore[assignment]
-    PlaywrightTimeoutError = Exception  # type: ignore[assignment]
-    async_playwright = None  # type: ignore[assignment]
-    PLAYWRIGHT_IMPORT_ERROR = exc
+    playwright_import_error = exc
+else:
+    imported_playwright_error: object = getattr(playwright_module, "Error", Exception)
+    imported_timeout_error: object = getattr(playwright_module, "TimeoutError", Exception)
+    imported_async_playwright: object = getattr(playwright_module, "async_playwright", None)
+    if isinstance(imported_playwright_error, type) and issubclass(imported_playwright_error, Exception):
+        PlaywrightError = imported_playwright_error
+    if isinstance(imported_timeout_error, type) and issubclass(imported_timeout_error, Exception):
+        PlaywrightTimeoutError = imported_timeout_error
+    if callable(imported_async_playwright):
+        async_playwright = cast(PlaywrightFactory, imported_async_playwright)
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,13 +126,14 @@ async def create_storage_state(
             "skills/webpage-visual-perfection-audit/requirements.txt"
         )
         print("  python -m playwright install chromium")
-        if PLAYWRIGHT_IMPORT_ERROR:
-            print(f"Import error: {PLAYWRIGHT_IMPORT_ERROR}")
+        if playwright_import_error:
+            print(f"Import error: {playwright_import_error}")
         return 2
+    playwright_factory = async_playwright
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    async with async_playwright() as p:
+    async with playwright_factory() as p:
         browser = await p.chromium.launch(headless=not headed)
         context = await browser.new_context(
             viewport={"width": 1366, "height": 900},

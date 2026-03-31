@@ -13,6 +13,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from enrollment.models import EnrollmentRequest
+from feed.models import enrich_trip_preview_fields
 from tapne.seo import (
     BreadcrumbItem,
     build_absolute_url,
@@ -344,6 +346,7 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET"])
 def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
     payload = build_trip_detail_payload_for_user(request.user, trip_id)
+    live_trip_row = Trip.objects.select_related("host", "host__account_profile").filter(pk=trip_id).first()
     comments_payload = build_comment_threads_payload_for_target(
         target_type="trip",
         target_id=trip_id,
@@ -362,6 +365,166 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
     )
     for review_item in review_items:
         review_item["media_attachments"] = review_key_map.get(str(review_item.get("id") or ""), [])
+
+    viewer_request_status = ""
+    if request.user.is_authenticated and live_trip_row is not None and not payload["can_manage_trip"]:
+        existing_request = EnrollmentRequest.objects.filter(
+            trip_id=trip_id,
+            requester=request.user,
+        ).only("status").first()
+        viewer_request_status = str(getattr(existing_request, "status", "") or "").strip().lower()
+
+    trip_join_flow = "booking"
+    visible_trip = payload["trip"]
+    experience_level = str(visible_trip.get("experience_level_required", "") or "").strip().lower()
+    if (
+        experience_level in {"intermediate", "advanced"}
+        or bool(visible_trip.get("medical_declaration_required"))
+        or bool(visible_trip.get("emergency_contact_required"))
+    ):
+        trip_join_flow = "application"
+
+    if payload["can_manage_trip"]:
+        trip_join_flow = "manage"
+
+    trip_application_questions: list[dict[str, str]] = [
+        {"id": "motivation", "label": "Why do you want to join this trip?", "type": "textarea"},
+    ]
+    if experience_level in {"intermediate", "advanced"}:
+        trip_application_questions.append(
+            {
+                "id": "experience",
+                "label": "Tell the host about your relevant travel or route experience.",
+                "type": "textarea",
+            }
+        )
+    if bool(visible_trip.get("medical_declaration_required")):
+        trip_application_questions.append(
+            {
+                "id": "medical",
+                "label": "Share any medical considerations the host should know before approval.",
+                "type": "textarea",
+            }
+        )
+
+    approved_request_rows = []
+    application_request_rows = []
+    if live_trip_row is not None:
+        approved_request_rows = list(
+            EnrollmentRequest.objects.select_related("requester", "requester__account_profile")
+            .filter(trip_id=trip_id, status=EnrollmentRequest.STATUS_APPROVED)
+            .order_by("-reviewed_at", "-created_at", "-pk")[:12]
+        )
+        if payload["can_manage_trip"]:
+            application_request_rows = list(
+                EnrollmentRequest.objects.select_related("requester", "requester__account_profile")
+                .filter(trip_id=trip_id)
+                .order_by("-created_at", "-pk")[:20]
+            )
+
+    trip_participants: list[dict[str, object]] = []
+    if live_trip_row is not None:
+        host_username = str(getattr(getattr(live_trip_row, "host", None), "username", "") or "").strip()
+        host_profile = getattr(getattr(live_trip_row, "host", None), "account_profile", None)
+        host_name = str(
+            (
+                getattr(host_profile, "effective_display_name", "")
+                or getattr(getattr(live_trip_row, "host", None), "get_full_name", lambda: "")()
+                or host_username
+            )
+            or host_username
+        ).strip()
+        if host_username:
+            trip_participants.append(
+                {
+                    "username": host_username,
+                    "display_name": host_name,
+                    "initials": (host_name[:1] or host_username[:1] or "H").upper(),
+                    "is_host": True,
+                    "profile_url": f"/u/{host_username}/",
+                }
+            )
+
+    for request_row in approved_request_rows:
+        requester = getattr(request_row, "requester", None)
+        requester_username = str(getattr(requester, "username", "") or "").strip()
+        if not requester_username:
+            continue
+        requester_profile = getattr(requester, "account_profile", None)
+        requester_name = str(
+            (
+                getattr(requester_profile, "effective_display_name", "")
+                or getattr(requester, "get_full_name", lambda: "")()
+                or requester_username
+            )
+            or requester_username
+        ).strip()
+        trip_participants.append(
+            {
+                "username": requester_username,
+                "display_name": requester_name,
+                "initials": (requester_name[:1] or requester_username[:1] or "T").upper(),
+                "is_host": False,
+                "profile_url": f"/u/{requester_username}/",
+            }
+        )
+
+    total_seats = int(visible_trip.get("total_seats", 0) or 0)
+    trip_open_spots = max(total_seats - len(approved_request_rows), 0) if total_seats > 0 else 0
+
+    trip_similar_trips: list[dict[str, object]] = []
+    if live_trip_row is not None:
+        similar_candidate_rows = list(
+            Trip.objects.select_related("host")
+            .filter(is_published=True)
+            .exclude(pk=trip_id)
+            .order_by("starts_at", "pk")
+        )
+        prioritized_rows: list[Trip] = []
+        for row in similar_candidate_rows:
+            if len(prioritized_rows) >= 3:
+                break
+            if live_trip_row.trip_type and row.trip_type == live_trip_row.trip_type:
+                prioritized_rows.append(row)
+                continue
+            if live_trip_row.destination and str(row.destination or "").strip().lower() == str(live_trip_row.destination or "").strip().lower():
+                prioritized_rows.append(row)
+        if len(prioritized_rows) < 3:
+            for row in similar_candidate_rows:
+                if row in prioritized_rows:
+                    continue
+                prioritized_rows.append(row)
+                if len(prioritized_rows) >= 3:
+                    break
+        trip_similar_trips = [dict(enrich_trip_preview_fields(row.to_trip_data())) for row in prioritized_rows[:3]]
+
+    trip_application_requests: list[dict[str, object]] = []
+    for request_row in application_request_rows:
+        requester = getattr(request_row, "requester", None)
+        requester_username = str(getattr(requester, "username", "") or "").strip()
+        requester_profile = getattr(requester, "account_profile", None)
+        display_name = str(
+            (
+                getattr(requester_profile, "effective_display_name", "")
+                or getattr(requester, "get_full_name", lambda: "")()
+                or requester_username
+            )
+            or requester_username
+        ).strip()
+        trip_application_requests.append(
+            {
+                "id": int(getattr(request_row, "pk", 0) or 0),
+                "username": requester_username,
+                "display_name": display_name,
+                "initials": (display_name[:1] or requester_username[:1] or "T").upper(),
+                "status": str(getattr(request_row, "status", "") or "").strip().lower(),
+                "message": str(getattr(request_row, "message", "") or "").strip(),
+                "created_at": getattr(request_row, "created_at", None),
+                "approve_url": reverse("enrollment:approve", kwargs={"request_id": int(getattr(request_row, "pk", 0) or 0)}),
+                "deny_url": reverse("enrollment:deny", kwargs={"request_id": int(getattr(request_row, "pk", 0) or 0)}),
+                "profile_url": f"/u/{requester_username}/" if requester_username else "",
+            }
+        )
 
     trip_media_payload: MediaTargetPayload
     if payload["source"] == "live-db":
@@ -446,6 +609,13 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
         "trip_media_mode": trip_media_payload["mode"],
         "trip_media_reason": trip_media_payload["reason"],
         "trip_media_can_upload": trip_media_payload["can_upload"],
+        "trip_join_flow": trip_join_flow,
+        "trip_join_request_status": viewer_request_status,
+        "trip_application_questions": trip_application_questions,
+        "trip_participants": trip_participants,
+        "trip_open_spots": trip_open_spots,
+        "trip_similar_trips": trip_similar_trips,
+        "trip_application_requests": trip_application_requests,
     }
 
     trip_title = str(payload["trip"].get("title", "") or f"Trip #{trip_id}")
@@ -648,13 +818,44 @@ def trip_delete_view(request: HttpRequest, trip_id: int) -> HttpResponse:
 @login_required(login_url="accounts:login")
 @require_http_methods(["GET"])
 def trip_mine_view(request: HttpRequest) -> HttpResponse:
-    requested_tab = str(request.GET.get("tab", "upcoming"))
+    requested_tab = str(request.GET.get("tab", "drafts"))
     active_tab = normalize_mine_tab(requested_tab)
 
     if requested_tab.strip().lower() != active_tab:
         _vprint(request, f"Unsupported mine tab '{requested_tab}' requested. Falling back to '{active_tab}'.")
 
     payload = build_my_trips_payload_for_member(request.user, tab=active_tab)
+
+    def decorate_mine_trip(trip_data: dict[str, object]) -> dict[str, object]:
+        enriched = dict(trip_data)
+        raw_trip_id = enriched.get("id", 0)
+        try:
+            trip_id = int(str(raw_trip_id or "0"))
+        except (TypeError, ValueError):
+            trip_id = 0
+        checks = [
+            bool(str(enriched.get("title", "") or "").strip()),
+            bool(str(enriched.get("destination", "") or "").strip()),
+            bool(str(enriched.get("trip_type", "") or enriched.get("trip_type_label", "") or "").strip()),
+            bool(str(enriched.get("date_label", "") or "").strip()),
+            bool(
+                enriched.get("total_trip_price")
+                or enriched.get("price_per_person")
+                or str(enriched.get("cost_label", "") or "").strip()
+            ),
+            bool(str(enriched.get("summary", "") or enriched.get("description", "") or "").strip()),
+            bool(enriched.get("highlights")),
+            bool(enriched.get("itinerary_days")),
+            bool(str(enriched.get("cancellation_policy", "") or "").strip()),
+        ]
+        completion_percent = int(round((sum(1 for item in checks if item) / max(1, len(checks))) * 100))
+        enriched["completion_percent"] = completion_percent
+        if trip_id > 0:
+            enriched["edit_url"] = reverse("trips:edit", kwargs={"trip_id": trip_id})
+            enriched["delete_url"] = reverse("trips:delete", kwargs={"trip_id": trip_id})
+        return enriched
+
+    decorated_trips = [decorate_mine_trip(dict(trip)) for trip in payload["trips"]]
     _vprint(
         request,
         (
@@ -668,7 +869,7 @@ def trip_mine_view(request: HttpRequest) -> HttpResponse:
     )
 
     context: dict[str, object] = {
-        "mine_trips": payload["trips"],
+        "mine_trips": decorated_trips,
         "active_tab": payload["active_tab"],
         "tab_counts": payload["tab_counts"],
         "mine_mode": payload["mode"],

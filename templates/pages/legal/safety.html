@@ -1,25 +1,53 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Safety{% endblock %}
+{% block body_class %}lovable-theme lovable-legal-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="hero hero-compact">
-    <p class="eyebrow">Safety</p>
-    <h1>Trust and safety</h1>
-    <p>We want trip planning and community interactions on tapne to be respectful, transparent, and safe.</p>
-</section>
+<div class="lv-stack lv-legal-shell">
+    <section class="lv-hero-panel">
+        <p class="lv-eyebrow">Safety</p>
+        <h1>Trust and safety</h1>
+        <p>We want trip planning and community interactions on tapne to be respectful, transparent, and safe.</p>
+    </section>
 
-<section class="detail-shell">
-    <h2>Community expectations</h2>
-    <ul class="simple-list">
-        <li>Use accurate trip and profile information.</li>
-        <li>Treat other members with respect in comments and messages.</li>
-        <li>Do not post harmful, deceptive, or abusive content.</li>
-    </ul>
-</section>
+    <section class="section-grid">
+        <header class="section-header">
+            <div>
+                <h2>Community expectations</h2>
+                <p class="detail-meta">These are the baseline norms across trips, blogs, comments, messages, and reviews.</p>
+            </div>
+        </header>
+        <div class="lv-legal-grid">
+            <article class="lovable-detail-card">
+                <h2>Be accurate</h2>
+                <p class="detail-meta">Use clear, honest trip and profile information so members know what to expect.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Be respectful</h2>
+                <p class="detail-meta">Treat other members with respect in comments, messages, and host interactions.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Do no harm</h2>
+                <p class="detail-meta">Do not post abusive, deceptive, or unsafe content or behavior.</p>
+            </article>
+        </div>
+    </section>
 
-<section class="detail-shell stack-gap-top">
-    <h2>Report concerns</h2>
-    <p>If you encounter abusive behavior or suspicious activity, contact us directly at <a href="mailto:safety@tapnetravel.com">safety@tapnetravel.com</a>.</p>
-</section>
+    <section class="detail-shell">
+        <h2>Report concerns</h2>
+        <p class="detail-meta">If you encounter abusive behavior or suspicious activity, contact us directly.</p>
+        <div class="lv-info-link-grid">
+            <a class="lv-info-link-card" href="mailto:safety@tapnetravel.com">
+                <strong>safety@tapnetravel.com</strong>
+                <span>For trust, harassment, or urgent conduct concerns.</span>
+            </a>
+            <a class="lv-info-link-card" href="mailto:support@tapnetravel.com">
+                <strong>support@tapnetravel.com</strong>
+                <span>For product or operational issues that affect your trip or account.</span>
+            </a>
+        </div>
+    </section>
+</div>
 {% endblock %}

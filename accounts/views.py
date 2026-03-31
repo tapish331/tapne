@@ -448,6 +448,7 @@ def my_profile_view(request: HttpRequest) -> HttpResponse:
         "profile": _profile_context_from_model(member_user, profile),
         "created_trips": created_trips,
         "joined_trips": joined_trips,
+        "edit_form": ProfileEditForm(instance=profile, user=cast(Any, request.user)),
     }
     _vprint(request, f"Loaded member profile page for @{member_user.get_username()}")
     return render(request, "pages/accounts/me.html", context)

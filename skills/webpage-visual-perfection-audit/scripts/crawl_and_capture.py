@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 """Discover internal webpages and capture real rendered screenshots.
 
 This script is intentionally deterministic and report-focused:
@@ -12,27 +13,37 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import importlib
 import json
 import re
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, cast
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
-PLAYWRIGHT_IMPORT_ERROR: Exception | None = None
+PlaywrightFactory = Callable[[], Any]
+
+PlaywrightError: type[Exception] = Exception
+async_playwright: PlaywrightFactory | None = None
+playwright_import_error: Exception | None = None
+playwright_module: object | None = None
 try:
-    from playwright.async_api import Error as PlaywrightError
-    from playwright.async_api import async_playwright
+    playwright_module = importlib.import_module("playwright.async_api")
 except ImportError as exc:  # pragma: no cover - environment dependent
-    PlaywrightError = Exception  # type: ignore[assignment]
-    async_playwright = None  # type: ignore[assignment]
-    PLAYWRIGHT_IMPORT_ERROR = exc
+    playwright_import_error = exc
+else:
+    imported_playwright_error: object = getattr(playwright_module, "Error", Exception)
+    imported_async_playwright: object = getattr(playwright_module, "async_playwright", None)
+    if isinstance(imported_playwright_error, type) and issubclass(imported_playwright_error, Exception):
+        PlaywrightError = imported_playwright_error
+    if callable(imported_async_playwright):
+        async_playwright = cast(PlaywrightFactory, imported_async_playwright)
 
 
-DESKTOP_VIEWPORT = {
+DESKTOP_VIEWPORT: dict[str, Any] = {
     "name": "desktop",
     "viewport": {"width": 1440, "height": 900},
     "device_scale_factor": 1,
@@ -40,7 +51,7 @@ DESKTOP_VIEWPORT = {
     "has_touch": False,
 }
 
-MOBILE_VIEWPORT = {
+MOBILE_VIEWPORT: dict[str, Any] = {
     "name": "mobile",
     "viewport": {"width": 390, "height": 844},
     "device_scale_factor": 2,
@@ -583,24 +594,26 @@ async def run(args: argparse.Namespace) -> int:
             "skills/webpage-visual-perfection-audit/requirements.txt"
         )
         print("  python -m playwright install chromium")
-        if PLAYWRIGHT_IMPORT_ERROR:
-            print(f"Import error: {PLAYWRIGHT_IMPORT_ERROR}")
+        if playwright_import_error:
+            print(f"Import error: {playwright_import_error}")
         return 2
+    playwright_factory = async_playwright
 
-    output_dir = Path(args.output_dir).resolve()
+    output_dir = Path(str(args.output_dir)).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    include_regexes = compile_patterns(args.include_regex, "include")
-    exclude_regexes = compile_patterns(args.exclude_regex, "exclude")
-    base_host = (urlsplit(args.base_url).hostname or "").lower()
+    include_regexes = compile_patterns(list(args.include_regex), "include")
+    exclude_regexes = compile_patterns(list(args.exclude_regex), "exclude")
+    base_url = str(args.base_url)
+    base_host = str(urlsplit(base_url).hostname or "").lower()
 
     sitemap_urls = list(args.sitemap_url)
     if not sitemap_urls:
-        default_sitemap = canonicalize_url(urljoin(args.base_url, "/sitemap.xml"))
+        default_sitemap = canonicalize_url(urljoin(base_url, "/sitemap.xml"))
         if default_sitemap:
             sitemap_urls.append(default_sitemap)
 
-    seed_urls: set[str] = {args.base_url}
+    seed_urls: set[str] = {base_url}
     for raw in args.seed_url:
         canonical = canonicalize_url(raw)
         if canonical:
@@ -622,7 +635,7 @@ async def run(args: argparse.Namespace) -> int:
     )
 
     if not initial_urls:
-        initial_urls = [args.base_url]
+        initial_urls = [base_url]
 
     selected_viewports: list[dict[str, Any]] = []
     if not args.no_desktop:
@@ -630,16 +643,16 @@ async def run(args: argparse.Namespace) -> int:
     if not args.no_mobile:
         selected_viewports.append(MOBILE_VIEWPORT)
 
-    print(f"[info] Base URL: {args.base_url}")
+    print(f"[info] Base URL: {base_url}")
     print(f"[info] Seeds before crawl: {len(initial_urls)}")
     print(f"[info] Output dir: {output_dir}")
 
-    async with async_playwright() as p:
+    async with playwright_factory() as p:
         browser = await p.chromium.launch(headless=True)
 
-        pages = await crawl_urls(
+        pages: list[dict[str, Any]] = await crawl_urls(
             browser=browser,
-            base_url=args.base_url,
+            base_url=base_url,
             initial_urls=initial_urls,
             include_regexes=include_regexes,
             exclude_regexes=exclude_regexes,
@@ -655,7 +668,7 @@ async def run(args: argparse.Namespace) -> int:
         if not pages:
             pages = [
                 {
-                    "url": args.base_url,
+                    "url": base_url,
                     "depth": 0,
                     "source": "fallback",
                     "title": "",
@@ -682,8 +695,8 @@ async def run(args: argparse.Namespace) -> int:
         await browser.close()
 
     enabled_viewports = [view["name"] for view in selected_viewports]
-    run_data = {
-        "base_url": args.base_url,
+    run_data: dict[str, Any] = {
+        "base_url": base_url,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "page_count": len(pages),
         "enabled_viewports": enabled_viewports,

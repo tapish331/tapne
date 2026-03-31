@@ -6,8 +6,15 @@
 
 {% block content %}
 <section class="lovable-blog-hero">
-    <h1>Blogs</h1>
-    <p>Stories, tips, and experiences from the Tapne community.</p>
+    <div class="lovable-trip-list-intro">
+        <div>
+            <h1>Blogs</h1>
+            <p>Stories, tips, and experiences from the Tapne community.</p>
+        </div>
+        {% if user.is_authenticated %}
+        <a class="btn btn-primary" href="{% url 'blogs:create' %}">Write blog</a>
+        {% endif %}
+    </div>
 </section>
 
 <section class="lovable-section lovable-mt-1">

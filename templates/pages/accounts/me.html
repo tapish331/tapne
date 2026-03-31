@@ -17,7 +17,7 @@
             </div>
         </div>
         <div class="inline-actions lovable-m-0">
-            <a class="btn btn-secondary" href="{% url 'accounts:me-edit' %}">Edit Profile</a>
+            <button class="btn btn-secondary" type="button" data-lv-dialog-open="profile-edit">Edit Profile</button>
             <a class="btn btn-primary" href="{% url 'public-profile' username=profile.username %}">View Public Profile</a>
         </div>
     </header>
@@ -33,46 +33,80 @@
 
     <section data-profile-panel="created">
         {% if created_trips %}
-        <div class="lovable-profile-trip-grid">
+        <div class="card-grid">
             {% for trip in created_trips %}
-            <article class="lovable-small-trip">
-                <a href="{{ trip.url|default:'/trips/' }}">
-                    <img src="{{ trip.banner_image_url|default:'' }}" alt="{{ trip.title|default:'Trip' }}">
-                </a>
-                <div class="lovable-small-trip-body">
-                    <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
-                    <p class="lovable-small-trip-meta">{{ trip.destination|default:"TBD" }}</p>
-                    <p class="lovable-small-trip-meta">{{ trip.date_label|default:"Dates announced soon" }}</p>
-                </div>
-            </article>
+            {% include "partials/cards/trip_card.html" with trip=trip %}
             {% endfor %}
         </div>
         {% else %}
-        <p class="empty-state">You have not created any trips yet.</p>
+        <div class="lv-empty-state-card">
+            <p class="lv-empty-state-title">No trips created yet</p>
+            <p class="lv-empty-state-copy">Create a trip and it will appear in your hosted profile grid.</p>
+        </div>
         {% endif %}
     </section>
 
     <section data-profile-panel="joined" hidden>
         {% if joined_trips %}
-        <div class="lovable-profile-trip-grid">
+        <div class="card-grid">
             {% for trip in joined_trips %}
-            <article class="lovable-small-trip">
-                <a href="{{ trip.url|default:'/trips/' }}">
-                    <img src="{{ trip.banner_image_url|default:'' }}" alt="{{ trip.title|default:'Trip' }}">
-                </a>
-                <div class="lovable-small-trip-body">
-                    <h3><a href="{{ trip.url|default:'/trips/' }}">{{ trip.title|default:"Untitled trip" }}</a></h3>
-                    <p class="lovable-small-trip-meta">{{ trip.destination|default:"TBD" }}</p>
-                    <p class="lovable-small-trip-meta">{{ trip.date_label|default:"Dates announced soon" }}</p>
-                </div>
-            </article>
+            {% include "partials/cards/trip_card.html" with trip=trip %}
             {% endfor %}
         </div>
         {% else %}
-        <p class="empty-state">You have not joined any trips yet.</p>
+        <div class="lv-empty-state-card">
+            <p class="lv-empty-state-title">No joined trips yet</p>
+            <p class="lv-empty-state-copy">Approved trips you are part of will show up here.</p>
+        </div>
         {% endif %}
     </section>
 </section>
+
+<div
+    class="lv-dialog"
+    data-lv-dialog-root="profile-edit"
+    hidden
+    aria-hidden="true"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="profileEditDialogTitle"
+>
+    <div class="lv-dialog-backdrop" data-lv-dialog-close></div>
+    <section class="lv-dialog-panel" role="document" tabindex="-1">
+        <header class="lv-dialog-header">
+            <div>
+                <p class="lv-dialog-eyebrow">Profile settings</p>
+                <h2 id="profileEditDialogTitle">Edit Profile</h2>
+            </div>
+            <button class="icon-btn" type="button" data-lv-dialog-close aria-label="Close edit profile dialog">&times;</button>
+        </header>
+        <div class="lv-dialog-body">
+            <form method="post" action="{% url 'accounts:me-edit' %}" class="settings-form">
+                {% csrf_token %}
+                {% for field in edit_form %}
+                <div class="form-field">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}
+                    <p class="form-help">{{ field.help_text }}</p>
+                    {% endif %}
+                    {% if field.errors %}
+                    <div class="form-error">
+                        {% for error in field.errors %}
+                        <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                <div class="inline-actions">
+                    <button class="btn btn-secondary" type="button" data-lv-dialog-close>Cancel</button>
+                    <button class="btn btn-primary" type="submit">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
 {% endblock %}
 
 {% block body_extra %}

@@ -46,6 +46,7 @@
     ].join(", ");
     var authModalBackgroundState = [];
     var authModalFocusRestoreTarget = null;
+    var genericDialogFocusRestoreTarget = null;
     var themeToggleButton = document.getElementById("themeToggle");
     var memberMenuRoot = document.querySelector("[data-member-menu]");
     var memberMenuToggle = memberMenuRoot ? memberMenuRoot.querySelector("[data-member-menu-toggle]") : null;
@@ -907,7 +908,7 @@
 
         authModal.hidden = false;
         authModal.setAttribute("aria-hidden", "false");
-        document.body.classList.add("modal-open");
+        syncBodyModalState();
         setAuthBackgroundInert(true);
         focusFirstElementInAuthModal();
         vLog("Opened auth modal.", {
@@ -926,7 +927,7 @@
         var shouldRestoreFocus = !options || options.restoreFocus !== false;
         authModal.hidden = true;
         authModal.setAttribute("aria-hidden", "true");
-        document.body.classList.remove("modal-open");
+        syncBodyModalState();
         setAuthBackgroundInert(false);
 
         // Remove transient auth modal query params on close/cancel.
@@ -1020,6 +1021,181 @@
         return "";
     }
 
+    function visibleGenericDialogs() {
+        return Array.prototype.slice.call(document.querySelectorAll("[data-lv-dialog-root]"))
+            .filter(function filterVisible(dialogRoot) {
+                return dialogRoot instanceof HTMLElement && !dialogRoot.hidden;
+            });
+    }
+
+    function syncBodyModalState() {
+        var authVisible = !!(authModal && !authModal.hidden);
+        var genericVisible = visibleGenericDialogs().length > 0;
+        document.body.classList.toggle("modal-open", authVisible || genericVisible);
+    }
+
+    function findGenericDialog(nameValue) {
+        var targetName = String(nameValue || "").trim().toLowerCase();
+        if (!targetName) {
+            return null;
+        }
+        var dialogRoot = document.querySelector("[data-lv-dialog-root='" + targetName + "']");
+        if (dialogRoot instanceof HTMLElement) {
+            return dialogRoot;
+        }
+        return null;
+    }
+
+    function genericDialogFocusableElements(dialogRoot) {
+        if (!(dialogRoot instanceof HTMLElement)) {
+            return [];
+        }
+        return Array.prototype.slice.call(dialogRoot.querySelectorAll(authFocusableSelector))
+            .filter(function filterFocusable(candidate) {
+                return candidate instanceof HTMLElement && !candidate.hasAttribute("disabled");
+            });
+    }
+
+    function focusFirstElementInGenericDialog(dialogRoot) {
+        if (!(dialogRoot instanceof HTMLElement)) {
+            return;
+        }
+        var panel = dialogRoot.querySelector(".lv-dialog-panel");
+        var focusTargets = genericDialogFocusableElements(dialogRoot);
+        var preferredTarget = focusTargets[0] || panel;
+        if (preferredTarget instanceof HTMLElement && typeof preferredTarget.focus === "function") {
+            window.requestAnimationFrame(function focusDialogTarget() {
+                preferredTarget.focus();
+            });
+        }
+    }
+
+    function openGenericDialog(nameValue, triggerElement) {
+        var dialog = findGenericDialog(nameValue);
+        if (!dialog) {
+            return;
+        }
+
+        var activeElement = document.activeElement;
+        if (triggerElement instanceof HTMLElement) {
+            genericDialogFocusRestoreTarget = triggerElement;
+        } else if (activeElement instanceof HTMLElement && !dialog.contains(activeElement)) {
+            genericDialogFocusRestoreTarget = activeElement;
+        }
+
+        dialog.hidden = false;
+        dialog.setAttribute("aria-hidden", "false");
+        dialog.setAttribute("data-dialog-open", "true");
+        syncBodyModalState();
+        focusFirstElementInGenericDialog(dialog);
+    }
+
+    function closeGenericDialog(nameValue, options) {
+        var dialog = findGenericDialog(nameValue);
+        if (!dialog) {
+            return;
+        }
+
+        var shouldRestoreFocus = !options || options.restoreFocus !== false;
+        dialog.hidden = true;
+        dialog.setAttribute("aria-hidden", "true");
+        dialog.removeAttribute("data-dialog-open");
+        syncBodyModalState();
+
+        if (shouldRestoreFocus && genericDialogFocusRestoreTarget instanceof HTMLElement) {
+            var focusTarget = genericDialogFocusRestoreTarget;
+            genericDialogFocusRestoreTarget = null;
+            if (typeof focusTarget.focus === "function") {
+                focusTarget.focus();
+            }
+        }
+    }
+
+    function initializeGenericDialogs() {
+        document.addEventListener("click", function onGenericDialogClick(event) {
+            var clickTarget = event.target;
+            if (!(clickTarget instanceof Element)) {
+                return;
+            }
+
+            var openTrigger = clickTarget.closest("[data-lv-dialog-open]");
+            if (openTrigger instanceof HTMLElement) {
+                event.preventDefault();
+                openGenericDialog(openTrigger.getAttribute("data-lv-dialog-open"), openTrigger);
+                return;
+            }
+
+            var closeTrigger = clickTarget.closest("[data-lv-dialog-close]");
+            if (!(closeTrigger instanceof Element)) {
+                return;
+            }
+
+            var dialogRoot = closeTrigger.closest("[data-lv-dialog-root]");
+            if (!(dialogRoot instanceof HTMLElement)) {
+                return;
+            }
+
+            event.preventDefault();
+            closeGenericDialog(dialogRoot.getAttribute("data-lv-dialog-root"));
+        });
+
+        document.addEventListener("keydown", function onGenericDialogKeyDown(event) {
+            if (authModal && !authModal.hidden) {
+                return;
+            }
+
+            var openDialogs = visibleGenericDialogs();
+            if (openDialogs.length === 0) {
+                return;
+            }
+
+            var activeDialog = openDialogs[openDialogs.length - 1];
+            if (!(activeDialog instanceof HTMLElement)) {
+                return;
+            }
+
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeGenericDialog(activeDialog.getAttribute("data-lv-dialog-root"));
+                return;
+            }
+
+            if (event.key !== "Tab") {
+                return;
+            }
+
+            var focusTargets = genericDialogFocusableElements(activeDialog);
+            if (focusTargets.length === 0) {
+                event.preventDefault();
+                focusFirstElementInGenericDialog(activeDialog);
+                return;
+            }
+
+            var firstTarget = focusTargets[0];
+            var lastTarget = focusTargets[focusTargets.length - 1];
+            var activeElement = document.activeElement;
+            var activeInsideDialog = activeElement instanceof Element && activeDialog.contains(activeElement);
+
+            if (event.shiftKey) {
+                if (!activeInsideDialog || activeElement === firstTarget) {
+                    event.preventDefault();
+                    lastTarget.focus();
+                }
+                return;
+            }
+
+            if (!activeInsideDialog || activeElement === lastTarget) {
+                event.preventDefault();
+                firstTarget.focus();
+            }
+        });
+
+        window.TAPNE_UI_DIALOGS = {
+            open: openGenericDialog,
+            close: closeGenericDialog,
+        };
+    }
+
     function normalizeBookmarkKey(typeValue, keyValue) {
         var targetType = normalizeBookmarkType(typeValue);
         var rawKey = String(keyValue || "").trim();
@@ -1093,6 +1269,10 @@
 
     function shouldHandleAsAsyncActionForm(form) {
         if (!(form instanceof HTMLFormElement)) {
+            return false;
+        }
+
+        if (form.hasAttribute("data-async-ignore")) {
             return false;
         }
 
@@ -1482,6 +1662,7 @@
     initializeNavbarSearchDocking();
     initializeLovableSearchFields();
     initializeHomeCarousels();
+    initializeGenericDialogs();
     initializeAsyncStateForms();
 
     if (authModal) {

@@ -1,21 +1,44 @@
 {% extends "base.html" %}
 
 {% block title %}tapne | Privacy{% endblock %}
+{% block body_class %}lovable-theme lovable-legal-page{% endblock %}
+{% block page_container_class %}container lovable-page-container{% endblock %}
 
 {% block content %}
-<section class="hero hero-compact">
-    <p class="eyebrow">Privacy</p>
-    <h1>Privacy notice</h1>
-    <p>We collect only the data needed to operate accounts, profiles, trips, blogs, and community features.</p>
-</section>
+<div class="lv-stack lv-legal-shell">
+    <section class="lv-hero-panel">
+        <p class="lv-eyebrow">Privacy</p>
+        <h1>Privacy notice</h1>
+        <p>We collect only the data needed to operate accounts, profiles, trips, blogs, and community features.</p>
+    </section>
 
-<section class="detail-shell">
-    <h2>What this includes</h2>
-    <ul class="simple-list">
-        <li>Account and profile data you provide.</li>
-        <li>Content you publish, such as trips, blogs, comments, and reviews.</li>
-        <li>Operational logs and settings required for platform reliability.</li>
-    </ul>
-    <p>For privacy questions or requests, contact <a href="mailto:privacy@tapnetravel.com">privacy@tapnetravel.com</a>.</p>
-</section>
+    <section class="section-grid">
+        <header class="section-header">
+            <div>
+                <h2>What this includes</h2>
+                <p class="detail-meta">A practical summary of the data used to keep the product operating.</p>
+            </div>
+        </header>
+        <div class="lv-legal-grid">
+            <article class="lovable-detail-card">
+                <h2>Account data</h2>
+                <p class="detail-meta">Account details, profile fields, and settings you provide directly.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Published content</h2>
+                <p class="detail-meta">Trips, blogs, comments, reviews, messages, and media you create in-product.</p>
+            </article>
+            <article class="lovable-detail-card">
+                <h2>Operational records</h2>
+                <p class="detail-meta">Logs and configuration data required for product reliability and moderation.</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="detail-shell">
+        <h2>Privacy requests</h2>
+        <p class="detail-meta">For privacy questions or requests, contact the team directly.</p>
+        <a class="btn btn-secondary" href="mailto:privacy@tapnetravel.com">Email privacy@tapnetravel.com</a>
+    </section>
+</div>
 {% endblock %}

@@ -12,7 +12,7 @@
             <p>Discover your next adventure with amazing people.</p>
         </div>
         {% if user.is_authenticated %}
-        <a class="btn btn-primary" href="/trips/create/">Create Trip</a>
+        <button class="btn btn-primary" type="button" data-lv-dialog-open="create-trip">Create Trip</button>
         {% endif %}
     </div>
 </section>

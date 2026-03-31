@@ -18,7 +18,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 
@@ -126,6 +126,12 @@ def load_lines(repo_root: Path, rel_path: str, cache: dict[str, list[str]]) -> l
         return cache[rel_path]
     cache[rel_path] = path.read_text(encoding="utf-8", errors="replace").splitlines()
     return cache[rel_path]
+
+
+def as_json_dict(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return cast(dict[str, Any], value)
+    return {}
 
 
 def find_line_for_pattern(lines: list[str], pattern: str) -> int | None:
@@ -437,11 +443,16 @@ def main() -> int:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = json.loads(pages_json_path.read_text(encoding="utf-8"))
-    pages: list[dict[str, Any]] = raw.get("pages", [])
-    if not isinstance(pages, list):
+    raw_payload = json.loads(pages_json_path.read_text(encoding="utf-8"))
+    payload_obj = as_json_dict(raw_payload)
+    pages_value: object = payload_obj.get("pages")
+    if not isinstance(pages_value, list):
         print("[error] pages.json does not contain a `pages` list.")
         return 1
+    pages: list[dict[str, Any]] = []
+    for item in cast(list[object], pages_value):
+        if isinstance(item, dict):
+            pages.append(cast(dict[str, Any], item))
 
     ok_pages = [page for page in pages if page.get("crawl_status") == "ok" and page.get("url")]
     html_pages = [page for page in ok_pages if is_probable_html_url(str(page.get("url", "")))]
@@ -470,8 +481,9 @@ def main() -> int:
 
     unique_intent_ids = {intent["intent_id"] for intent in intents}
     min_intents_per_ok_page = min(intents_per_route.values(), default=0)
+    home_intent_types = {str(intent["intent_type"]) for intent in intents if intent["route"] == "/"}
 
-    acceptance_checks = [
+    acceptance_checks: list[dict[str, Any]] = [
         {
             "name": "ok-pages-have-minimum-intents",
             "pass": min_intents_per_ok_page >= 2 if html_pages else False,
@@ -493,7 +505,7 @@ def main() -> int:
         {
             "name": "home-route-core-intents-present",
             "pass": all(
-                intent_type in {i["intent_type"] for i in intents if i["route"] == "/"}
+                intent_type in home_intent_types
                 for intent_type in {
                     "carousel_horizontal",
                     "no_card_overlap",
@@ -506,7 +518,7 @@ def main() -> int:
         },
     ]
 
-    payload = {
+    payload: dict[str, Any] = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_pages_json": str(pages_json_path),
         "repo_root": str(repo_root),

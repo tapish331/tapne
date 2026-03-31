@@ -89,7 +89,7 @@
     <script src="{% static 'js/tapne-ui.js' %}" defer></script>
     {% block head_extra %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}lovable-theme{% endblock %}">
     <header class="site-header lv-navbar-shell">
         <div class="container lv-navbar-root">
             <div class="header-inner lv-navbar">
@@ -144,6 +144,7 @@
                     </div>
 
                     {% if user.is_authenticated %}
+                    <button class="btn btn-primary lv-navbar-create-btn" type="button" data-lv-dialog-open="create-trip">Create Trip</button>
                     <a class="btn btn-ghost lv-navbar-icon-link" href="/activity/" aria-label="Notifications" title="Notifications">
                         &#128276;
                     </a>
@@ -170,7 +171,7 @@
                                 <a href="/interactions/dm/">Inbox</a>
                                 <a href="/social/bookmarks/">Bookmarks</a>
                                 <a href="/settings/">Settings</a>
-                                <a href="/trips/create/">Create Trip</a>
+                                <button class="text-link-button" type="button" data-lv-dialog-open="create-trip">Create Trip</button>
                                 <a href="/enroll/hosting/inbox/">Hosting Inbox</a>
                             </nav>
                             <div class="member-menu-actions">
@@ -205,7 +206,7 @@
                     <a href="/trips/">Trips</a>
                     <a href="/blogs/">Blogs</a>
                     {% if user.is_authenticated %}
-                    <a href="/trips/create/">Create Trip</a>
+                    <button class="btn btn-primary lv-mobile-create-btn" type="button" data-lv-dialog-open="create-trip">Create Trip</button>
                     <a href="/accounts/me/">My Profile</a>
                     <a href="/interactions/dm/">Inbox</a>
                     <a href="/social/bookmarks/">Bookmarks</a>
@@ -226,7 +227,7 @@
     </header>
 
     <main class="site-main">
-        <div class="{% block page_container_class %}container{% endblock %}">
+        <div class="{% block page_container_class %}container lovable-page-container{% endblock %}">
             {% if messages %}
             <section class="flash-list" aria-label="Notifications">
                 {% for message in messages %}
@@ -247,7 +248,7 @@
             <nav class="footer-links lv-footer-links" aria-label="Footer links">
                 <a href="/trips/">Explore</a>
                 {% if user.is_authenticated %}
-                <a href="/trips/create/">Create Trip</a>
+                <button class="text-link-button" type="button" data-lv-dialog-open="create-trip">Create Trip</button>
                 <a href="/accounts/me/">My Profile</a>
                 {% else %}
                 <button
@@ -267,6 +268,7 @@
         </div>
     </footer>
 
+    {% include "partials/modals/create_trip_modal.html" %}
     {% include "partials/modals/login_prompt_modal.html" %}
     <script>
         (function initLovableMobileMenu() {
@@ -291,7 +293,7 @@
                 if (!(target instanceof Element)) {
                     return;
                 }
-                if (target.closest("a[href], button[data-modal-open='auth']")) {
+                if (target.closest("a[href], button[data-modal-open='auth'], button[data-lv-dialog-open]")) {
                     setOpen(false);
                 }
             });
