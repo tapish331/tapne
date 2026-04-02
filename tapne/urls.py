@@ -15,6 +15,7 @@ def health(_request: HttpRequest) -> JsonResponse:
 
 
 urlpatterns: list[URLPattern | URLResolver] = [
+    path("", include("frontend.urls")),
     path(
         "google7c0adbf9fe517d15.html",
         TemplateView.as_view(

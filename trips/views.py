@@ -289,6 +289,51 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
     }
     normalized_filters = normalize_trip_filters(raw_filters)
     payload = build_trip_list_payload_for_user(request.user, filters=normalized_filters)
+    trip_has_active_filters = has_active_trip_filters(payload["filters"])
+    display_trips = [dict(trip) for trip in payload["trips"]]
+    if not trip_has_active_filters and len(display_trips) < 6:
+        placeholder_trip_rows: list[dict[str, object]] = [
+            {
+                "is_placeholder": True,
+                "title": "More trips coming soon",
+                "summary": "Fresh community departures are being curated for the next round of travel.",
+                "destination": "New destinations soon",
+                "date_label": "Dates announced soon",
+                "cost_label": "Flexible budgets",
+                "spots_left_label": "Small groups",
+                "trip_type_label": "Adventure",
+                "highlights": ["Community-led", "Fresh itineraries", "Small groups"],
+                "banner_image_url": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&q=80",
+                "host_username": "tapne",
+            },
+            {
+                "is_placeholder": True,
+                "title": "Plan your next adventure",
+                "summary": "New host-led routes are on the way across mountains, cities, and coastlines.",
+                "destination": "Routes opening soon",
+                "date_label": "Fresh departures soon",
+                "cost_label": "Mid-range",
+                "spots_left_label": "Limited spots",
+                "trip_type_label": "Group trip",
+                "highlights": ["Host-curated", "Social travel", "New routes"],
+                "banner_image_url": "https://images.unsplash.com/photo-1527631746610-bca00a040d60?w=900&q=80",
+                "host_username": "crew",
+            },
+            {
+                "is_placeholder": True,
+                "title": "Your next crew is forming",
+                "summary": "Keep an eye on the catalog for new escapes built around shared pace and vibe.",
+                "destination": "Community favorites",
+                "date_label": "Launching soon",
+                "cost_label": "Flexible plans",
+                "spots_left_label": "New listings soon",
+                "trip_type_label": "Weekend getaway",
+                "highlights": ["Like-minded travelers", "Short escapes", "Shared vibe"],
+                "banner_image_url": "https://images.unsplash.com/photo-1517760444937-f6397edcbbcd?w=900&q=80",
+                "host_username": "hosts",
+            },
+        ]
+        display_trips.extend(placeholder_trip_rows[: max(0, 6 - len(display_trips))])
     _vprint(
         request,
         (
@@ -303,7 +348,7 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
     )
 
     context: dict[str, object] = {
-        "trips": payload["trips"],
+        "trips": display_trips,
         "trip_mode": payload["mode"],
         "trip_reason": payload["reason"],
         "trip_source": payload["source"],
@@ -311,7 +356,7 @@ def trip_list_view(request: HttpRequest) -> HttpResponse:
         "trip_filter_options": trip_filter_options(),
         "trip_total_count": payload["total_count"],
         "trip_filtered_count": payload["filtered_count"],
-        "trip_has_active_filters": has_active_trip_filters(payload["filters"]),
+        "trip_has_active_filters": trip_has_active_filters,
     }
 
     breadcrumbs: list[BreadcrumbItem] = [{"label": "Home", "url": "/"}, {"label": "Trips"}]

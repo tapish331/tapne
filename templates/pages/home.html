@@ -2,7 +2,7 @@
 
 {% block title %}tapne | Home{% endblock %}
 {% block body_class %}lovable-theme lovable-home-page{% endblock %}
-{% block page_container_class %}container lovable-page-container{% endblock %}
+{% block page_container_class %}lovable-page-container lovable-home-page-container{% endblock %}
 
 {% block content %}
 <div class="lovable-home-shell">
@@ -122,6 +122,54 @@
                         <div class="lovable-teaser-placeholder-body">More trips coming soon</div>
                     </article>
                 </div>
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Meet your next travel crew</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Fresh itineraries are on the way</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next adventure</div>
+                    </article>
+                </div>
+                {% elif trip_items|length == 3 %}
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More trips coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Meet your next travel crew</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next adventure</div>
+                    </article>
+                </div>
+                {% elif trip_items|length == 4 %}
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More trips coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next adventure</div>
+                    </article>
+                </div>
+                {% elif trip_items|length == 5 %}
+                <div class="lovable-carousel-item lovable-carousel-item-trip">
+                    <article class="lovable-trip-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next adventure</div>
+                    </article>
+                </div>
                 {% endif %}
             </div>
             <button
@@ -213,6 +261,33 @@
                 <div class="lovable-carousel-item lovable-carousel-item-destination">
                     <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
                         <div class="lovable-teaser-placeholder-body">More destinations coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Explore fresh routes</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next destination</div>
+                    </article>
+                </div>
+                {% elif destination_items|length == 4 %}
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More destinations coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next destination</div>
+                    </article>
+                </div>
+                {% elif destination_items|length == 5 %}
+                <div class="lovable-carousel-item lovable-carousel-item-destination">
+                    <article class="lovable-destination-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Plan your next destination</div>
                     </article>
                 </div>
                 {% endif %}
@@ -313,6 +388,54 @@
                 <div class="lovable-carousel-item lovable-carousel-item-blog">
                     <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
                         <div class="lovable-teaser-placeholder-body">More community stories coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Fresh travel stories coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Share your next travel story</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Read what the community loved</div>
+                    </article>
+                </div>
+                {% elif blog_items|length == 3 %}
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More community stories coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Fresh travel stories coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Share your next travel story</div>
+                    </article>
+                </div>
+                {% elif blog_items|length == 4 %}
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">More community stories coming soon</div>
+                    </article>
+                </div>
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Share your next travel story</div>
+                    </article>
+                </div>
+                {% elif blog_items|length == 5 %}
+                <div class="lovable-carousel-item lovable-carousel-item-blog">
+                    <article class="lovable-blog-teaser lovable-teaser-placeholder" aria-hidden="true">
+                        <div class="lovable-teaser-placeholder-body">Share your next travel story</div>
                     </article>
                 </div>
                 {% endif %}

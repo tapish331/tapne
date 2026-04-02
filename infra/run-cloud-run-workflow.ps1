@@ -201,7 +201,7 @@ function Invoke-ScriptStep {
         [string]$StepName,
         [string]$PowerShellExe,
         [string]$ScriptPath,
-        [string[]]$Arguments
+        [object[]]$Arguments
     )
 
     if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) {
@@ -214,9 +214,31 @@ function Invoke-ScriptStep {
         Write-Verbose ("Arguments: {0}" -f ($Arguments -join " "))
     }
 
+    function Convert-ToPowerShellLiteral {
+        param([object]$Value)
+
+        if ($null -eq $Value) {
+            return '$null'
+        }
+        if ($Value -is [string] -and $Value.StartsWith("-")) {
+            return [string]$Value
+        }
+        if ($Value -is [bool]) {
+            return $(if ($Value) { '$true' } else { '$false' })
+        }
+        if ($Value -is [byte] -or $Value -is [int16] -or $Value -is [int32] -or $Value -is [int64] -or $Value -is [decimal] -or $Value -is [double] -or $Value -is [single]) {
+            return [string]$Value
+        }
+
+        $text = [string]$Value
+        return "'" + $text.Replace("'", "''") + "'"
+    }
+
     $stepStart = Get-Date
     $global:LASTEXITCODE = 0
-    & $PowerShellExe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+    $serializedArgs = @($Arguments | ForEach-Object { Convert-ToPowerShellLiteral -Value $_ })
+    $commandText = "& {0}{1}" -f (Convert-ToPowerShellLiteral -Value $ScriptPath), $(if ($serializedArgs.Count -gt 0) { " " + ($serializedArgs -join " ") } else { "" })
+    & $PowerShellExe -NoProfile -ExecutionPolicy Bypass -Command $commandText
     $exitCode = [int]$LASTEXITCODE
 
     if ($exitCode -ne 0) {
@@ -276,7 +298,7 @@ $deployScript = Join-Path $scriptDirectory "deploy-cloud-run.ps1"
 
 $setupArgs = @(
     "-WebImageRef", $localImageRef,
-    "-DisableBuildAttestations:$DisableBuildAttestations"
+    "-DisableBuildAttestations", $DisableBuildAttestations
 )
 if (-not $EnableAutoStartDocker) {
     $setupArgs += "-NoAutoStartDocker"
@@ -303,10 +325,12 @@ $pushArgs = @(
     "-ImageName", $ImageName,
     "-ImageTag", $ImageTag,
     "-NoBuild",
-    "-DisableBuildAttestations:$DisableBuildAttestations",
-    "-DisableContainerVulnerabilityScanning:$DisableContainerVulnerabilityScanning",
-    "-SkipAuthLogin:$([bool]$SkipAuthLogin)"
+    "-DisableBuildAttestations", $DisableBuildAttestations,
+    "-DisableContainerVulnerabilityScanning", $DisableContainerVulnerabilityScanning
 )
+if ($SkipAuthLogin) {
+    $pushArgs += "-SkipAuthLogin"
+}
 if ($isVerbose) {
     $pushArgs += "-Verbose"
 }
@@ -316,9 +340,11 @@ $domainArgs = @(
     "-Region", $Region,
     "-ServiceName", $ServiceName,
     "-Domain", $Domain,
-    "-WwwDomain", $WwwDomain,
-    "-SkipAuthLogin:$([bool]$SkipAuthLogin)"
+    "-WwwDomain", $WwwDomain
 )
+if ($SkipAuthLogin) {
+    $domainArgs += "-SkipAuthLogin"
+}
 if ($isVerbose) {
     $domainArgs += "-Verbose"
 }
@@ -330,11 +356,8 @@ $deployArgs = @(
     "-ImageName", $ImageName,
     "-ImageTag", $ImageTag,
     "-ServiceName", $ServiceName,
-    "-BuildAndPushImage:$false",
-    "-SkipAuthLogin:$([bool]$SkipAuthLogin)",
-    "-SkipMigrations:$([bool]$SkipMigrations)",
-    "-SkipSmokeTest:$([bool]$SkipSmokeTest)",
-    "-DisableContainerVulnerabilityScanning:$DisableContainerVulnerabilityScanning",
+    "-BuildAndPushImage", $false,
+    "-DisableContainerVulnerabilityScanning", $DisableContainerVulnerabilityScanning,
     "-CloudRunIngress", "internal-and-cloud-load-balancing",
     "-DjangoAllowedHosts", $djangoAllowedHosts,
     "-CsrfTrustedOrigins", $csrfTrustedOrigins,
@@ -342,6 +365,15 @@ $deployArgs = @(
     "-SmokeBaseUrl", ("https://{0}" -f $canonicalHost),
     "-UptimeCheckHost", $canonicalHost
 )
+if ($SkipAuthLogin) {
+    $deployArgs += "-SkipAuthLogin"
+}
+if ($SkipMigrations) {
+    $deployArgs += "-SkipMigrations"
+}
+if ($SkipSmokeTest) {
+    $deployArgs += "-SkipSmokeTest"
+}
 if ($isVerbose) {
     $deployArgs += "-Verbose"
 }

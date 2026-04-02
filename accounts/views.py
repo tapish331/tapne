@@ -318,6 +318,14 @@ def _profile_trip_sections_for_member(member: object) -> tuple[list[dict[str, ob
     return created_trips, joined_trips
 
 
+def profile_trip_sections_for_member(member: object) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """
+    Public wrapper for profile trip sections shared across non-account modules.
+    """
+
+    return _profile_trip_sections_for_member(member)
+
+
 @require_http_methods(["GET", "POST"])
 def signup_view(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:

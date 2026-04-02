@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lovable Django Visual Parity"
+  short_description: "Match Django UI to Lovable renders"
+  default_prompt: "Use $lovable-django-visual-parity to render matched Lovable and Django pages, compare them at fixed breakpoints, and iteratively patch Django toward visual parity."

@@ -224,6 +224,20 @@ function ConvertTo-BoolString {
     return "false"
 }
 
+function ConvertFrom-JsonCompat {
+    param(
+        [string]$JsonText,
+        [int]$Depth = 100
+    )
+
+    try {
+        return $JsonText | ConvertFrom-Json -Depth $Depth
+    }
+    catch [System.Management.Automation.ParameterBindingException] {
+        return $JsonText | ConvertFrom-Json
+    }
+}
+
 function Get-RedactedArguments {
     param([string[]]$Arguments)
 
@@ -532,7 +546,7 @@ function Get-CloudRunServiceEnvMap {
     }
 
     try {
-        $service = $rawJson | ConvertFrom-Json -Depth 100
+        $service = ConvertFrom-JsonCompat -JsonText $rawJson -Depth 100
     }
     catch {
         Write-Warning ("Failed to parse existing Cloud Run service JSON; host/csrf env values may not be preserved automatically. Details: {0}" -f $_.Exception.Message)
@@ -633,7 +647,7 @@ function Get-CloudRunLoadBalancerDomains {
     }
 
     try {
-        $negs = @($negJson | ConvertFrom-Json -Depth 100)
+        $negs = @(ConvertFrom-JsonCompat -JsonText $negJson -Depth 100)
     }
     catch {
         Write-Warning ("Failed parsing NEG list JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
@@ -693,7 +707,7 @@ function Get-CloudRunLoadBalancerDomains {
     }
 
     try {
-        $backendServices = @($backendJson | ConvertFrom-Json -Depth 100)
+        $backendServices = @(ConvertFrom-JsonCompat -JsonText $backendJson -Depth 100)
     }
     catch {
         Write-Warning ("Failed parsing backend service JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
@@ -759,7 +773,7 @@ function Get-CloudRunLoadBalancerDomains {
     }
 
     try {
-        $urlMaps = @($urlMapJson | ConvertFrom-Json -Depth 100)
+        $urlMaps = @(ConvertFrom-JsonCompat -JsonText $urlMapJson -Depth 100)
     }
     catch {
         Write-Warning ("Failed parsing URL map JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
@@ -824,7 +838,7 @@ function Get-CloudRunLoadBalancerDomains {
     }
 
     try {
-        $httpsProxies = @($httpsProxyJson | ConvertFrom-Json -Depth 100)
+        $httpsProxies = @(ConvertFrom-JsonCompat -JsonText $httpsProxyJson -Depth 100)
     }
     catch {
         Write-Warning ("Failed parsing target HTTPS proxy JSON for custom domain inference. Details: {0}" -f $_.Exception.Message)
@@ -878,7 +892,7 @@ function Get-CloudRunLoadBalancerDomains {
         }
 
         try {
-            $certificate = $certJson | ConvertFrom-Json -Depth 100
+            $certificate = ConvertFrom-JsonCompat -JsonText $certJson -Depth 100
         }
         catch {
             continue
@@ -1740,7 +1754,7 @@ function Get-CloudSqlInstanceInfo {
     }
 
     try {
-        $instance = $rawJson | ConvertFrom-Json -Depth 100
+        $instance = ConvertFrom-JsonCompat -JsonText $rawJson -Depth 100
     }
     catch {
         throw ("Failed parsing Cloud SQL instance JSON for '{0}': {1}" -f $InstanceName, $_.Exception.Message)
@@ -2111,7 +2125,7 @@ function Get-RedisInstanceReferences {
         }
 
         try {
-            $instances = @($rawJson | ConvertFrom-Json -Depth 20)
+            $instances = @(ConvertFrom-JsonCompat -JsonText $rawJson -Depth 20)
         }
         catch {
             throw ("Failed parsing Redis instance list JSON for region {0}: {1}" -f $regionName, $_.Exception.Message)
@@ -2866,6 +2880,10 @@ else {
 $baseEnv = @(
     "APP_ENV=prod",
     "DEBUG=false",
+    "TAPNE_ENABLE_DEMO_DATA=false",
+    "LOVABLE_FRONTEND_ENABLED=true",
+    "LOVABLE_FRONTEND_REQUIRE_LIVE_DATA=true",
+    "LOVABLE_FRONTEND_DIST_DIR=/app/artifacts/lovable-production-dist",
     ("WEB_CONCURRENCY={0}" -f $WebConcurrency),
     ("GUNICORN_TIMEOUT={0}" -f $GunicornTimeout),
     "STORAGE_BACKEND=gcs",

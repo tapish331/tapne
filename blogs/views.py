@@ -53,6 +53,34 @@ def blog_list_view(request: HttpRequest) -> HttpResponse:
     _vprint(request, f"Rendering blog list for viewer_state={viewer_state}")
 
     payload = build_blog_list_payload_for_user(request.user)
+    display_blogs = [dict(blog) for blog in payload["blogs"]]
+    if len(display_blogs) < 6:
+        placeholder_blogs: list[dict[str, object]] = [
+            {
+                "is_placeholder": True,
+                "title": "Desert Nights in Jaisalmer — A Photo Journal",
+                "author_name": "Karan Singh",
+                "cover_image_url": "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=600&q=80",
+                "published_at_label": "Feb 10",
+                "trip_title": "Rajasthan Camp",
+            },
+            {
+                "is_placeholder": True,
+                "title": "Kerala Backwaters: The Ultimate Wellness Guide",
+                "author_name": "Meera Nair",
+                "cover_image_url": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=600&q=80",
+                "published_at_label": "Feb 8",
+            },
+            {
+                "is_placeholder": True,
+                "title": "Ladakh Road Trip Essentials You Can't Miss",
+                "author_name": "Arjun Mehta",
+                "cover_image_url": "https://images.unsplash.com/photo-1626014303715-48c7b1a7a814?w=600&q=80",
+                "published_at_label": "Feb 5",
+                "trip_title": "Ladakh Road Trip",
+            },
+        ]
+        display_blogs.extend(placeholder_blogs[: max(0, 6 - len(display_blogs))])
     _vprint(
         request,
         (
@@ -66,7 +94,7 @@ def blog_list_view(request: HttpRequest) -> HttpResponse:
     )
 
     context: dict[str, object] = {
-        "blogs": payload["blogs"],
+        "blogs": display_blogs,
         "blog_mode": payload["mode"],
         "blog_reason": payload["reason"],
         "blog_source": payload["source"],

@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "accounts",
+    "frontend",
     "feed",
     "search",
     "trips",
@@ -323,3 +324,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 TAPNE_ENABLE_DEMO_DATA = env_bool("TAPNE_ENABLE_DEMO_DATA", DEBUG)
 # Backward-compatible alias used by earlier scaffolding scripts/docs.
 TAPNE_PLACEHOLDER_MODE = TAPNE_ENABLE_DEMO_DATA
+LOVABLE_FRONTEND_ENABLED = env_bool("LOVABLE_FRONTEND_ENABLED", False)
+LOVABLE_FRONTEND_REQUIRE_LIVE_DATA = env_bool("LOVABLE_FRONTEND_REQUIRE_LIVE_DATA", LOVABLE_FRONTEND_ENABLED)
+LOVABLE_FRONTEND_DIST_DIR = Path(
+    os.getenv(
+        "LOVABLE_FRONTEND_DIST_DIR",
+        str(BASE_DIR / "artifacts" / "lovable-production-dist"),
+    )
+)
+
+if LOVABLE_FRONTEND_ENABLED and LOVABLE_FRONTEND_REQUIRE_LIVE_DATA and TAPNE_ENABLE_DEMO_DATA:
+    raise RuntimeError(
+        "LOVABLE_FRONTEND_ENABLED requires TAPNE_ENABLE_DEMO_DATA=false so public routes never fall back to mock/demo data."
+    )

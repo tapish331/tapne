@@ -217,6 +217,17 @@ function New-ResourceName {
     return ("{0}-{1}" -f $truncatedBase, $suffixPart)
 }
 
+function ConvertFrom-JsonCompat {
+    param([string]$JsonText)
+
+    try {
+        return $JsonText | ConvertFrom-Json -Depth 100
+    }
+    catch [System.Management.Automation.ParameterBindingException] {
+        return $JsonText | ConvertFrom-Json
+    }
+}
+
 function Invoke-CloudflareApi {
     param(
         [ValidateSet("GET", "POST", "PATCH", "DELETE")]
@@ -490,7 +501,7 @@ $backendJsonRaw = (Invoke-Required -FilePath $gcloudCli -Arguments (@(
 ) + $lbScopeArgs) -FailureMessage "Failed describing backend service." -PassThru) -join [Environment]::NewLine
 $backendJson = $null
 try {
-    $backendJson = $backendJsonRaw | ConvertFrom-Json -Depth 100
+    $backendJson = ConvertFrom-JsonCompat -JsonText $backendJsonRaw
 }
 catch {
     throw ("Failed parsing backend service JSON for '{0}': {1}" -f $backendServiceName, $_.Exception.Message)
@@ -568,7 +579,7 @@ else {
     $certJsonRaw = ($certDescribe.Output -join [Environment]::NewLine).Trim()
     $certJson = $null
     try {
-        $certJson = $certJsonRaw | ConvertFrom-Json -Depth 100
+        $certJson = ConvertFrom-JsonCompat -JsonText $certJsonRaw
     }
     catch {
         throw ("Failed parsing SSL certificate JSON for '{0}': {1}" -f $certName, $_.Exception.Message)

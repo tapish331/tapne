@@ -11,9 +11,6 @@
             <h1>Blogs</h1>
             <p>Stories, tips, and experiences from the Tapne community.</p>
         </div>
-        {% if user.is_authenticated %}
-        <a class="btn btn-primary" href="{% url 'blogs:create' %}">Write blog</a>
-        {% endif %}
     </div>
 </section>
 
@@ -21,19 +18,22 @@
     {% if blogs %}
     <div class="lovable-blog-grid">
         {% for blog in blogs %}
+        {% if blog.is_placeholder %}
+        <div class="lovable-blog-link-placeholder" aria-hidden="true">
+        {% else %}
+        <a class="lovable-blog-link" href="{{ blog.url|default:'/blogs/' }}">
+        {% endif %}
         <article class="lovable-blog-teaser">
-            <a href="{{ blog.url|default:'/blogs/' }}">
-                <div class="lovable-blog-teaser-media">
-                    <img src="{{ blog.cover_image_url|default:'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80' }}" alt="{{ blog.title|default:'Blog' }}">
-                </div>
-            </a>
+            <div class="lovable-blog-teaser-media">
+                <img src="{{ blog.cover_image_url|default:'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=900&q=80' }}" alt="{{ blog.title|default:'Blog' }}">
+            </div>
             <div class="lovable-blog-teaser-body">
                 {% if blog.trip_title %}
                 <span class="lovable-chip">{{ blog.trip_title }}</span>
                 {% endif %}
-                <h3><a href="{{ blog.url|default:'/blogs/' }}">{{ blog.title|default:"Untitled blog" }}</a></h3>
+                <h3>{{ blog.title|default:"Untitled blog" }}</h3>
                 <div class="lovable-blog-teaser-meta">
-                    <span>By @{{ blog.author_username|default:"author" }}</span>
+                    <span>By {% firstof blog.author_name blog.author_username "author" %}</span>
                     <span>
                         {% if blog.published_at_label %}
                         {{ blog.published_at_label }}
@@ -44,20 +44,13 @@
                         {% endif %}
                     </span>
                 </div>
-                <p class="lovable-blog-reads">
-                    &#128065;
-                    {% if blog.read_count_label %}
-                    {{ blog.read_count_label }}
-                    {% elif blog.views_label %}
-                    {{ blog.views_label }}
-                    {% elif blog.traffic_score %}
-                    {{ blog.traffic_score }} reads
-                    {% else %}
-                    0 reads
-                    {% endif %}
-                </p>
             </div>
         </article>
+        {% if blog.is_placeholder %}
+        </div>
+        {% else %}
+        </a>
+        {% endif %}
         {% endfor %}
     </div>
     {% else %}
