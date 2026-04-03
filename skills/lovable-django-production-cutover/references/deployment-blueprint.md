@@ -62,9 +62,9 @@ Keep these in repo-owned paths outside `lovable/`:
 Recommended roles:
 
 - `tokens.css`
-  - CSS variables for colors, radii, fonts, shadows, spacing
+  - CSS variables for colors, radii, fonts — values must be byte-for-byte identical to `lovable/src/index.css`. Purpose is externalised control only, not visual change.
 - `overrides.css`
-  - targeted selector overrides that compiled Lovable classes still need
+  - must be empty by default. Only add rules when a deliberate visual change is explicitly requested. Never pre-populate during cutover.
 - `runtime-config.js`
   - API base URL
   - environment name
@@ -81,22 +81,27 @@ Why:
 
 If the runtime payload is assembled from Django-side session or model helpers, serialize it with a Django-safe encoder rather than raw `json.dumps(...)`.
 
+**Visual parity rule**: `tokens.css` loaded into the SPA shell must not change any visible appearance. If the Lovable app looks different with `tokens.css` injected vs without it, the values in `tokens.css` are wrong — fix them to match `lovable/src/index.css` exactly.
+
 ## 4. Frontend serving pattern
 
 Recommended production pattern for this repo:
 
 - Django owns backend endpoints, admin, uploads, and operations
-- the Lovable build owns public SPA routes
+- the Lovable build owns **all** browser-navigable URLs — no exceptions
 - the real domain serves both
 
-Typical ownership split:
+Ownership split:
 
-- `/api/**`: Django
+- `/frontend-api/**`: Django JSON API (consumed by SPA via fetch)
 - `/admin/**`: Django
 - `/runtime/**`: Django
-- `/media/**`: Django or storage/CDN
+- `/uploads/**`, `/media/**`: Django or storage/CDN
 - `/static/**`: Django static pipeline or storage/CDN
-- public routes like `/`, `/trips`, `/blogs`, `/profile`: SPA shell + assets
+- `/trips/<id>/banner/`, `/trips/api/**`: Django
+- **everything else**: SPA shell + assets
+
+There is no class of "Django web page" for browser users. If a URL is not in the backend-only list above, it serves the SPA shell. Django-rendered HTML templates for browser-navigable routes are a cutover blocker — treat them the same as mock data blockers.
 
 ## 5. SPA fallback
 
@@ -184,10 +189,15 @@ Operational constraints for this repo:
 - auth survives refresh
 - writes persist
 - centralized brand files override frontend appearance without editing Lovable source
+- `tokens.css` values are identical to `lovable/src/index.css` — visual appearance does not change when tokens.css is loaded
+- `overrides.css` is empty (no unsolicited visual overrides injected)
 - final artifact passes a banned-pattern scan for known mock/local-only signatures
 - the root HTML serves inline runtime config and does not depend on `/frontend-runtime.js`
 - signed-in shell rendering is covered by a regression test
 - post-deploy verification includes `/`, not just health/static endpoints
+- no Django HTML template is being served for any browser-navigable URL
+- the SPA catch-all is active and renders an "Under Construction" page that visually matches the rest of the app
+- all Django URLs that had HTML templates now either redirect to the SPA equivalent or fall through to the SPA shell
 
 ## 10. Failure modes to catch early
 
@@ -200,3 +210,7 @@ Operational constraints for this repo:
 - the build still contains `localStorage`, `mockData`, or fake auth patterns because override aliasing never actually took effect
 - `/` returns `500` only for signed-in users because the server-rendered runtime payload contains non-JSON-safe Django values
 - the artifact looks clean but the live shell still fails because runtime/bootstrap injection was never verified against the deployed domain
+- **pages look completely wrong (wrong font, no carousel, no tabs)** — caused by `frontend_spa/src/App.tsx` importing `@frontend/pages/*` custom replacements instead of `@/pages/*` Lovable source pages. Always read `lovable/src/App.tsx` first and import pages from `@/pages/*`.
+- **React state / data-fetching broken across all pages** — caused by the override `App.tsx` dropping providers (`QueryClientProvider`, `DraftProvider`, etc.) that exist in `lovable/src/App.tsx`. Mirror the provider tree exactly.
+- **parameterised Django routes (`/trips/<id>/edit/`, `/u/<username>/`, etc.) render old Django templates** — caused by missing explicit `re_path` patterns in `frontend/urls.py`. The global `tapne/urls.py` catch-all does not intercept paths that are already claimed by app-specific `urls.py` files included earlier.
+- **visual differences between standalone Lovable and production** (different fonts, shapes, shadows) — caused by `overrides.css` containing visual CSS rules (`font-family`, `border-radius !important`, `box-shadow !important`). `overrides.css` must be empty of visual rules by default.

@@ -1,43 +1,53 @@
-import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
-import { Toaster } from "sonner";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@frontend/context/AuthContext";
-import BlogDetailPage from "@frontend/pages/BlogDetailPage";
-import BlogsPage from "@frontend/pages/BlogsPage";
-import CreateTripPage from "@frontend/pages/CreateTripPage";
-import HomePage from "@frontend/pages/HomePage";
-import LoginPage from "@frontend/pages/LoginPage";
-import MyTripsPage from "@frontend/pages/MyTripsPage";
-import ProfilePage from "@frontend/pages/ProfilePage";
-import SignupPage from "@frontend/pages/SignupPage";
-import TripDetailPage from "@frontend/pages/TripDetailPage";
-import TripsPage from "@frontend/pages/TripsPage";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { DraftProvider } from "@/contexts/DraftContext";
 
-function NotFoundPage() {
-  return <Navigate to="/" replace />;
-}
+// All user-facing pages come from the Lovable source (@/ = lovable/src/).
+// Never import page components from @frontend/pages except UnderConstructionPage.
+import Index from "@/pages/Index";
+import BrowseTrips from "@/pages/BrowseTrips";
+import TripDetail from "@/pages/TripDetail";
+import CreateTrip from "@/pages/CreateTrip";
+import MyTrips from "@/pages/MyTrips";
+import Login from "@/pages/Login";
+import SignUp from "@/pages/SignUp";
+import Profile from "@/pages/Profile";
+import Blogs from "@/pages/Blogs";
+import ManageTrip from "@/pages/ManageTrip";
+import UnderConstructionPage from "@frontend/pages/UnderConstructionPage";
+
+const queryClient = new QueryClient();
+
+const router = createBrowserRouter([
+  { path: "/",            element: <Index /> },
+  { path: "/trips",       element: <BrowseTrips /> },
+  { path: "/trips/:id",   element: <TripDetail /> },
+  { path: "/create-trip", element: <CreateTrip /> },
+  { path: "/my-trips",    element: <MyTrips /> },
+  { path: "/blogs",            element: <Blogs /> },
+  { path: "/manage-trip/:id",  element: <ManageTrip /> },
+  { path: "/login",            element: <Login /> },
+  { path: "/signup",      element: <SignUp /> },
+  { path: "/profile",     element: <Profile /> },
+  { path: "*",            element: <UnderConstructionPage /> },
+]);
 
 export default function App() {
-  const router = createBrowserRouter([
-    { path: "/", element: <HomePage /> },
-    { path: "/trips", element: <TripsPage /> },
-    { path: "/trips/:id", element: <TripDetailPage /> },
-    { path: "/blogs", element: <BlogsPage /> },
-    { path: "/blogs/:slug", element: <BlogDetailPage /> },
-    { path: "/login", element: <LoginPage /> },
-    { path: "/signup", element: <SignupPage /> },
-    { path: "/profile", element: <ProfilePage /> },
-    { path: "/create-trip", element: <CreateTripPage /> },
-    { path: "/my-trips", element: <MyTripsPage /> },
-    { path: "*", element: <NotFoundPage /> },
-  ]);
-
   return (
-    <TooltipProvider>
+    <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Toaster />
-        <RouterProvider router={router} />
+        <DraftProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <RouterProvider router={router} />
+          </TooltipProvider>
+        </DraftProvider>
       </AuthProvider>
-    </TooltipProvider>
+    </QueryClientProvider>
   );
 }

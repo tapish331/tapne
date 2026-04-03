@@ -77,6 +77,10 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      // Stub out the dev-mode mock resolver so lovable/src/data/mockData.ts
+      // and lovable/src/lib/devMock.ts are excluded from the production bundle.
+      // Must come before the "@" alias so it takes precedence (longer key = checked first).
+      "@/lib/devMock": path.resolve(__dirname, "src/lib/devMockStub.ts"),
       "@": path.resolve(lovableRoot, "src"),
       "@frontend": path.resolve(__dirname, "src"),
     },

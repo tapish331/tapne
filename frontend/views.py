@@ -393,6 +393,8 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "settings": reverse("frontend:api-settings"),
             "hosting_inbox": reverse("frontend:api-hosting-inbox"),
             "dm_inbox": reverse("frontend:api-dm-inbox"),
+            "trip_drafts": reverse("frontend:api-trip-draft-create"),
+            "manage_trip": "/frontend-api/manage-trip/",
         },
         "routes": {
             "home": "/",
@@ -411,7 +413,13 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
         },
         "csrf": {
             "cookie_name": settings.CSRF_COOKIE_NAME,
-            "header_name": settings.CSRF_HEADER_NAME,
+            # settings.CSRF_HEADER_NAME is stored as a Django META key ("HTTP_X_CSRFTOKEN").
+            # Convert to the HTTP wire format ("X-Csrftoken") that fetch() uses as a header name.
+            # HTTP headers are case-insensitive; Django normalises back to the META key on receipt.
+            "header_name": "-".join(
+                p.capitalize()
+                for p in settings.CSRF_HEADER_NAME.removeprefix("HTTP_").split("_")
+            ),
             "token": get_token(request),
         },
         "session": {
@@ -456,6 +464,11 @@ def _frontend_shell_html(request: HttpRequest) -> str:
     runtime_script_tag = (
         f'<script {FRONTEND_RUNTIME_INLINE_ATTR}="{FRONTEND_RUNTIME_INLINE_VALUE}">'
         f"window.__TAPNE_FRONTEND_CONFIG__ = {runtime_payload};"
+        # mode.ts in the dual-mode Lovable bundle checks window.TAPNE_RUNTIME_CONFIG
+        # to distinguish Django production from Lovable dev mode (IS_DEV_MODE).
+        # Keep both names in sync so both the legacy @frontend bundle and the new
+        # dual-mode bundle read the same config object.
+        "window.TAPNE_RUNTIME_CONFIG = window.__TAPNE_FRONTEND_CONFIG__;"
         "</script>\n"
     )
     module_script_marker = '<script type="module"'
@@ -918,3 +931,149 @@ def hosting_decision_api_view(request: HttpRequest, request_id: int) -> JsonResp
             "request": request_row.to_enrollment_request_data(),
         }
     )
+
+
+# ── Manage Trip ───────────────────────────────────────────────────────────────
+
+
+def _manage_trip_participant_payload(req: EnrollmentRequest) -> dict[str, object]:
+    requester = req.requester
+    profile = getattr(requester, "account_profile", None)
+    display_name = (
+        getattr(profile, "effective_display_name", None)
+        or getattr(requester, "first_name", "")
+        or getattr(requester, "username", "")
+    )
+    joined_ts = req.reviewed_at or req.updated_at or req.created_at
+    return {
+        "id": int(req.pk or 0),
+        "user_id": int(getattr(requester, "pk", 0) or 0),
+        "username": str(getattr(requester, "username", "") or ""),
+        "display_name": str(display_name or ""),
+        "status": "confirmed",
+        "joined_at": joined_ts.isoformat() if joined_ts else req.created_at.isoformat(),
+    }
+
+
+def _manage_trip_application_payload(req: EnrollmentRequest, trip_row: Trip) -> dict[str, object]:
+    requester = req.requester
+    profile = getattr(requester, "account_profile", None)
+    display_name = (
+        getattr(profile, "effective_display_name", None)
+        or getattr(requester, "first_name", "")
+        or getattr(requester, "username", "")
+    )
+    return {
+        "id": int(req.pk or 0),
+        "trip_id": int(trip_row.pk or 0),
+        "trip_title": str(trip_row.title or ""),
+        "requester_username": str(getattr(requester, "username", "") or ""),
+        "requester_display_name": str(display_name or ""),
+        "message": str(req.message or ""),
+        "status": str(req.status or ""),
+        "created_at": req.created_at.isoformat(),
+        "reviewed_at": req.reviewed_at.isoformat() if req.reviewed_at else None,
+    }
+
+
+@require_GET
+def manage_trip_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    trip_row = (
+        Trip.objects.select_related("host", "host__account_profile")
+        .filter(pk=trip_id, host=request.user)
+        .first()
+    )
+    if trip_row is None:
+        return _json_error("Trip not found or you are not the host.", status=404)
+
+    approved_reqs = list(
+        EnrollmentRequest.objects.select_related("requester", "requester__account_profile")
+        .filter(trip=trip_row, status=EnrollmentRequest.STATUS_APPROVED)
+        .order_by("-updated_at", "-pk")
+    )
+    all_reqs = list(
+        EnrollmentRequest.objects.select_related("requester", "requester__account_profile")
+        .filter(trip=trip_row)
+        .order_by("-created_at", "-pk")
+    )
+
+    participants = [_manage_trip_participant_payload(r) for r in approved_reqs]
+    applications = [_manage_trip_application_payload(r, trip_row) for r in all_reqs]
+
+    total_seats = trip_row.total_seats
+    if total_seats is not None:
+        spots_left = max(0, int(total_seats) - len(participants))
+        booking_status = "full" if spots_left == 0 else "open"
+    else:
+        spots_left = None
+        booking_status = "open"
+
+    trip_data = _serialize_trip_for_frontend(trip_row)
+    trip_data["can_manage"] = True
+    trip_data["booking_status"] = booking_status
+    trip_data["access_type"] = "open"
+    trip_data["participants_count"] = len(participants)
+    trip_data["applications_count"] = sum(1 for a in applications if a["status"] == "pending")
+    if spots_left is not None:
+        trip_data["spots_left"] = spots_left
+
+    return JsonResponse({"ok": True, "trip": trip_data, "participants": participants, "applications": applications})
+
+
+@require_POST
+def manage_trip_booking_status_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
+    if trip_row is None:
+        return _json_error("Trip not found.", status=404)
+    # booking_status is not yet a model field — acknowledge and return ok so the
+    # frontend optimistic update can proceed. Persisted in a future migration.
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def manage_trip_remove_participant_view(request: HttpRequest, trip_id: int, participant_id: int) -> JsonResponse:
+    """Remove a confirmed participant by setting their enrollment to denied."""
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
+    if trip_row is None:
+        return _json_error("Trip not found.", status=404)
+    req = EnrollmentRequest.objects.filter(pk=participant_id, trip=trip_row).first()
+    if req is None:
+        return _json_error("Participant not found.", status=404)
+    req.status = EnrollmentRequest.STATUS_DENIED
+    req.reviewed_by = request.user  # type: ignore[assignment]
+    req.reviewed_at = timezone.now()
+    req.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def manage_trip_cancel_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
+    if trip_row is None:
+        return _json_error("Trip not found.", status=404)
+    # Unpublish the trip as the closest available cancellation signal.
+    # A dedicated status/cancelled field is tracked in the backlog.
+    trip_row.is_published = False
+    trip_row.save(update_fields=["is_published", "updated_at"])
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def manage_trip_message_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
+    if trip_row is None:
+        return _json_error("Trip not found.", status=404)
+    # Messaging participants is acknowledged but not yet delivered — no messaging
+    # backend exists yet. Returns ok so the frontend toast confirms the action.
+    return JsonResponse({"ok": True})

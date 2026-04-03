@@ -154,7 +154,65 @@ The rule is:
 - no source edits under `lovable/`
 - but the production build must still be reproducible
 
-## 9. Closing standard
+## 9. App.tsx override integrity check
+
+Before building, verify `frontend_spa/src/App.tsx` against `lovable/src/App.tsx`:
+
+```bash
+# Every page import in frontend_spa/src/App.tsx must come from @/pages/* (Lovable source).
+# The only permitted @frontend/pages/* import is UnderConstructionPage.
+grep "from.*@frontend/pages" e:/tapne/frontend_spa/src/App.tsx
+```
+
+Expected output: exactly one line — `import UnderConstructionPage from "@frontend/pages/UnderConstructionPage"`.
+
+If any other `@frontend/pages/*` import appears, the page is a custom stripped-down replacement. Replace it with the real Lovable page (`@/pages/<PageName>`). This was the root cause of the wrong-font / no-carousel / no-tabs regression.
+
+Also verify providers are present:
+
+```bash
+grep -E "QueryClientProvider|DraftProvider|TooltipProvider" e:/tapne/frontend_spa/src/App.tsx
+```
+
+Expected output: both `QueryClientProvider` and `DraftProvider` must appear. If either is missing, add it — missing providers cause silent runtime failures on all pages.
+
+## 11. No Django templates for browser users
+
+Before closing, confirm that no Django view is still rendering an HTML template for a browser-navigable URL.
+
+Quick audit pattern:
+```bash
+grep -rn "render(request" accounts/views.py trips/views.py blogs/views.py \
+  enrollment/views.py interactions/views.py reviews/views.py \
+  activity/views.py settings_app/views.py social/views.py search/views.py \
+  feed/views.py
+```
+
+Every hit must be either:
+- a `backend-only` endpoint (returns JSON, processes form POST, or is `/admin/`), OR
+- already replaced by a redirect or SPA catch-all
+
+If any hit renders a user-facing HTML template page, it is a cutover blocker.
+
+## 12. Visual parity check for tokens.css
+
+After injecting `tokens.css` into the SPA shell, visually compare:
+
+- a Lovable page rendered in standalone `vite dev` mode (no Django shell injection)
+- the same page rendered through the Django SPA shell with `tokens.css` injected
+
+They must look identical. If any color, font, radius, or spacing is different, the `tokens.css` values have drifted from `lovable/src/index.css` — fix them to match exactly. Do not alter `overrides.css` to compensate for wrong `tokens.css` values.
+
+## 13. Under Construction page visual check
+
+The "Under Construction" page served by the `*` catch-all must:
+
+- render the Lovable Navbar and Footer
+- use the same background color, text color, and font as other Lovable pages
+- not show any error, stack trace, Django debug page, or blank screen
+- be reachable by directly navigating to a URL like `/about/` or `/settings/` in a fresh browser session
+
+## 14. Closing standard
 
 Do not close the task until all of these are true:
 
@@ -163,3 +221,10 @@ Do not close the task until all of these are true:
 - the public root route is healthy after deploy
 - the shell is safe for authenticated users
 - recent Cloud Run logs show no ongoing `500` requests on the active revision
+- no Django HTML template is served for any browser-navigable URL
+- `tokens.css` values match `lovable/src/index.css` exactly — visual appearance is unchanged
+- `overrides.css` is empty of visual rules (no `font-family`, no `!important` border-radius or shadow overrides)
+- the Under Construction page renders correctly for unclaimed URLs and looks visually consistent with the rest of the app
+- `frontend_spa/src/App.tsx` page imports verified: all from `@/pages/*`, only `UnderConstructionPage` from `@frontend/pages/*`
+- `frontend_spa/src/App.tsx` provider tree verified: `QueryClientProvider`, `DraftProvider`, `TooltipProvider`, both `Toaster`s present
+- `frontend/urls.py` parameterised route patterns verified with Django URL resolver

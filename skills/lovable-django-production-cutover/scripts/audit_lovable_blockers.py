@@ -107,6 +107,49 @@ def print_report(results: dict[str, list[str]]) -> None:
         print("")
 
 
+def audit_override_app(repo_root: Path) -> list[str]:
+    """
+    Check frontend_spa/src/App.tsx for the two regressions that caused the
+    wrong-font / no-carousel / no-tabs production incident:
+
+    1. Any @frontend/pages/* import other than UnderConstructionPage means a
+       custom stripped-down page is being used instead of the real Lovable page.
+    2. Missing providers (QueryClientProvider, DraftProvider) cause silent
+       runtime failures across all pages.
+    """
+    issues: list[str] = []
+    app_path = repo_root / "frontend_spa" / "src" / "App.tsx"
+    if not app_path.is_file():
+        issues.append(
+            f"frontend_spa/src/App.tsx not found at {app_path}. "
+            "The override App.tsx is required."
+        )
+        return issues
+
+    text = app_path.read_text(encoding="utf-8")
+
+    # Check for forbidden @frontend/pages/* imports (anything except UnderConstructionPage)
+    for line_no, line in enumerate(text.splitlines(), 1):
+        if "@frontend/pages/" in line and "UnderConstructionPage" not in line:
+            issues.append(
+                f"frontend_spa/src/App.tsx:{line_no}: imports from @frontend/pages/* "
+                f"other than UnderConstructionPage — this uses a custom stripped-down "
+                f"replacement instead of the real Lovable page. "
+                f"Change to @/pages/<PageName>.\n  -> {line.strip()}"
+            )
+
+    # Check for required providers
+    for provider in ("QueryClientProvider", "DraftProvider", "TooltipProvider"):
+        if provider not in text:
+            issues.append(
+                f"frontend_spa/src/App.tsx: missing {provider}. "
+                f"The provider tree must match lovable/src/App.tsx exactly. "
+                f"Missing providers cause silent runtime failures on all pages."
+            )
+
+    return issues
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Audit the repo's Lovable frontend for mock/local-only production blockers."
@@ -125,6 +168,20 @@ def main() -> int:
 
     results = collect_matches(src_root)
     print_report(results)
+
+    # Additional check: override App.tsx integrity
+    override_issues = audit_override_app(repo_root)
+    if override_issues:
+        print("override_app_integrity:")
+        for issue in override_issues:
+            print(f"  [FAIL] {issue}")
+        print("  -> Read references/override-targets.md for the required App.tsx template.")
+        print()
+    else:
+        print("override_app_integrity: OK")
+        print("  -> frontend_spa/src/App.tsx uses @/pages/* for all pages; providers present.")
+        print()
+
     return 0
 
 

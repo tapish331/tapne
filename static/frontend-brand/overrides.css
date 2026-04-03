@@ -1,3 +1,6 @@
+/* Targeted functional fixes only — no visual changes vs standalone Lovable. */
+/* Do NOT add cosmetic rules here. */
+
 html {
     color-scheme: light;
 }
@@ -6,30 +9,7 @@ body {
     font-family: var(--font-sans);
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-    font-family: var(--font-display);
-}
-
+/* Ensure Radix popper content renders above sticky headers. */
 [data-radix-popper-content-wrapper] {
     z-index: 90 !important;
-}
-
-.rounded-lg,
-.rounded-xl,
-.rounded-2xl,
-.rounded-3xl {
-    border-radius: var(--radius) !important;
-}
-
-.shadow-sm,
-.shadow,
-.shadow-md,
-.shadow-lg,
-.shadow-xl {
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08) !important;
 }

@@ -1,7 +1,6 @@
 {
   "extends": "../lovable/tsconfig.app.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@/*": [
         "../lovable/src/*"
@@ -12,6 +11,10 @@
     },
     "types": [
       "vite/client"
+    ],
+    "typeRoots": [
+      "../lovable/node_modules/@types",
+      "../lovable/node_modules"
     ]
   },
   "include": [

@@ -28,6 +28,13 @@ Read `references/operational-hardening.md` before closing the work or trusting a
 8. Do not treat health checks and static asset checks as enough. The public root route and the live SPA shell must be verified explicitly.
 9. Prefer inline runtime/bootstrap config in the served HTML shell over a second blocking request to `/frontend-runtime.js`.
 10. Any server-rendered bootstrap payload that can contain Django-native values must be serialized with a Django-safe encoder, not raw `json.dumps(...)`.
+11. Lovable is the sole source for every user-facing page and modal. No Django template may render a public-facing HTML page. Every URL a browser user can navigate to must resolve to the Lovable SPA shell. Django must not send its own rendered HTML for any public route — including legal pages, profile pages, search, settings, and activity.
+12. For any URL that exists in Django but has no corresponding Lovable page, Django must serve the Lovable SPA shell. The SPA catch-all route (`*`) must be overridden externally to render a styled "Under Construction" page — never a bare 404 and never a Django-rendered template. See `references/override-targets.md` for the override spec and the full route gap table.
+13. `static/frontend-brand/tokens.css` must be an exact mirror of the CSS variable values declared in `lovable/src/index.css`. No value may deviate from what Lovable ships by default. The file exists solely to externalise control so future changes have one place to edit — not to alter current appearance. `static/frontend-brand/overrides.css` must remain empty unless a deliberate visual change is explicitly requested.
+14. The override `App.tsx` in `frontend_spa/` must import **all** user-facing pages from `@/pages/*` (i.e. the real Lovable source pages under `lovable/src/pages/`). The only permitted `@frontend/pages/*` import is `UnderConstructionPage`. Every other page must come from `@/`. Importing a custom replacement page from `@frontend/pages/*` instead of the real Lovable page is a critical regression — it strips out all Lovable UI (carousels, tabs, custom components) and replaces it with a stripped-down shell.
+15. The override `App.tsx` must preserve every React provider that exists in `lovable/src/App.tsx`. Read `lovable/src/App.tsx` before writing the override and mirror the provider tree exactly: `QueryClientProvider`, `AuthProvider`, `DraftProvider`, `TooltipProvider`, both `Toaster`s. Dropping any provider causes silent runtime failures across all pages.
+16. Every Django URL that previously rendered an HTML template must have an explicit SPA shell pattern in `frontend/urls.py` **before** the Django app's own `urls.py` is included. The global catch-all in `tapne/urls.py` is a safety net, not a substitute for explicit patterns. Parameterised routes (`trips/<id>/edit/`, `trips/<id>/delete/`, `blogs/<slug>/edit/`, `u/<username>/`, etc.) must be listed explicitly with `re_path`. Never assume the catch-all will reach them first — Django's URL resolver matches in declaration order and app-specific `urls.py` files are included before the catch-all.
+17. After every `lovable/` submodule pull, verify that the four dual-mode files are still present and intact: `lovable/src/lib/mode.ts`, `lovable/src/lib/devMock.ts`, `lovable/src/lib/api.ts`, and `lovable/src/main.tsx`. Lovable can silently overwrite any of them during normal development. A missing or reverted `mode.ts` makes `IS_DEV_MODE` permanently undefined (crash). A reverted `api.ts` removes the mock interception and sends real fetch calls to `/__devmock__/*` URLs that do not exist on Django. Re-apply the dual-mode changes before building whenever these files have regressed.
 
 ## Use This Skill When
 
@@ -43,10 +50,44 @@ Read `references/operational-hardening.md` before closing the work or trusting a
 - Depending on `LOVABLE_FRONTEND_ENABLED`, those deploy paths can serve Django-rendered public pages or the Lovable SPA shell through Django.
 - Do not assume the live site is still in an earlier Django-only mode. Verify the current live shell and revision on every invocation.
 - Lovable is a standalone Vite SPA from [lovable/package.json](e:/tapne/lovable/package.json).
-- Lovable currently ships mock and local-only behavior in:
-  - [lovable/src/data/mockData.ts](e:/tapne/lovable/src/data/mockData.ts)
-  - [lovable/src/contexts/AuthContext.tsx](e:/tapne/lovable/src/contexts/AuthContext.tsx)
-  - [lovable/src/contexts/DraftContext.tsx](e:/tapne/lovable/src/contexts/DraftContext.tsx)
+- **Dual-mode architecture** — Lovable operates in two modes controlled entirely by whether `window.TAPNE_RUNTIME_CONFIG` is present at page load:
+  - **Lovable dev mode** (`window.TAPNE_RUNTIME_CONFIG` absent): `lovable/src/lib/mode.ts` detects absence, injects a mock runtime config with `/__devmock__/*` API URLs, and sets `IS_DEV_MODE = true`. All API calls in `lovable/src/lib/api.ts` are intercepted by `lovable/src/lib/devMock.ts`, which returns in-memory mock responses built from `mockData.ts`. Auth, drafts, and all page data work fully in the Lovable editor without Django.
+  - **Django production mode** (`window.TAPNE_RUNTIME_CONFIG` present, injected by Django): `IS_DEV_MODE = false`. `mode.ts` does not overwrite the real config. All `api.ts` functions skip mock interception and execute real Django fetch calls exactly as before.
+  - The switch is automatic — no manual flag or env var needed. Pulling `lovable/` into this repo and building with Django's HTML shell injection activates Django mode.
+- The four dual-mode files that must stay intact across Lovable submodule updates:
+  - [lovable/src/lib/mode.ts](e:/tapne/lovable/src/lib/mode.ts) — mode detection and dev config injection (must be first import in main.tsx)
+  - [lovable/src/lib/devMock.ts](e:/tapne/lovable/src/lib/devMock.ts) — in-memory mock API resolver for dev mode
+  - [lovable/src/lib/api.ts](e:/tapne/lovable/src/lib/api.ts) — IS_DEV_MODE interception in all four API functions
+  - [lovable/src/main.tsx](e:/tapne/lovable/src/main.tsx) — `import "@/lib/mode"` must be the first import
+- `lovable/src/data/mockData.ts` is no longer a production blocker — it is only used by `devMock.ts` for Lovable dev mode. In the production build, `@/lib/devMock` is aliased to `frontend_spa/src/lib/devMockStub.ts`, which excludes both `devMock.ts` and `mockData.ts` from the bundle entirely.
+- The former mock blockers in Lovable are now resolved:
+  - `lovable/src/contexts/AuthContext.tsx` — Django session-backed (real login/signup/profile via `cfg.api.*`)
+  - `lovable/src/contexts/DraftContext.tsx` — Django-backed draft CRUD (real persistence via `cfg.api.trip_drafts`)
+  - All pages (`Index`, `BrowseTrips`, `TripDetail`, `MyTrips`, `Profile`, `Blogs`) — Django API-backed via `apiGet/apiPost` through `lovable/src/lib/api.ts`
+- Lovable SPA pages (from [lovable/src/App.tsx](e:/tapne/lovable/src/App.tsx)): `/`, `/trips`, `/trips/:id`, `/create-trip`, `/my-trips`, `/blogs`, `/login`, `/signup`, `/profile`, `*` (catch-all).
+- Django routes with user-facing HTML that are NOT covered by a Lovable page — these must all resolve to the Lovable SPA shell, where the `*` catch-all renders the "Under Construction" page:
+  - `/about/`, `/how-it-works/`, `/safety/`, `/contact/`, `/terms/`, `/privacy/`
+  - `/search/`
+  - `/u/<username>/` (public user profile)
+  - `/settings/`, `/settings/appearance/`
+  - `/social/bookmarks/`
+  - `/interactions/dm/`, `/interactions/dm/<id>/`
+  - `/reviews/<type>/<id>/`
+  - `/activity/`
+  - `/blogs/create/`, `/blogs/<slug>/`, `/blogs/<slug>/edit/`, `/blogs/<slug>/delete/`
+  - `/enroll/hosting/inbox/`
+- Django routes with user-facing HTML that ARE covered by a Lovable page — these must redirect to the SPA equivalent instead of rendering a Django template:
+  - `/accounts/login/` → `/login`
+  - `/accounts/signup/` → `/signup`
+  - `/accounts/me/` and `/accounts/me/edit/` → `/profile`
+  - `/trips/` → `/trips`
+  - `/trips/create/` → `/create-trip`
+  - `/trips/mine/` → `/my-trips`
+  - `/trips/<id>/` → `/trips/<id>`
+  - `/trips/<id>/edit/` → `/create-trip?draft=<id>`
+  - `/blogs/` → `/blogs`
+  - `/` (feed home Django view) → covered by SPA fallback
+- The SPA catch-all must be implemented via a **global Django catch-all** appended at the very end of `tapne/urls.py` (after all real routes) when `LOVABLE_FRONTEND_ENABLED=True`. This guarantees every unclaimed URL serves the SPA shell rather than a 404 or Django template.
 - Lovable already exposes theme variables in [lovable/src/index.css](e:/tapne/lovable/src/index.css), which makes centralized external overrides feasible.
 
 ## Allowed Modification Surfaces
@@ -67,6 +108,12 @@ Read `references/operational-hardening.md` before closing the work or trusting a
 - Do not cut traffic over to a frontend route until create/read/update/delete flows are real.
 - Do not solve theme control by hand-editing compiled bundle colors in many places; centralize via injected CSS variables and override files.
 - Do not default to raw post-build bundle surgery if the problem can be solved more cleanly with external source-level alias overrides.
+- **Do not write custom `@frontend/pages/*` replacements for pages that Lovable already implements.** The Lovable source pages (`@/pages/*`) must be used directly. Custom page replacements bypass the entire Lovable UI and produce visually broken pages. Only create `@frontend/` components for things that do not exist at all in Lovable (e.g. `UnderConstructionPage`).
+- **Do not omit providers when writing the override `App.tsx`.** Read `lovable/src/App.tsx` first and copy the provider tree exactly. A missing `QueryClientProvider` or `DraftProvider` breaks all data-fetching and draft management silently.
+- **Do not rely on the global `tapne/urls.py` catch-all to intercept parameterised Django routes.** Django resolves URLs in declaration order — app-specific `urls.py` files (trips, blogs, accounts) are included before the catch-all, so `trips/<id>/edit/` and similar paths will be matched by the Django template view unless an explicit SPA shell pattern is declared in `frontend/urls.py` first.
+- **Do not add visual CSS rules to `overrides.css`.** Rules like `font-family: serif`, `border-radius: ... !important`, or `box-shadow: ... !important` change the visual appearance of the app relative to standalone Lovable. `overrides.css` exists only for non-visual functional fixes (z-index corrections, etc.) unless a deliberate visual change is explicitly requested by the user.
+- **Do not let the production Vite build include `devMock.ts` or `mockData.ts`.** The production build entry (`frontend_spa/`) must alias `@/lib/devMock` to `frontend_spa/src/lib/devMockStub.ts` in `frontend_spa/vite.production.config.ts`. Without this stub, the bundle carries all mock trip and user data, fails the `"mock_data"` banned-marker artifact check, and is ~50 KB larger than necessary. The stub is already in place — do not remove it or remove the alias.
+- **Do not remove or weaken the dual-mode files in `lovable/src/lib/`.** If Lovable overwrites `mode.ts`, `devMock.ts`, `api.ts`, or `main.tsx` during a submodule update, re-apply the dual-mode changes before building. Check with `git diff HEAD~1 -- lovable/src/lib/api.ts lovable/src/lib/mode.ts lovable/src/main.tsx` after every submodule pull.
 
 ## Workflow
 
@@ -89,19 +136,67 @@ Then inspect:
 
 Do not start infra work before you know which Lovable routes are still fake.
 
+### 1b. Verify dual-mode files after every submodule pull (run every time)
+
+After pulling `lovable/` changes, verify these four files are still intact before doing anything else. Lovable can silently overwrite them during normal development sessions.
+
+```bash
+# Check if any dual-mode files were changed in the latest lovable commit
+cd lovable && git diff HEAD~1 -- src/lib/mode.ts src/lib/devMock.ts src/lib/api.ts src/main.tsx
+```
+
+For each file, confirm:
+
+| File | Required condition |
+|---|---|
+| `lovable/src/main.tsx` | First import is `import "@/lib/mode"` |
+| `lovable/src/lib/mode.ts` | Exports `IS_DEV_MODE`, injects `DEV_RUNTIME_CONFIG` when dev, all `/__devmock__/*` API URLs present |
+| `lovable/src/lib/api.ts` | Imports `IS_DEV_MODE` and `resolveMockRequest`; all four functions have `if (IS_DEV_MODE) return resolveMockRequest(...)` as first line |
+| `lovable/src/lib/devMock.ts` | Exports `resolveMockRequest`; handles session, auth, home, trips, trip detail, blogs, my-trips, draft CRUD, profile |
+
+If any file has been overwritten by Lovable, re-apply the dual-mode changes (see `references/no-touch-override-build.md` Section "Dual-mode system"). Then continue with the rest of the workflow.
+
+### 1d. Audit the override App.tsx and frontend/urls.py (run every time)
+
+Before touching anything else, cross-check these two files against `lovable/src/App.tsx`:
+
+**`frontend_spa/src/App.tsx` checklist:**
+
+1. Open `lovable/src/App.tsx` and list every import, every provider, every route.
+2. In `frontend_spa/src/App.tsx`, confirm:
+   - Every page import uses `@/pages/<PageName>` (Lovable source) — **not** `@frontend/pages/<PageName>`.
+   - The only `@frontend/pages/*` import is `UnderConstructionPage`.
+   - The provider tree matches `lovable/src/App.tsx` exactly: `QueryClientProvider`, `AuthProvider`, `DraftProvider`, `TooltipProvider`, `Toaster` (both variants).
+   - The route list matches `lovable/src/App.tsx` exactly — same paths, same page components, same `*` catch-all (pointing to `UnderConstructionPage`).
+3. If any page is imported from `@frontend/pages/*` other than `UnderConstructionPage`, replace it with `@/pages/*` immediately — this is a critical visual regression.
+
+**`frontend/urls.py` checklist:**
+
+1. List every Django URL pattern across all `urls.py` files that renders an HTML template for a browser user (see route tables in `references/current-state-audit.md`).
+2. For every such URL, confirm `frontend/urls.py` has an explicit SPA shell pattern (`path(...)` or `re_path(...)` pointing to `frontend_entrypoint_view`) that will be matched **before** the Django template view.
+3. Pay special attention to parameterised routes: `trips/<id>/edit/`, `trips/<id>/delete/`, `blogs/<slug>/edit/`, `blogs/<slug>/delete/`, `u/<username>/`, `interactions/dm/<id>/`.
+4. Verify using Django's URL resolver:
+   ```bash
+   python manage.py shell -c "
+   from django.urls import resolve
+   for url in ['/trips/1/edit/', '/accounts/login/', '/u/testuser/']:
+       print(url, '->', resolve(url).func.__name__)
+   "
+   ```
+   Every URL must resolve to `frontend_entrypoint_view`, not a template-rendering view.
+
 ### 2. Define route ownership
 
-Create a route map with three classes:
+Route ownership in this repo is permanently fixed:
 
-- `spa-public`: served by the Lovable build on the main domain
-- `django-web`: still rendered directly by Django
-- `backend-only`: API, admin, upload, auth endpoints, callbacks, health checks
+- `spa-public`: **every browser-navigable URL** — served by the Lovable SPA shell via Django's SPA fallback. Includes all routes defined in `lovable/src/App.tsx` and all Django user-facing URLs listed in the Repo Facts section above. No exceptions.
+- `backend-only`: `/frontend-api/**`, `/admin/`, `/uploads/`, `/runtime/`, `/trips/<id>/banner/`, `/trips/api/destination/**`, `/accounts/logout/`, `/enroll/trips/<id>/request/`, `/enroll/requests/<id>/approve|deny/`, `/social/follow/**`, `/social/bookmark|unbookmark/`, `/interactions/comment/`, `/interactions/reply/`, `/interactions/dm/open/`, `/interactions/dm/<id>/send/`, `/reviews/create/`, `/runtime/health/`, `/robots.txt`, `/sitemap.xml`, `google*.html`. These are called by the SPA via `fetch()` — they never render HTML for a user.
 
-Default target for this repo:
+**There is no `django-web` class.** Django no longer renders any user-facing page. Every URL not in `backend-only` gets the SPA shell.
 
-- Public marketing and discovery routes should move to Lovable
-- Django should continue to own `/admin`, backend APIs, uploads/media, and operational endpoints
-- Any route still dependent on compiled mock behavior stays off production traffic until replaced
+Django URL patterns that previously rendered HTML templates for public-facing routes must be converted to one of:
+  - a redirect to the equivalent SPA path (if one exists in `lovable/src/App.tsx`), OR
+  - a pass-through to the SPA catch-all (if there is no Lovable page — the SPA's `*` route will render "Under Construction")
 
 ### 3. Build Lovable through an external override layer
 
@@ -140,7 +235,7 @@ If you are using an external override build config, keep it outside `lovable/` t
 
 ### 5. Externalize centralized frontend control
 
-Keep frontend control in files outside `lovable/`, for example:
+Keep frontend control in files outside `lovable/`:
 
 - `static/frontend-brand/tokens.css`
 - `static/frontend-brand/overrides.css`
@@ -153,9 +248,78 @@ For this repo, the preferred production shell is:
 
 Load them into the shipped frontend shell after the Lovable bundle is built:
 
-- `tokens.css`: brand colors, fonts, radii, shadows, spacing variables
-- `overrides.css`: targeted class overrides that cannot be expressed purely through variables
+- `tokens.css`: CSS variable declarations that must exactly match `lovable/src/index.css` — both `:root` and `.dark` blocks. Copy the values verbatim. Do not invent or change any value. The purpose is externalised control, not visual change.
+- `overrides.css`: must be empty by default. Only add rules here when a deliberate visual change is explicitly requested by the user. Never populate it as part of a standard cutover.
 - `runtime-config.js`: API base URL, environment flags, auth/bootstrap config
+
+**Exact token values to use in `tokens.css`** (sourced from `lovable/src/index.css`):
+
+`:root` block:
+```css
+--background: 160 20% 98%;
+--foreground: 200 25% 10%;
+--card: 0 0% 100%;
+--card-foreground: 200 25% 10%;
+--popover: 0 0% 100%;
+--popover-foreground: 200 25% 10%;
+--primary: 174 55% 42%;
+--primary-foreground: 0 0% 100%;
+--secondary: 170 25% 94%;
+--secondary-foreground: 200 25% 15%;
+--muted: 170 15% 94%;
+--muted-foreground: 200 10% 46%;
+--accent: 174 40% 90%;
+--accent-foreground: 174 55% 25%;
+--destructive: 0 72% 55%;
+--destructive-foreground: 0 0% 100%;
+--border: 170 20% 88%;
+--input: 170 20% 88%;
+--ring: 174 55% 42%;
+--radius: 0.625rem;
+--sidebar-background: 160 20% 97%;
+--sidebar-foreground: 200 15% 30%;
+--sidebar-primary: 174 55% 42%;
+--sidebar-primary-foreground: 0 0% 100%;
+--sidebar-accent: 170 25% 94%;
+--sidebar-accent-foreground: 200 25% 15%;
+--sidebar-border: 170 20% 88%;
+--sidebar-ring: 174 55% 42%;
+```
+
+`.dark` block:
+```css
+--background: 200 20% 8%;
+--foreground: 160 10% 92%;
+--card: 200 15% 12%;
+--card-foreground: 160 10% 92%;
+--popover: 200 15% 12%;
+--popover-foreground: 160 10% 92%;
+--primary: 174 55% 42%;
+--primary-foreground: 0 0% 100%;
+--secondary: 200 15% 18%;
+--secondary-foreground: 160 10% 85%;
+--muted: 200 10% 18%;
+--muted-foreground: 200 8% 55%;
+--accent: 174 30% 18%;
+--accent-foreground: 174 40% 75%;
+--destructive: 0 62% 50%;
+--destructive-foreground: 0 0% 100%;
+--border: 200 12% 20%;
+--input: 200 12% 20%;
+--ring: 174 55% 42%;
+--sidebar-background: 200 15% 10%;
+--sidebar-foreground: 160 10% 80%;
+--sidebar-primary: 174 55% 42%;
+--sidebar-primary-foreground: 0 0% 100%;
+--sidebar-accent: 200 15% 18%;
+--sidebar-accent-foreground: 160 10% 85%;
+--sidebar-border: 200 12% 20%;
+--sidebar-ring: 174 55% 42%;
+```
+
+Font: `font-family: 'Inter', system-ui, -apple-system, sans-serif;` on `body`.
+
+Border radius: `--radius: 0.625rem`. Derived values (`lg`, `md`, `sm`) are computed by Tailwind — do not redeclare them.
 
 If the build output needs injection, patch the external build artifact or serve it through a Django wrapper template. Do not patch files under `lovable/`.
 If the injected runtime payload includes datetimes, decimals, or model-derived data, use Django-safe JSON serialization.
@@ -244,10 +408,23 @@ Do not close the work until all relevant items are true:
 - direct refresh on SPA routes works in production
 - build and deploy are reproducible from repo scripts
 - centralized color/font/shape control exists outside `lovable/`
+- `static/frontend-brand/tokens.css` CSS variable values are identical to `lovable/src/index.css` — no visual deviation
+- `static/frontend-brand/overrides.css` is empty (no unsolicited visual overrides)
 - the built artifact no longer contains banned mock/local-only markers
 - the built artifact does not require `/frontend-runtime.js` to boot
 - the served root HTML includes inline runtime config
 - the root route works for both signed-out and signed-in sessions
+- no Django template is being served for any browser-navigable URL (run `grep -r "render(request" <all_app_views>` and confirm every hit is either a `backend-only` endpoint or has been replaced by an SPA redirect/fallback)
+- every Django URL that previously rendered a user-facing template now either redirects to the SPA equivalent or falls through to the SPA catch-all
+- the SPA catch-all (`*` route) renders an "Under Construction" page — not a blank screen, not a Django 404, not an error
+- the "Under Construction" page uses the same Lovable design tokens (colors, font, radius) as the rest of the SPA — it must look like it belongs to the same app
+- `frontend_spa/src/App.tsx` imports every user-facing page from `@/pages/*` (Lovable source) — no `@frontend/pages/*` imports except `UnderConstructionPage`
+- `frontend_spa/src/App.tsx` provider tree matches `lovable/src/App.tsx` exactly (`QueryClientProvider`, `AuthProvider`, `DraftProvider`, `TooltipProvider`, both `Toaster`s)
+- `frontend/urls.py` has explicit SPA shell patterns for every parameterised Django route that previously rendered a template (`trips/<id>/edit/`, `trips/<id>/delete/`, `blogs/<slug>/edit/`, `u/<username>/`, etc.) — verified with Django's URL resolver
+- `static/frontend-brand/overrides.css` contains no visual CSS rules (no font-family overrides, no `!important` border-radius or shadow overrides) — only non-visual functional fixes are permitted
+- dual-mode files in `lovable/src/lib/` are intact: `mode.ts` exports `IS_DEV_MODE` and injects mock config, `devMock.ts` exports `resolveMockRequest`, `api.ts` has IS_DEV_MODE interception in all four functions, `main.tsx` imports `@/lib/mode` first
+- `frontend_spa/vite.production.config.ts` aliases `@/lib/devMock` to `frontend_spa/src/lib/devMockStub.ts` — verified present in the alias map
+- production bundle does not contain `mockData` in any JS bundle or source map file (confirmed by artifact checker — a failure here means the devMockStub alias was not applied)
 
 Run the bundled verifier against the final artifact:
 

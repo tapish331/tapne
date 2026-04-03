@@ -39,6 +39,26 @@ Start with these when applicable:
   Replace mock catalog exports with live data helpers or bootstrap-backed exports that preserve the expected import surface.
 - components that still perform fake writes even after data/context replacement
   Examples in this repo include booking/application flows and host-side application management.
+- `lovable/src/App.tsx` (always required for this repo)
+  The override at `frontend_spa/src/App.tsx` must:
+  1. Import all user-facing pages from `@/pages/*` (the real Lovable source pages) — **never** from `@frontend/pages/*`.
+  2. Import only `UnderConstructionPage` from `@frontend/pages/UnderConstructionPage` — this is the sole `@frontend/pages/` import.
+  3. Preserve the full provider tree from `lovable/src/App.tsx`: `QueryClientProvider`, `AuthProvider`, `DraftProvider`, `TooltipProvider`, both `Toaster`s.
+  4. Use the same route paths as `lovable/src/App.tsx`. The `*` catch-all points to `UnderConstructionPage` instead of `NotFound`. Everything else is identical.
+  See `references/override-targets.md` for the exact template.
+
+## Under Construction component requirements
+
+The `UnderConstruction` component provided via the external override must:
+
+1. Import and render Navbar and Footer from existing Lovable components (`@/components/Navbar`, `@/components/Footer`).
+2. Use only Tailwind utility classes already in scope from the Lovable build — specifically `bg-background`, `text-foreground`, `text-primary`, `border-border`, `font-sans`, `rounded-lg`, `container`, standard spacing (`py-*`, `px-*`, `gap-*`). Do not add new CSS, inline styles, or non-Lovable class names.
+3. Display: a clear heading ("Under Construction" or similar), a short message ("This page is coming soon."), and a home link/button (`/`).
+4. Must look visually consistent with the rest of the Lovable app — same Navbar, same Footer, same page structure, same type scale.
+5. Must not depend on any auth state or Django data — it must render identically for signed-in and signed-out users.
+6. Must not reference any Lovable mock data, localStorage, or fake contexts.
+
+This component is the universal fallback for all Django routes that have no corresponding Lovable page.
 
 ## Replacement module rules
 
@@ -78,6 +98,50 @@ A route is not cutover-ready until you can show:
 - the fake source module is overridden externally
 - the built artifact is free of banned mock/local-only markers for that surface
 - browser behavior writes through Django and survives refresh
+
+## Dual-mode system
+
+The Lovable source now contains a dual-mode architecture that lets it run fully in the Lovable editor without Django, and automatically switch to real Django API calls when deployed.
+
+This is a special case of the no-touch rule: the four dual-mode files (`mode.ts`, `devMock.ts`, `api.ts`, `main.tsx`) live inside `lovable/src/` but were added via a Lovable prompt, not by editing the files directly. They follow the same rule: if Lovable overwrites them, re-apply via prompt — never hand-edit under `lovable/`.
+
+### What the dual-mode files do
+
+| File | Role |
+|---|---|
+| `lovable/src/main.tsx` | First import is `import "@/lib/mode"` — must run before any React component |
+| `lovable/src/lib/mode.ts` | Detects `window.TAPNE_RUNTIME_CONFIG` presence. If absent (dev), injects a mock config with `/__devmock__/*` API URLs and sets `IS_DEV_MODE = true`. If present (Django), does nothing — `IS_DEV_MODE = false`. |
+| `lovable/src/lib/devMock.ts` | In-memory mock API resolver. Handles session, auth, home, trips list, trip detail, blogs, my-trips, draft CRUD, and profile. Converts `mockData.ts` types to the Django API response shapes expected by each page. |
+| `lovable/src/lib/api.ts` | Wraps all four API functions (`apiGet`, `apiPost`, `apiPatch`, `apiDelete`) with an `if (IS_DEV_MODE)` early return that calls `resolveMockRequest`. Django mode paths are unchanged. |
+
+### Production build requirement: devMock stub
+
+`devMock.ts` imports `lovable/src/data/mockData.ts`. If the production bundle includes `devMock.ts`, it also includes all mock trip/user data — inflating the bundle by ~50 KB and causing the artifact checker to fail on the `"mockData"` banned marker.
+
+Fix: alias `@/lib/devMock` to `frontend_spa/src/lib/devMockStub.ts` in the production Vite config.
+
+In `frontend_spa/vite.production.config.ts`, the `resolve.alias` block must contain:
+```typescript
+"@/lib/devMock": path.resolve(__dirname, "src/lib/devMockStub.ts"),
+```
+(before the `"@"` alias so the longer key takes precedence)
+
+The stub file (`frontend_spa/src/lib/devMockStub.ts`) exports a no-op `resolveMockRequest`. The production bundle then contains neither `devMock.ts` nor `mockData.ts`.
+
+### Re-applying dual-mode after a Lovable submodule pull
+
+If Lovable overwrites any of the four files, re-apply by giving Lovable this prompt:
+
+> The files `src/lib/mode.ts`, `src/lib/devMock.ts`, `src/lib/api.ts`, and `src/main.tsx` have been overwritten by a Lovable update. Please restore the dual-mode architecture exactly as specified in the previous session. The complete specification is in `skills/lovable-django-production-cutover/references/no-touch-override-build.md` and the last dual-mode prompt.
+
+Alternatively, apply the changes manually by copying the working versions from git history:
+```bash
+cd lovable
+git show <last-good-sha>:src/lib/mode.ts > src/lib/mode.ts
+git show <last-good-sha>:src/lib/devMock.ts > src/lib/devMock.ts
+git show <last-good-sha>:src/lib/api.ts > src/lib/api.ts
+git show <last-good-sha>:src/main.tsx > src/main.tsx
+```
 
 ## Practical repo policy
 
