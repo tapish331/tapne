@@ -268,6 +268,8 @@ _canonical_scheme_default = "http" if DEBUG else "https"
 _canonical_scheme = os.getenv("CANONICAL_SCHEME", _canonical_scheme_default).strip().lower()
 CANONICAL_SCHEME = _canonical_scheme if _canonical_scheme in {"http", "https"} else "https"
 CANONICAL_HOST_REDIRECT_ENABLED = env_bool("CANONICAL_HOST_REDIRECT_ENABLED", not DEBUG)
+# Absolute base URL used for OAuth redirect URIs and other absolute URL needs.
+BASE_URL = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}" if CANONICAL_HOST else ""
 
 # Media upload validation defaults (used by media app, env-overridable).
 TAPNE_MEDIA_IMAGE_MAX_MB = max(1, env_int("TAPNE_MEDIA_IMAGE_MAX_MB", 12))

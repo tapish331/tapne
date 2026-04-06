@@ -287,14 +287,33 @@ if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
     $env:GOOGLE_MAPS_API_KEY = $resolvedGoogleMapsApiKey
 }
 
+# Resolve GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET from env or .env file
+$dotEnvPath = Join-Path $repoRoot ".env"
+if ([string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_ID)) {
+    $dotEnvClientId = Get-DotEnvValue -FilePath $dotEnvPath -Name "GOOGLE_CLIENT_ID"
+    if (-not [string]::IsNullOrWhiteSpace($dotEnvClientId)) {
+        $env:GOOGLE_CLIENT_ID = $dotEnvClientId.Trim()
+    }
+}
+if ([string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_SECRET)) {
+    $dotEnvClientSecret = Get-DotEnvValue -FilePath $dotEnvPath -Name "GOOGLE_CLIENT_SECRET"
+    if (-not [string]::IsNullOrWhiteSpace($dotEnvClientSecret)) {
+        $env:GOOGLE_CLIENT_SECRET = $dotEnvClientSecret.Trim()
+    }
+}
+
 $localImageRef = "{0}:{1}" -f $ImageName, $ImageTag
 $artifactImageRef = "{0}-docker.pkg.dev/{1}/{2}/{3}:{4}" -f $Region, $ProjectId, $Repository, $ImageName, $ImageTag
 
+$buildScript = Join-Path $scriptDirectory "build-lovable-production-frontend.ps1"
 $setupScript = Join-Path $scriptDirectory "setup-faithful-local.ps1"
 $checkScript = Join-Path $scriptDirectory "check-cloud-run-web-image.ps1"
 $pushScript = Join-Path $scriptDirectory "push-web-image-to-artifact.ps1"
 $domainScript = Join-Path $scriptDirectory "setup-custom-domain.ps1"
 $deployScript = Join-Path $scriptDirectory "deploy-cloud-run.ps1"
+
+$buildArgs = @("-RepoRoot", $repoRoot)
+if ($isVerbose) { $buildArgs += "-Verbose" }
 
 $setupArgs = @(
     "-WebImageRef", $localImageRef,
@@ -363,7 +382,9 @@ $deployArgs = @(
     "-CsrfTrustedOrigins", $csrfTrustedOrigins,
     "-CanonicalHost", $canonicalHost,
     "-SmokeBaseUrl", ("https://{0}" -f $canonicalHost),
-    "-UptimeCheckHost", $canonicalHost
+    "-UptimeCheckHost", $canonicalHost,
+    "-SmokeCssPath", "/",
+    "-SmokeJsPath", "/sitemap.xml"
 )
 if ($SkipAuthLogin) {
     $deployArgs += "-SkipAuthLogin"
@@ -385,11 +406,12 @@ Write-Verbose (
 
 $startTime = Get-Date
 try {
-    Invoke-ScriptStep -StepName "1/5 setup-faithful-local" -PowerShellExe $powerShellExe -ScriptPath $setupScript -Arguments $setupArgs
-    Invoke-ScriptStep -StepName "2/5 check-cloud-run-web-image" -PowerShellExe $powerShellExe -ScriptPath $checkScript -Arguments $checkArgs
-    Invoke-ScriptStep -StepName "3/5 push-web-image-to-artifact" -PowerShellExe $powerShellExe -ScriptPath $pushScript -Arguments $pushArgs
-    Invoke-ScriptStep -StepName "4/5 setup-custom-domain" -PowerShellExe $powerShellExe -ScriptPath $domainScript -Arguments $domainArgs
-    Invoke-ScriptStep -StepName "5/5 deploy-cloud-run" -PowerShellExe $powerShellExe -ScriptPath $deployScript -Arguments $deployArgs
+    Invoke-ScriptStep -StepName "1/6 build-lovable-production-frontend" -PowerShellExe $powerShellExe -ScriptPath $buildScript -Arguments $buildArgs
+    Invoke-ScriptStep -StepName "2/6 setup-faithful-local" -PowerShellExe $powerShellExe -ScriptPath $setupScript -Arguments $setupArgs
+    Invoke-ScriptStep -StepName "3/6 check-cloud-run-web-image" -PowerShellExe $powerShellExe -ScriptPath $checkScript -Arguments $checkArgs
+    Invoke-ScriptStep -StepName "4/6 push-web-image-to-artifact" -PowerShellExe $powerShellExe -ScriptPath $pushScript -Arguments $pushArgs
+    Invoke-ScriptStep -StepName "5/6 setup-custom-domain" -PowerShellExe $powerShellExe -ScriptPath $domainScript -Arguments $domainArgs
+    Invoke-ScriptStep -StepName "6/6 deploy-cloud-run" -PowerShellExe $powerShellExe -ScriptPath $deployScript -Arguments $deployArgs
 }
 catch {
     Write-Host ""

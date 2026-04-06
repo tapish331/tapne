@@ -11,7 +11,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_safe
 
 SITE_NAME = "tapne"
 DEFAULT_META_DESCRIPTION = "tapne: host trips, write blogs, and grow audiences."
@@ -269,7 +269,7 @@ def robots_txt_view(request: HttpRequest) -> HttpResponse:
     return HttpResponse("\n".join(lines) + "\n", content_type="text/plain; charset=utf-8")
 
 
-@require_GET
+@require_safe
 def sitemap_xml_view(request: HttpRequest) -> HttpResponse:
     sitemap_content = _render_sitemap(_collect_sitemap_entries(request))
     return HttpResponse(sitemap_content, content_type="application/xml; charset=utf-8")

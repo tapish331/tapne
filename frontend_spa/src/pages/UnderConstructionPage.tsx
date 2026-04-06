@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
-import FrontendNavbar from "@frontend/components/FrontendNavbar";
+import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 
 export default function UnderConstructionPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <FrontendNavbar />
+      <Navbar />
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-24 text-center">
         <div className="max-w-md">
           <div className="text-6xl mb-6">🚧</div>

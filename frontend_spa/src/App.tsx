@@ -52,11 +52,13 @@ const GlobalLoginModal = () => {
 // Layout wrapper mirrors the <ScrollToTop /> and <GlobalLoginModal /> placement
 // in lovable/src/App.tsx. createBrowserRouter requires these to live inside
 // a layout route (they need router context from useLocation / useAuth).
+// DraftProvider is placed here (inside the router) because DraftContext.tsx
+// calls useNavigate(), which requires a router ancestor.
 const RootLayout = () => (
-  <>
+  <DraftProvider>
     <ScrollToTop />
     <Outlet />
-  </>
+  </DraftProvider>
 );
 
 // Route list mirrors lovable/src/App.tsx exactly.
@@ -94,14 +96,12 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <DraftProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <GlobalLoginModal />
-            <RouterProvider router={router} />
-          </TooltipProvider>
-        </DraftProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <GlobalLoginModal />
+          <RouterProvider router={router} />
+        </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -295,11 +295,11 @@ Verify:
 - [ ] No `/__devmock__/` URLs remain in the bundle (confirms mock bypass aliases worked)
 - [ ] No `IS_DEV_MODE` branches with real fetch logic remain active (dead code eliminated by bundler)
 
-Check for devmock URLs in the built bundle:
+Check that the mock request handler was stubbed (not the URL strings):
 ```bash
-grep -r "__devmock__" artifacts/lovable-production-dist/ | grep -v "node_modules"
+grep -c "resolveMockRequest" artifacts/lovable-production-dist/assets/*.js
 ```
-Any match is a failure — the mock bypass alias did not apply.
+Any non-zero count is a failure — the `@/lib/devMock` alias did not apply. Note: `/__devmock__/` URL *strings* from `mode.ts`'s `DEV_RUNTIME_CONFIG` will always appear in the bundle (they're static string literals in a dead-code object). This is expected and not a failure. The failure condition is `resolveMockRequest` appearing, which means actual mock handler logic entered the bundle.
 
 Also check that `TAPNE_RUNTIME_CONFIG` is referenced (confirms production mode detection):
 ```bash
@@ -341,6 +341,54 @@ Plus:
 10. **Django view returns only one tab's trips** → if the frontend fetches once and filters all tabs client-side, the view must return ALL trips (drafts + published + past) in a single response. Check `MyTrips.tsx` and `DraftContext.tsx` for how many fetches they make.
 11. **Missing `frontend-api/profile/<id>/` endpoint** → `Profile.tsx` calls `${cfg.api.base}/profile/${profileId}/` which does NOT go through a named `cfg.api.*` key. This URL must be registered in `frontend/urls.py` and handled by a view. Check every `cfg.api.base` interpolation — they are invisible to the api-key audit.
 12. Re-run the build after every fix
+13. **Context reads auth state from bootstrap snapshot** → if a React context (e.g. `DraftContext`) checks `cfg?.session?.authenticated` once at mount instead of subscribing to `useAuth().isAuthenticated`, it will silently skip API calls when the user logs in mid-session. Read every context's `useEffect` that loads data — if it doesn't depend on a live auth value, flag it and write a Lovable prompt to fix the dependency array.
+14. **Modal submit handler is cosmetic-only** → read every modal `handleSubmit` / `onSubmit` handler. If it only shows a toast and closes the modal without an `apiPost`/`apiPatch`/`fetch` call, it is incomplete regardless of how the mock handled it. Every user-visible action that changes state (reviews, ratings, comments, bookmarks inside modals) must make a real API call. Flag as a Lovable prompt showstopper.
+15. **Navigation-only button that should create a server resource first** → if a button navigates to a destination page (e.g. `/inbox`) without first creating the required resource on the server (e.g. a DM thread with the right participant), the user arrives at a blank state. Read every `navigate(...)` call that is attached to a CTA button. If the destination is a detail page (`/inbox?thread=X`, `/trips/123`) that expects a specific record to exist, the button must POST to create it first and include the new resource ID in the navigation URL.
+16. **Dropdown/menu items with no `onClick` handler** → read every `DropdownMenuItem`, `MenuItem`, or similar list-item component rendered inside a notifications, actions, or context menu dropdown. If any item has no click handler, it is a dead UI element. Check `Navbar.tsx` notification items specifically — they are commonly rendered as static display without navigation.
+
+17. **CSRF token becomes stale after login** — Django calls `rotate_token()` inside `auth.login()`, which writes a new CSRF secret to the cookie. `window.TAPNE_RUNTIME_CONFIG.csrf.token` is embedded at page-load time and becomes invalid the moment a user logs in via the modal (no page reload). Any POST made after modal login will receive a 403. **Fix:** `lovable/src/lib/api.ts`'s `csrfHeaders()` must read the CSRF value live from `document.cookie` using `c.csrf.cookie_name`, falling back to `c.csrf.token` only when the cookie row is absent. The CSRF cookie is NOT `HttpOnly` by default in Django — JS can always read it. Apply this fix if `csrfToken()` in `api.ts` reads `c.csrf.token` directly without first checking the cookie. This is a silent failure (403 HTML, no JSON body, empty `statusText` in HTTP/2) — the user sees "please try again" with no details.
+
+18. **React contexts that call `useNavigate()` must live inside the router** — If a context added in `lovable/` calls `useNavigate()` (e.g. `DraftContext.tsx` navigates to `/my-trips` after publish), it requires a Router ancestor. In `frontend_spa/src/App.tsx`, `<DraftProvider>` (and any such context) must be rendered inside `RootLayout` (the layout route element passed to `createBrowserRouter`), NOT wrapping `<RouterProvider>`. Check every context in `lovable/src/contexts/` for `useNavigate()`, `useLocation()`, or `useParams()` calls. If found, confirm the context provider is rendered inside `RootLayout` in `frontend_spa/src/App.tsx`. If it wraps `<RouterProvider>` instead, the entire React tree crashes on mount with "useNavigate() may be used only in the context of a `<Router>` component."
+
+19. **Non-Lovable components in `frontend_spa/` must use Lovable's AuthContext** — `frontend_spa/src/pages/` and `frontend_spa/src/components/` may contain legacy components (e.g. `UnderConstructionPage`, `FrontendNavbar`) that import from `@frontend/context/AuthContext` — a different AuthContext with a different provider. The production SPA wraps everything in Lovable's `<AuthProvider>` (from `@/contexts/AuthContext`). Any component that imports from `@frontend/context/AuthContext` and is rendered anywhere in the production SPA will throw "useAuth must be used inside AuthProvider" at runtime. **Audit:** `grep -rn "from \"@frontend/context/AuthContext\"" frontend_spa/src/` — any result must be replaced with Lovable's Navbar/Footer/auth-aware components.
+
+### Checklist G — No-op frontend interactions
+
+Read the following files in full (they are commonly incomplete in Lovable-generated code):
+
+- Every modal component found via: `grep -rn "handleSubmit\|onSubmit" lovable/src/components --include="*.tsx"`
+- Every "ask"/"contact"/"message" button's click handler in page components
+- Every `DropdownMenuItem` inside notification/action dropdowns in `Navbar.tsx`
+
+For each, confirm:
+- [ ] Modal `handleSubmit`: contains at least one `apiPost`/`apiPatch` call — not just `toast.success()` + close
+- [ ] "Contact host" / "Ask a question" type buttons: POST to create a DM thread **before** navigating to `/inbox`, passing the new `thread_id` in the URL
+- [ ] Notification dropdown items: have an `onClick` handler that navigates to a relevant route (minimum: `/activity`)
+- [ ] Auth-dependent context data loads: the load `useEffect` depends on a **live** auth value from `useAuth()`, not on `cfg.session.authenticated` (the frozen bootstrap snapshot)
+
+Any ✗ here is a Lovable prompt showstopper — it cannot be fixed from the Django side.
+
+---
+
+### Checklist H — CSRF token stays valid after modal login
+
+This checklist applies every run — CSRF rotation on login has burned production multiple times.
+
+Read `lovable/src/lib/api.ts` and confirm:
+
+- [ ] The `csrfHeaders()` function (or equivalent) reads the CSRF token from `document.cookie` using `c.csrf.cookie_name` as the key, **not** directly from `c.csrf.token` (the stale page-load value).
+- [ ] There is a fallback to `c.csrf.token` only when the cookie row is absent (e.g. first page load before any session is set).
+
+If `csrfHeaders()` reads `c.csrf.token` directly without checking the cookie first → this is a ✗. Apply fix protocol item 17. This causes all POST/PATCH/DELETE requests to return 403 after a user logs in via the modal (no page reload occurs, CSRF cookie rotates, header token is stale).
+
+### Checklist I — DraftProvider (and any context with router hooks) is inside the router
+
+Read `frontend_spa/src/App.tsx`. For every context provider in the component tree:
+
+- [ ] Any provider whose implementation calls `useNavigate()`, `useLocation()`, or `useParams()` must be rendered **inside** `RootLayout` (or another element rendered as a child of the router), not wrapping `<RouterProvider>`.
+- [ ] `<DraftProvider>` is inside `RootLayout`, not in the `App()` return value outside `<RouterProvider>`.
+
+If any such provider wraps `<RouterProvider>` → the entire React tree crashes on mount (fix: move inside `RootLayout`). See fix protocol item 18.
 
 ---
 
@@ -418,7 +466,17 @@ Based on findings from steps 1–6, determine whether `infra/run-cloud-run-workf
 
 If steps 1–6 introduced new Django settings or secrets that must be injected into the Cloud Run environment (e.g. a new third-party API key backing a new Django view), check whether `deploy-cloud-run.ps1` already reads that secret from Secret Manager or from the environment. If the value must flow from `.env` through the workflow to the deployed service, add a `Get-DotEnvValue` lookup for it and pass it to `$deployArgs` following the existing `$resolvedGoogleMapsApiKey` pattern in `run-cloud-run-workflow.ps1`.
 
-If no new secrets were introduced in steps 1–6, skip this sub-step.
+**Always check these secrets before every deploy — they are commonly missing on first cutover:**
+
+| Django setting | Secret Manager name | `.env` key | Required for |
+|---|---|---|---|
+| `GOOGLE_CLIENT_ID` | `tapne-google-client-id` | `GOOGLE_CLIENT_ID` | Google OAuth login button in `LoginModal` |
+| `GOOGLE_CLIENT_SECRET` | `tapne-google-client-secret` | `GOOGLE_CLIENT_SECRET` | Google OAuth callback flow |
+| `BASE_URL` | *(env var, not a secret)* | *(derived from `CANONICAL_HOST`)* | Google OAuth redirect URI construction |
+
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are handled by `run-cloud-run-workflow.ps1` which reads them from `.env` and passes them to `deploy-cloud-run.ps1` via `$env:GOOGLE_CLIENT_ID` / `$env:GOOGLE_CLIENT_SECRET`. `BASE_URL` is derived automatically from `CANONICAL_HOST` in `deploy-cloud-run.ps1` when `resolvedCanonicalHost` is non-empty.
+
+If no new secrets were introduced in steps 1–6 AND all three Google OAuth values are already confirmed in Secret Manager, skip this sub-step.
 
 ### 7d. Execute the Cloud Run workflow
 
@@ -529,13 +587,17 @@ Report the final exit code, the deployed service URL, and which of 7a/7b/7c requ
 | `manage_trip` | `/frontend-api/manage-trip/` | GET `/{id}/`, POST `/{id}/booking-status/`, POST `/{id}/participants/{p}/remove/`, POST `/{id}/cancel/`, POST `/{id}/message/` | URL prefix only |
 | `messages` | `/frontend-api/messages/` | — | Deferred — not yet called by any page |
 | `trip_chat` | `/frontend-api/trip-chat/` | — | Deferred — not yet called by any page |
+| `users_search` | `/frontend-api/users/search/` | GET | User autocomplete search |
+| `notifications` | `/frontend-api/notifications/` | GET | Navbar notification badge fetch, gated on `isAuthenticated` |
+| `trip_reviews` | `/frontend-api/trips/` | POST `/{id}/reviews/` | Base prefix — full URL is `${cfg.api.trip_reviews}${tripId}/reviews/` |
+| `dm_start` | `/frontend-api/dm/start/` | POST | Start a DM thread — `{ host_username }` → `{ ok, thread_id }` |
 
 **Additional endpoints not accessed via a named api key (use `cfg.api.base` prefix):**
 
 | URL shape | HTTP | Used in | Django view | Notes |
 |---|---|---|---|---|
 | `/frontend-api/profile/{id}/` | GET | `Profile.tsx` | `profile_detail_api_view` | `${cfg.api.base}/profile/${profileId}/` — profile_id is username OR numeric id |
-| `/frontend-api/profile/{username}/follow/` | POST, DELETE | `Profile.tsx` | *(deferred)* | Follow/unfollow |
+| `/frontend-api/profile/{username}/follow/` | POST, DELETE | `Profile.tsx` | `profile_follow_api_view` | Follow/unfollow — URL registered BEFORE the generic `profile/<id>/` pattern |
 | `/frontend-api/hosting-requests/{id}/decision/` | POST | `ManageTrip.tsx`, `ApplicationManager.tsx` | `hosting_decision_api_view` | `{ decision }` |
 
 > **Warning:** These `cfg.api.base` patterns are NOT in `TapneRuntimeConfig.api` and do NOT appear in the api-key audit. Run a dedicated grep for `cfg.api.base` every run to catch them.
@@ -578,6 +640,10 @@ Report the final exit code, the deployed service URL, and which of 7a/7b/7c requ
 | `POST /frontend-api/hosting-requests/{request_id}/decision/` | `hosting_decision_api_view` |
 | `GET /frontend-api/profile/{profile_id}/` | `profile_detail_api_view` |
 | `GET /frontend-api/users/search/` | `users_search_api_view` |
+| `POST /frontend-api/trips/{trip_id}/reviews/` | `trip_review_submit_api_view` |
+| `POST /frontend-api/dm/start/` | `dm_start_thread_api_view` |
+| `GET /frontend-api/notifications/` | `notifications_api_view` |
+| `POST,DELETE /frontend-api/profile/{profile_id}/follow/` | `profile_follow_api_view` |
 
 **SPA entrypoint routes (all → `frontend_entrypoint_view`):**
 
@@ -652,6 +718,8 @@ These are baked into component source files and require Lovable prompts — they
 | `LoginModal.tsx` `handleGoogleAuth` | Calls `login("google@tapne.com","google")` — fake credentials | Lovable prompt: check `cfg.google_oauth_url`; if truthy `window.location.href = cfg.google_oauth_url + "?next=" + encodeURIComponent(window.location.pathname)`; if falsy hide the Google button and divider |
 | `HeroSection.tsx` stats fallbacks | `"3,000+"` / `"120+"` / `"50+"` shown when `stats` prop is `undefined` | Django fix: always return `stats` key from `home_api_view` (never omit it) |
 | `CreateTrip.tsx` `handleSaveDraft` | Shows "Draft saved!" toast even when `draftId == null` (unauthenticated) | Lovable prompt: guard toast behind `draftId != null && isAuthenticated` |
+| `CreateTrip.tsx` `handleSubmit` | `navigate("/login")` when unauthenticated — navigates to a full-page `/login` route instead of opening the modal | Lovable prompt: replace `navigate("/login")` with `requireAuth()` — the `/login` full-page route is a fallback, not the intended auth flow |
+| `CreateTrip.tsx` `handleSubmit` | `if (numId) await publishDraft(numId); toast.success(...)` — toast fires even when `numId` is null (no draft was created, e.g. because CSRF failed on `createDraft`) | Lovable prompt: guard `publishDraft` call with `if (!numId) { toast.error(...); return; }` before the try block |
 
 For each entry in this table:
 - If the fix is "Django fix" → apply it from the Django side now.

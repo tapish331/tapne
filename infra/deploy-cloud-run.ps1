@@ -133,6 +133,8 @@ param(
     [string[]]$CsrfTrustedOrigins = @(),
     [string]$CanonicalHost = "",
     [string]$GoogleMapsApiKey = "",
+    [string]$GoogleClientId = "",
+    [string]$GoogleClientSecret = "",
 
     [string]$SmokeBaseUrl = "",
     [string]$SmokeHealthPath = "/runtime/health/",
@@ -195,6 +197,8 @@ $secretNames = @{
     CeleryBrokerUrl   = "tapne-celery-broker-url"
     CeleryResultStore = "tapne-celery-result-backend"
     GoogleMapsApiKey  = "tapne-google-maps-api-key"
+    GoogleClientId    = "tapne-google-client-id"
+    GoogleClientSecret = "tapne-google-client-secret"
 }
 
 $scriptDirectory = Split-Path -Parent $PSCommandPath
@@ -2675,6 +2679,8 @@ Write-Ok "Image import check passed."
 Write-Step "Upserting secrets"
 $existingDjangoSecret = Get-SecretLatestValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.SecretKey
 $existingGoogleMapsApiSecret = Get-SecretLatestValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleMapsApiKey
+$existingGoogleClientId = Get-SecretLatestValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleClientId
+$existingGoogleClientSecret = Get-SecretLatestValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleClientSecret
 if ([string]::IsNullOrWhiteSpace($existingDjangoSecret)) {
     $existingDjangoSecret = (python -c "import secrets; print(secrets.token_urlsafe(48))")
 }
@@ -2863,6 +2869,38 @@ if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
     Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleMapsApiKey -SecretValue $resolvedGoogleMapsApiKey
 }
 
+# ── Google OAuth (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) ────────────────────
+$resolvedGoogleClientId = ""
+if (-not [string]::IsNullOrWhiteSpace($GoogleClientId)) {
+    $resolvedGoogleClientId = $GoogleClientId.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_ID)) {
+    $resolvedGoogleClientId = $env:GOOGLE_CLIENT_ID.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingGoogleClientId)) {
+    $resolvedGoogleClientId = $existingGoogleClientId.Trim()
+}
+
+$resolvedGoogleClientSecret = ""
+if (-not [string]::IsNullOrWhiteSpace($GoogleClientSecret)) {
+    $resolvedGoogleClientSecret = $GoogleClientSecret.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_SECRET)) {
+    $resolvedGoogleClientSecret = $env:GOOGLE_CLIENT_SECRET.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace($existingGoogleClientSecret)) {
+    $resolvedGoogleClientSecret = $existingGoogleClientSecret.Trim()
+}
+
+if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleClientId) -and -not [string]::IsNullOrWhiteSpace($resolvedGoogleClientSecret)) {
+    Write-Info "Applying GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET for Google OAuth."
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleClientId -SecretValue $resolvedGoogleClientId
+    Set-SecretValue -GcloudCli $gcloudCli -Project $ProjectId -SecretName $secretNames.GoogleClientSecret -SecretValue $resolvedGoogleClientSecret
+}
+else {
+    Write-Info "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not set. Google OAuth login will be disabled."
+}
+
 $bootstrapHostCsrfFromServiceUrl = [string]::IsNullOrWhiteSpace($resolvedAllowedHosts) -and [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)
 if ($requestedAllowedHosts.Count -gt 0 -or $requestedCsrfTrustedOrigins.Count -gt 0) {
     Write-Info "Applying DJANGO_ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS from script parameters."
@@ -2905,6 +2943,7 @@ if (-not [string]::IsNullOrWhiteSpace($resolvedCsrfTrustedOrigins)) {
 if (-not [string]::IsNullOrWhiteSpace($resolvedCanonicalHost)) {
     $baseEnv += ("CANONICAL_HOST={0}" -f $resolvedCanonicalHost)
     $baseEnv += "CANONICAL_HOST_REDIRECT_ENABLED=true"
+    $baseEnv += ("BASE_URL=https://{0}" -f $resolvedCanonicalHost)
 }
 else {
     $baseEnv += "CANONICAL_HOST_REDIRECT_ENABLED=false"
@@ -2938,6 +2977,10 @@ if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)) {
     $googleMapsSecretEntry = ("GOOGLE_MAPS_API_KEY={0}:latest" -f $secretNames.GoogleMapsApiKey)
     $jobSecretMap += $googleMapsSecretEntry
     $webSecretMap += $googleMapsSecretEntry
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedGoogleClientId) -and -not [string]::IsNullOrWhiteSpace($resolvedGoogleClientSecret)) {
+    $webSecretMap += ("GOOGLE_CLIENT_ID={0}:latest" -f $secretNames.GoogleClientId)
+    $webSecretMap += ("GOOGLE_CLIENT_SECRET={0}:latest" -f $secretNames.GoogleClientSecret)
 }
 
 if (-not $SkipMigrations) {

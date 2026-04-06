@@ -6,7 +6,7 @@ import re
 import secrets
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Final, cast
@@ -24,7 +24,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST, require_safe
 
 from accounts.forms import LoginForm, ProfileEditForm, SignUpForm
 from accounts.models import ensure_profile
@@ -44,8 +44,10 @@ from interactions.models import (
     DirectMessage,
     DirectMessageThread,
     build_dm_thread_payload_for_member,
+    get_or_create_dm_thread_for_members,
     send_dm_message,
 )
+from reviews.models import submit_review
 from settings_app.models import build_settings_payload_for_member
 from social.models import Bookmark, build_bookmarks_payload_for_member, resolve_bookmark_target
 from trips.models import Trip, build_trip_detail_payload_for_user, build_trip_list_payload_for_user
@@ -412,6 +414,8 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "trip_chat": "/frontend-api/trip-chat/",
             "users_search": reverse("frontend:api-users-search"),
             "notifications": reverse("frontend:api-notifications"),
+            "trip_reviews": "/frontend-api/trips/",
+            "dm_start": reverse("frontend:api-dm-start-thread"),
         },
         "routes": {
             "home": "/",
@@ -517,7 +521,7 @@ def runtime_config_js(request: HttpRequest) -> HttpResponse:
 
 
 @ensure_csrf_cookie
-@require_GET
+@require_safe
 def frontend_entrypoint_view(
     request: HttpRequest,
     **_route_kwargs: object,
@@ -873,6 +877,34 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
             "reason": "Profile loaded from persisted account data.",
         }
     )
+
+
+@require_http_methods(["POST", "DELETE"])
+def profile_follow_api_view(request: HttpRequest, profile_id: str) -> JsonResponse:
+    """Follow (POST) or unfollow (DELETE) a user."""
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    target_user = None
+    if profile_id.isdigit():
+        target_user = UserModel.objects.filter(pk=int(profile_id)).first()
+    if target_user is None:
+        target_user = UserModel.objects.filter(username=profile_id).first()
+    if target_user is None:
+        return _json_error("Profile not found.", status=404)
+
+    if getattr(target_user, "pk", None) == getattr(request.user, "pk", None):
+        return _json_error("You cannot follow yourself.", status=400)
+
+    from social.models import FollowRelation
+    if request.method == "POST":
+        FollowRelation.objects.get_or_create(follower=request.user, following=target_user)
+    else:
+        FollowRelation.objects.filter(follower=request.user, following=target_user).delete()
+
+    followers_count = int(FollowRelation.objects.filter(following=target_user).count())
+    is_following = FollowRelation.objects.filter(follower=request.user, following=target_user).exists()
+    return JsonResponse({"ok": True, "followers_count": followers_count, "is_following": is_following})
 
 
 @require_GET
@@ -1563,3 +1595,94 @@ def users_search_api_view(request: HttpRequest) -> JsonResponse:
             "display_name": str(profile.effective_display_name),
         })
     return JsonResponse({"ok": True, "users": users})
+
+
+@require_http_methods(["POST"])
+def trip_review_submit_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    """Submit a review for a trip. Creates or updates the member's review."""
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    payload = _request_payload(request)
+    rating = payload.get("rating")
+    body = payload.get("body", "")
+    headline = payload.get("headline", "")
+
+    review, outcome, _target = submit_review(
+        member=request.user,
+        target_type="trip",
+        target_id=trip_id,
+        rating=rating,
+        headline=headline,
+        body=body,
+    )
+
+    if outcome in ("created", "updated") and review is not None:
+        return JsonResponse({
+            "ok": True,
+            "outcome": outcome,
+            "review": {
+                "id": review.pk,
+                "rating": int(review.rating or 0),
+                "headline": review.headline,
+                "body": review.body,
+                "author": str(getattr(review.author, "username", "")),
+                "created_at": review.created_at.isoformat() if review.created_at else None,
+            },
+        })
+
+    _error_messages: dict[str, str] = {
+        "member-required": "You must be logged in to submit a review.",
+        "invalid-member": "Invalid user account.",
+        "invalid-target-type": "Invalid review target.",
+        "target-not-found": "Trip not found.",
+        "invalid-rating": "Rating must be between 1 and 5.",
+        "too-long-headline": "Headline is too long.",
+        "empty-body": "Review body cannot be empty.",
+        "too-long-body": "Review is too long.",
+    }
+    return _json_error(_error_messages.get(str(outcome), "Could not submit review."), status=400)
+
+
+@require_http_methods(["POST"])
+def dm_start_thread_api_view(request: HttpRequest) -> JsonResponse:
+    """Get or create a DM thread between the current user and another user.
+
+    Request body: { "host_username": <str> }  OR  { "host_id": <int> }
+    Response:     { "ok": true, "thread_id": <int> }
+    """
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    payload = _request_payload(request)
+
+    host_username = str(payload.get("host_username") or "").strip()
+    if host_username:
+        other_user = UserModel.objects.filter(username=host_username).first()
+    else:
+        host_id_raw = payload.get("host_id")
+        try:
+            host_id = int(str(host_id_raw or 0))
+        except (TypeError, ValueError):
+            return _json_error("host_username or host_id is required.", status=400)
+        if host_id <= 0:
+            return _json_error("host_username or host_id is required.", status=400)
+        other_user = UserModel.objects.filter(pk=host_id).first()
+
+    if other_user is None:
+        return _json_error("Host not found.", status=404)
+
+    thread, _created, outcome = get_or_create_dm_thread_for_members(
+        member=request.user,
+        other_member=other_user,
+    )
+
+    if outcome in ("created", "existing") and thread is not None:
+        return JsonResponse({"ok": True, "thread_id": thread.pk})
+
+    _outcome_errors: dict[str, str] = {
+        "member-required": "You must be logged in.",
+        "invalid-member": "Invalid user account.",
+        "self-thread-blocked": "You cannot send a message to yourself.",
+    }
+    return _json_error(_outcome_errors.get(str(outcome), "Could not start conversation."), status=400)
