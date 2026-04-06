@@ -365,6 +365,73 @@ Keep the prompt under 200 words. Do not mention Django internals, file paths out
 
 ---
 
+## Step 7 — Update Cloud Run workflow scripts if required, then deploy
+
+Based on findings from steps 1–6, determine whether `infra/run-cloud-run-workflow.ps1` or related scripts need modifications before deploying. Apply changes only where required.
+
+### 7a. Lovable production build pre-step
+
+`setup-faithful-local.ps1` builds the Docker image but does **not** invoke `build-lovable-production-frontend.ps1`. It copies whatever is already in `artifacts/lovable-production-dist/` into the image. A stale or absent artifact means the deployed service serves outdated frontend assets.
+
+**Check:** Does `artifacts/lovable-production-dist/index.html` exist and reflect the `lovable/` HEAD from step 1?
+
+- If step 6 Checklist E ran the build successfully and `lovable/` was unchanged since: artifact is fresh — no script modification needed.
+- If the artifact is stale or absent: add a build pre-step so the workflow always produces a fresh artifact before the Docker image is built.
+
+**Required modification when the pre-step is missing from `run-cloud-run-workflow.ps1`:**
+
+1. Add near the other `$*Script` declarations:
+   ```powershell
+   $buildScript = Join-Path $scriptDirectory "build-lovable-production-frontend.ps1"
+   ```
+2. Add `$buildArgs` immediately after:
+   ```powershell
+   $buildArgs = @("-RepoRoot", $repoRoot)
+   if ($isVerbose) { $buildArgs += "-Verbose" }
+   ```
+3. Insert as the first `Invoke-ScriptStep` call:
+   ```powershell
+   Invoke-ScriptStep -StepName "1/6 build-lovable-production-frontend" -PowerShellExe $powerShellExe -ScriptPath $buildScript -Arguments $buildArgs
+   ```
+4. Renumber the remaining five steps from `1/5`–`5/5` to `2/6`–`6/6` in their `StepName` strings.
+
+### 7b. Smoke test paths
+
+`deploy-cloud-run.ps1` defaults for `-SmokeCssPath` (`/static/css/tapne.css`) and `-SmokeJsPath` (`/static/js/tapne-ui.js`) are Django template assets that do not exist in the Lovable SPA build. These paths return 404 after the cutover and will fail the post-deploy smoke test.
+
+**Check:** Does `$deployArgs` in `run-cloud-run-workflow.ps1` already override `-SmokeCssPath` and `-SmokeJsPath` with valid SPA-era paths?
+
+- If both overrides are present and point to paths that return 200 in the SPA deployment: no change needed.
+- If either is absent or still points to old Django template paths: add the overrides.
+
+**Required modification when overrides are missing — add to `$deployArgs`:**
+
+```powershell
+"-SmokeCssPath", "/",
+"-SmokeJsPath", "/sitemap.xml",
+```
+
+`/` is served by `frontend_entrypoint_view` (200 with injected `window.TAPNE_RUNTIME_CONFIG`).
+`/sitemap.xml` is served by Django directly (200, confirms backend-only routes are not accidentally shadowed by the SPA catch-all).
+
+### 7c. New environment variables from steps 1–6
+
+If steps 1–6 introduced new Django settings or secrets that must be injected into the Cloud Run environment (e.g. a new third-party API key backing a new Django view), check whether `deploy-cloud-run.ps1` already reads that secret from Secret Manager or from the environment. If the value must flow from `.env` through the workflow to the deployed service, add a `Get-DotEnvValue` lookup for it and pass it to `$deployArgs` following the existing `$resolvedGoogleMapsApiKey` pattern in `run-cloud-run-workflow.ps1`.
+
+If no new secrets were introduced in steps 1–6, skip this sub-step.
+
+### 7d. Execute the Cloud Run workflow
+
+Once all required modifications have been applied and saved:
+
+```powershell
+pwsh -File infra/run-cloud-run-workflow.ps1 -Verbose
+```
+
+Report the final exit code, the deployed service URL, and which of 7a/7b/7c required modifications.
+
+---
+
 ## Reporting when done
 
 1. HEAD SHAs after pull (Django repo + lovable submodule)
@@ -373,6 +440,7 @@ Keep the prompt under 200 words. Do not mention Django internals, file paths out
 4. Build artifact status (clean / what was found in devmock check)
 5. Live shell verification results (pass/fail per route and per API endpoint)
 6. Lovable prompt text if written, or "No Lovable prompt needed — all gaps resolved from Django side"
+7. Cloud Run workflow: which of 7a/7b/7c required script modifications (list each), workflow exit code, deployed service URL
 
 ---
 
