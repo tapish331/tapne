@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lovable Django Production Cutover"
-  short_description: "Ship Lovable with external override builds"
-  default_prompt: "Use $lovable-django-production-cutover to turn the repo's Lovable app into the real production frontend for tapnetravel.com while Django remains the real backend, using external source-override builds, runtime shell injection, and same-origin APIs without editing files inside lovable/."

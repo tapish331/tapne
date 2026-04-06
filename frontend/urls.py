@@ -28,12 +28,15 @@ urlpatterns = [
     path("frontend-api/blogs/<slug:slug>/", views.blog_detail_api_view, name="api-blogs-detail"),
     path("frontend-api/profile/me/", views.my_profile_api_view, name="api-profile-me"),
     path("frontend-api/bookmarks/", views.bookmarks_api_view, name="api-bookmarks"),
+    path("frontend-api/bookmarks/<int:trip_id>/", views.bookmark_trip_api_view, name="api-bookmark-trip"),
     path("frontend-api/activity/", views.activity_api_view, name="api-activity"),
     path("frontend-api/settings/", views.settings_api_view, name="api-settings"),
     path("frontend-api/hosting-inbox/", views.hosting_inbox_api_view, name="api-hosting-inbox"),
     path("frontend-api/dm/inbox/", views.dm_inbox_api_view, name="api-dm-inbox"),
     path("frontend-api/dm/threads/<int:thread_id>/", views.dm_thread_api_view, name="api-dm-thread"),
+    path("frontend-api/dm/inbox/<int:thread_id>/messages/", views.dm_send_message_api_view, name="api-dm-send-message"),
     path("frontend-api/trips/<int:trip_id>/join-request/", views.trip_join_request_api_view, name="api-trip-join-request"),
+    path("frontend-api/trips/<int:trip_id>/duplicate/", views.trip_duplicate_api_view, name="api-trip-duplicate"),
     path("frontend-api/manage-trip/<int:trip_id>/", views.manage_trip_api_view, name="api-manage-trip"),
     path("frontend-api/manage-trip/<int:trip_id>/booking-status/", views.manage_trip_booking_status_view, name="api-manage-trip-booking-status"),
     re_path(r"^frontend-api/manage-trip/(?P<trip_id>\d+)/participants/(?P<participant_id>\d+)/remove/$", views.manage_trip_remove_participant_view, name="api-manage-trip-remove-participant"),
@@ -44,6 +47,11 @@ urlpatterns = [
         views.hosting_decision_api_view,
         name="api-hosting-decision",
     ),
+    path("frontend-api/users/search/", views.users_search_api_view, name="api-users-search"),
+    re_path(r"^frontend-api/profile/(?P<profile_id>[^/]+)/$", views.profile_detail_api_view, name="api-profile-detail"),
+    path("frontend-api/notifications/", views.notifications_api_view, name="api-notifications"),
+    path("frontend-api/auth/google/start/", views.google_oauth_start_view, name="api-google-oauth-start"),
+    path("frontend-api/auth/google/callback/", views.google_oauth_callback_view, name="api-google-oauth-callback"),
     re_path(r"^assets/(?P<asset_path>.+)$", views.frontend_asset_view, name="asset"),
     re_path(
         r"^(?P<artifact_name>(?:favicon\.ico|placeholder\.svg|manifest\.webmanifest|site\.webmanifest))$",
@@ -69,6 +77,8 @@ if settings.LOVABLE_FRONTEND_ENABLED:
             re_path(r"^trips/(?P<trip_id>\d+)/?$", views.frontend_entrypoint_view, name="entrypoint-trip-detail"),
             re_path(r"^trips/(?P<trip_id>\d+)/edit/?$", views.frontend_entrypoint_view, name="entrypoint-trip-edit"),
             re_path(r"^trips/(?P<trip_id>\d+)/delete/?$", views.frontend_entrypoint_view, name="entrypoint-trip-delete"),
+            path("trips/preview", views.frontend_entrypoint_view, name="entrypoint-trip-preview"),
+            path("trips/preview/", views.frontend_entrypoint_view),
 
             # ── Blogs ─────────────────────────────────────────────────────────────
             path("blogs", views.frontend_entrypoint_view, name="entrypoint-blogs"),
@@ -109,6 +119,29 @@ if settings.LOVABLE_FRONTEND_ENABLED:
             path("create-trip/", views.frontend_entrypoint_view),
             path("my-trips", views.frontend_entrypoint_view, name="entrypoint-my-trips"),
             path("my-trips/", views.frontend_entrypoint_view),
+
+            # ── Experiences (blog/experience pages added in Lovable) ─────────────
+            path("experiences", views.frontend_entrypoint_view, name="entrypoint-experiences"),
+            path("experiences/", views.frontend_entrypoint_view),
+            path("experiences/create", views.frontend_entrypoint_view, name="entrypoint-experience-create"),
+            path("experiences/create/", views.frontend_entrypoint_view),
+            path("experiences/edit", views.frontend_entrypoint_view, name="entrypoint-experience-edit"),
+            path("experiences/edit/", views.frontend_entrypoint_view),
+            re_path(r"^experiences/(?P<slug>(?!create$|edit$)[-a-zA-Z0-9_]+)/?$", views.frontend_entrypoint_view, name="entrypoint-experience-detail"),
+
+            # ── Community / discovery pages ───────────────────────────────────
+            path("travel-hosts", views.frontend_entrypoint_view, name="entrypoint-travel-hosts"),
+            path("travel-hosts/", views.frontend_entrypoint_view),
+            # /travelers kept as redirect target for old links; SPA router handles it via catch-all
+            path("travelers", views.frontend_entrypoint_view, name="entrypoint-travelers"),
+            path("travelers/", views.frontend_entrypoint_view),
+            path("bookmarks", views.frontend_entrypoint_view, name="entrypoint-bookmarks-spa"),
+            path("bookmarks/", views.frontend_entrypoint_view),
+            path("inbox", views.frontend_entrypoint_view, name="entrypoint-inbox"),
+            path("inbox/", views.frontend_entrypoint_view),
+
+            # ── Profile with optional user ID param ───────────────────────────
+            re_path(r"^profile/(?P<user_id>[^/]+)/?$", views.frontend_entrypoint_view, name="entrypoint-profile-detail"),
 
             # ── Other Django HTML pages (served via SPA Under Construction) ───────
             path("search/", views.frontend_entrypoint_view, name="entrypoint-search"),

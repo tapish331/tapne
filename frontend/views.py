@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
-from datetime import datetime
+import secrets
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Final, cast
@@ -35,10 +38,17 @@ from enrollment.models import (
     submit_join_request,
 )
 from feed.models import build_home_payload_for_user, enrich_trip_preview_fields
-from interactions.models import build_dm_inbox_payload_for_member, build_dm_thread_payload_for_member
+from django.db.models import Q
+
+from interactions.models import (
+    DirectMessage,
+    DirectMessageThread,
+    build_dm_thread_payload_for_member,
+    send_dm_message,
+)
 from settings_app.models import build_settings_payload_for_member
-from social.models import build_bookmarks_payload_for_member
-from trips.models import Trip, build_my_trips_payload_for_member, build_trip_detail_payload_for_user, build_trip_list_payload_for_user
+from social.models import Bookmark, build_bookmarks_payload_for_member, resolve_bookmark_target
+from trips.models import Trip, build_trip_detail_payload_for_user, build_trip_list_payload_for_user
 
 PUBLIC_CACHE_SECONDS: Final[int] = 3600
 IMMUTABLE_CACHE_SECONDS: Final[int] = 31536000
@@ -395,6 +405,13 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "dm_inbox": reverse("frontend:api-dm-inbox"),
             "trip_drafts": reverse("frontend:api-trip-draft-create"),
             "manage_trip": "/frontend-api/manage-trip/",
+            # Deferred features — keys defined in mode.ts dev config; no page
+            # calls them yet but they must be present so cfg.api.* is never
+            # undefined if Lovable adds a call before Django wires the endpoint.
+            "messages": "/frontend-api/messages/",
+            "trip_chat": "/frontend-api/trip-chat/",
+            "users_search": reverse("frontend:api-users-search"),
+            "notifications": reverse("frontend:api-notifications"),
         },
         "routes": {
             "home": "/",
@@ -406,6 +423,11 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "create_trip": "/create-trip",
             "my_trips": "/my-trips",
         },
+        "google_oauth_url": (
+            reverse("frontend:api-google-oauth-start")
+            if getattr(settings, "GOOGLE_CLIENT_ID", "").strip()
+            else ""
+        ),
         "auth": {
             "login_form": "/accounts/login/",
             "signup_form": "/accounts/signup/",
@@ -584,8 +606,38 @@ def home_api_view(request: HttpRequest) -> JsonResponse:
     payload = build_home_payload_for_user(request.user, limit_per_section=None, include_profiles=True)
     response_payload: dict[str, object] = dict(payload)
     response_payload["trips"] = _enrich_trip_cards([dict(row) for row in payload.get("trips", [])])
-    response_payload["profiles"] = _enrich_profile_cards([dict(row) for row in payload.get("profiles", [])])
     response_payload["blogs"] = _enrich_blog_cards([dict(row) for row in payload.get("blogs", [])])
+
+    # Build community_profiles — shape required by CommunityProfile interface:
+    # { username, display_name, avatar_url?, travel_tags?, location?, bio? }
+    enriched_profiles = _enrich_profile_cards([dict(row) for row in payload.get("profiles", [])])
+    community_profiles: list[dict[str, object]] = []
+    for p in enriched_profiles:
+        community_profiles.append({
+            "username": str(p.get("username", "") or ""),
+            "display_name": str(p.get("display_name", "") or p.get("username", "") or ""),
+            "bio": str(p.get("bio", "") or ""),
+            "location": str(p.get("location", "") or ""),
+        })
+    response_payload["community_profiles"] = community_profiles
+
+    # Real stats from DB
+    from trips.models import Trip as _Trip
+    total_users = int(UserModel.objects.count())
+    trips_hosted = int(_Trip.objects.filter(is_published=True).count())
+    distinct_destinations = int(
+        _Trip.objects.filter(is_published=True, destination__gt="")
+        .values("destination").distinct().count()
+    )
+    response_payload["stats"] = {
+        "travelers": total_users,
+        "trips_hosted": trips_hosted,
+        "destinations": distinct_destinations,
+    }
+
+    # No testimonials model yet — return empty; section hides itself when empty
+    response_payload["testimonials"] = []
+
     return JsonResponse({"ok": True, **response_payload})
 
 
@@ -707,10 +759,41 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
 
 @require_GET
 def my_trips_api_view(request: HttpRequest) -> JsonResponse:
-    payload = build_my_trips_payload_for_member(request.user, tab=request.GET.get("tab", "drafts"))
-    response_payload: dict[str, object] = dict(payload)
-    response_payload["trips"] = _enrich_trip_cards([dict(row) for row in payload.get("trips", [])])
-    return JsonResponse({"ok": True, **response_payload})
+    # The frontend (MyTrips.tsx + DraftContext) fetches once and filters all tabs client-side.
+    # We must return all trips (drafts + published + past) in a single call.
+    # Build each tab separately and merge so all trip data is available.
+    from django.utils import timezone as _tz
+    from trips.models import Trip as _Trip, enrich_trip_preview_fields as _enrich
+
+    viewer = request.user
+    if not bool(getattr(viewer, "is_authenticated", False)):
+        return JsonResponse({
+            "ok": True,
+            "trips": [],
+            "active_tab": "drafts",
+            "tab_counts": {"drafts": 0, "published": 0, "past": 0},
+        })
+
+    now = _tz.now()
+    hosted_qs = _Trip.objects.select_related("host").filter(host=viewer)
+
+    draft_rows = list(hosted_qs.filter(is_published=False).order_by("-updated_at", "-pk"))
+    published_rows = list(hosted_qs.filter(is_published=True, starts_at__gte=now).order_by("starts_at", "pk"))
+    past_rows = list(hosted_qs.filter(is_published=True, starts_at__lt=now).order_by("-starts_at", "-pk"))
+
+    all_trips = [dict(_enrich(t.to_trip_data())) for t in draft_rows + published_rows + past_rows]
+    enriched = _enrich_trip_cards(all_trips)
+
+    return JsonResponse({
+        "ok": True,
+        "trips": enriched,
+        "active_tab": "drafts",
+        "tab_counts": {
+            "drafts": len(draft_rows),
+            "published": len(published_rows),
+            "past": len(past_rows),
+        },
+    })
 
 
 @require_GET
@@ -792,6 +875,61 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
     )
 
 
+@require_GET
+def profile_detail_api_view(request: HttpRequest, profile_id: str) -> JsonResponse:
+    """Public profile endpoint used by Profile.tsx: GET /frontend-api/profile/<username_or_id>/"""
+    # Resolve by username first, then by numeric PK.
+    target_user = None
+    if profile_id.isdigit():
+        target_user = UserModel.objects.filter(pk=int(profile_id)).first()
+    if target_user is None:
+        target_user = UserModel.objects.filter(username=profile_id).first()
+    if target_user is None:
+        return _json_error("Profile not found.", status=404)
+
+    profile = ensure_profile(target_user)
+    viewer = request.user
+    is_following = False
+    followers_count = 0
+    try:
+        from social.models import FollowRelation
+        followers_count = int(FollowRelation.objects.filter(following=target_user).count())
+        if bool(getattr(viewer, "is_authenticated", False)):
+            is_following = FollowRelation.objects.filter(follower=viewer, following=target_user).exists()
+    except Exception:
+        pass
+
+    from accounts.views import profile_trip_sections_for_member
+    created_trips, joined_trips = profile_trip_sections_for_member(target_user)
+
+    return JsonResponse({
+        "ok": True,
+        "profile": {
+            "username": str(getattr(target_user, "username", "") or ""),
+            "display_name": str(profile.effective_display_name),
+            "bio": str(profile.bio or ""),
+            "location": str(profile.location or ""),
+            "website": str(profile.website or ""),
+            "email": str(getattr(target_user, "email", "") or "") if (
+                bool(getattr(viewer, "is_authenticated", False)) and
+                getattr(viewer, "pk", None) == getattr(target_user, "pk", None)
+            ) else "",
+            "trips_hosted": len(created_trips),
+            "trips_joined": len(joined_trips),
+            "followers_count": followers_count,
+            "is_following": is_following,
+            "travel_tags": [],
+            "average_rating": None,
+            "reviews_count": 0,
+            "travelers_hosted": 0,
+        },
+        "trips_hosted": _enrich_trip_cards([dict(row) for row in created_trips]),
+        "trips_joined": _enrich_trip_cards([dict(row) for row in joined_trips]),
+        "reviews": [],
+        "gallery": [],
+    })
+
+
 @require_http_methods(["POST"])
 def trip_draft_create_api_view(request: HttpRequest) -> JsonResponse:
     if not request.user.is_authenticated:
@@ -800,7 +938,7 @@ def trip_draft_create_api_view(request: HttpRequest) -> JsonResponse:
     trip = Trip(host=request.user, is_published=False)
     _apply_trip_payload(trip, _request_payload(request))
     trip.save()
-    return JsonResponse({"ok": True, "trip": _serialize_trip_for_frontend(trip)}, status=201)
+    return JsonResponse({"ok": True, "draft": _serialize_trip_for_frontend(trip)}, status=201)
 
 
 @require_http_methods(["GET", "PATCH", "DELETE"])
@@ -881,14 +1019,155 @@ def hosting_inbox_api_view(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 def dm_inbox_api_view(request: HttpRequest) -> JsonResponse:
-    payload = build_dm_inbox_payload_for_member(request.user)
-    return JsonResponse({"ok": True, **payload})
+    viewer = request.user
+    if not bool(getattr(viewer, "is_authenticated", False)):
+        return JsonResponse({"ok": True, "threads": []})
+
+    viewer_id = int(getattr(viewer, "pk", 0) or 0)
+    viewer_username = str(getattr(viewer, "username", "") or "").strip()
+    viewer_profile = ensure_profile(viewer)
+    viewer_display_name = str(viewer_profile.effective_display_name)
+
+    thread_rows = list(
+        DirectMessageThread.objects
+        .select_related("member_one", "member_two")
+        .filter(Q(member_one_id=viewer_id) | Q(member_two_id=viewer_id))
+        .order_by("-updated_at", "-pk")[:30]
+    )
+
+    threads_data: list[dict[str, object]] = []
+    for thread in thread_rows:
+        peer = thread.other_participant(viewer)
+        if peer is None:
+            continue
+        peer_username = str(getattr(peer, "username", "") or "").strip()
+        peer_profile = ensure_profile(peer)
+        peer_display_name = str(peer_profile.effective_display_name)
+
+        # Load messages; senders are always one of the two participants so no extra queries.
+        message_rows = list(
+            DirectMessage.objects
+            .select_related("sender")
+            .filter(thread_id=thread.pk)
+            .order_by("created_at", "pk")[:50]
+        )
+
+        messages: list[dict[str, object]] = []
+        last_message = ""
+        last_sent_at: str | None = None
+        for msg in message_rows:
+            sender_username = str(getattr(msg.sender, "username", "") or "").strip()
+            sender_display_name = (
+                viewer_display_name if sender_username == viewer_username
+                else peer_display_name if sender_username == peer_username
+                else sender_username
+            )
+            sent_at = msg.created_at.isoformat() if msg.created_at else ""
+            messages.append({
+                "id": int(msg.pk or 0),
+                "thread_id": int(thread.pk or 0),
+                "sender_username": sender_username,
+                "sender_display_name": sender_display_name,
+                "body": str(msg.body or "").strip(),
+                "sent_at": sent_at,
+            })
+            last_message = str(msg.body or "")[:120]
+            last_sent_at = sent_at
+
+        threads_data.append({
+            "id": int(thread.pk or 0),
+            "type": "dm",
+            "title": peer_display_name or peer_username,
+            "participants": [
+                {"username": viewer_username, "display_name": viewer_display_name},
+                {"username": peer_username, "display_name": peer_display_name},
+            ],
+            "last_message": last_message,
+            "last_sent_at": last_sent_at or (thread.updated_at.isoformat() if thread.updated_at else None),
+            "unread_count": 0,
+            "messages": messages,
+        })
+
+    return JsonResponse({"ok": True, "threads": threads_data})
 
 
 @require_GET
 def dm_thread_api_view(request: HttpRequest, thread_id: int) -> JsonResponse:
     payload = build_dm_thread_payload_for_member(request.user, thread_id=thread_id)
     return JsonResponse({"ok": True, **payload})
+
+
+@require_POST
+def dm_send_message_api_view(request: HttpRequest, thread_id: int) -> JsonResponse:
+    """POST /frontend-api/dm/inbox/<thread_id>/messages/ — send a message to a thread."""
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    thread = DirectMessageThread.objects.filter(pk=thread_id).first()
+    if thread is None:
+        return _json_error("Thread not found.", status=404)
+    payload = _request_payload(request)
+    _, outcome = send_dm_message(
+        thread=thread,
+        sender=request.user,
+        body=payload.get("body", ""),
+    )
+    if outcome == "not-participant":
+        return _json_error("You are not a participant in this thread.", status=403)
+    if outcome == "empty-message":
+        return _json_error("Message body cannot be empty.", status=400)
+    if outcome == "too-long":
+        return _json_error("Message is too long.", status=400)
+    return JsonResponse({"ok": outcome == "sent", "outcome": outcome})
+
+
+@require_http_methods(["POST", "DELETE"])
+def bookmark_trip_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    """
+    POST   /frontend-api/bookmarks/<trip_id>/ — add a trip bookmark.
+    DELETE /frontend-api/bookmarks/<trip_id>/ — remove a trip bookmark.
+    """
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    if request.method == "DELETE":
+        deleted, _ = Bookmark.objects.filter(
+            member=request.user,
+            target_type=Bookmark.TARGET_TRIP,
+            target_key=str(trip_id),
+        ).delete()
+        return JsonResponse({"ok": True, "removed": deleted > 0})
+
+    # POST — add bookmark
+    resolution = resolve_bookmark_target("trip", trip_id)
+    if resolution is None:
+        return _json_error("Trip not found.", status=404)
+    Bookmark.objects.get_or_create(
+        member=request.user,
+        target_type=Bookmark.TARGET_TRIP,
+        target_key=resolution.target_key,
+        defaults={
+            "target_label": resolution.target_label,
+            "target_url": resolution.target_url,
+        },
+    )
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def trip_duplicate_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    """POST /frontend-api/trips/<trip_id>/duplicate/ — copy a trip as a new draft."""
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    trip = Trip.objects.filter(pk=trip_id, host=request.user).first()
+    if trip is None:
+        return _json_error("Trip not found.", status=404)
+
+    trip.pk = None  # clear PK so save() creates a new row
+    trip.title = f"Copy of {trip.title}"
+    trip.is_published = False
+    trip.traffic_score = 0
+    trip.save()
+    return JsonResponse({"ok": True, "trip_id": trip.pk})
 
 
 @require_POST
@@ -1077,3 +1356,210 @@ def manage_trip_message_view(request: HttpRequest, trip_id: int) -> JsonResponse
     # Messaging participants is acknowledged but not yet delivered — no messaging
     # backend exists yet. Returns ok so the frontend toast confirms the action.
     return JsonResponse({"ok": True})
+
+
+@require_GET
+def notifications_api_view(request: HttpRequest) -> JsonResponse:
+    """Return real activity events shaped for Navbar's notification dropdown."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": True, "notifications": [], "unread_count": 0})
+
+    from activity.models import build_activity_payload_for_member
+
+    payload = build_activity_payload_for_member(request.user, activity_filter="all", limit=20)
+    items = payload.get("items", [])
+
+    _GROUP_ICON: dict[str, str] = {
+        "follows": "👤",
+        "enrollment": "✅",
+        "comments": "💬",
+        "replies": "💬",
+        "bookmarks": "🔖",
+        "reviews": "⭐",
+    }
+
+    def _rel_time(occurred_at: object) -> str:
+        if not occurred_at:
+            return ""
+        try:
+            from django.utils.timezone import now as _now
+            diff = _now() - cast(datetime, occurred_at)
+            secs = int(diff.total_seconds())
+            if secs < 60:
+                return "Just now"
+            if secs < 3600:
+                return f"{secs // 60}m ago"
+            if secs < 86400:
+                return f"{secs // 3600}h ago"
+            return f"{secs // 86400}d ago"
+        except Exception:
+            return ""
+
+    notifications: list[dict[str, object]] = []
+    for item in items:
+        group = str(item.get("group", "") or "")
+        action = str(item.get("action", "") or "")
+        actor = str(item.get("actor_username", "") or "")
+        target = str(item.get("target_label", "") or "")
+        message = f"@{actor} {action}" if actor else action
+        if target and target not in message:
+            message = f"{message}: {target}"
+        notifications.append({
+            "id": str(item.get("id", "")),
+            "icon": _GROUP_ICON.get(group, "🔔"),
+            "message": message,
+            "time": _rel_time(item.get("occurred_at")),
+            "unread": True,
+        })
+
+    return JsonResponse({
+        "ok": True,
+        "notifications": notifications,
+        "unread_count": len(notifications),
+    })
+
+
+@require_GET
+def google_oauth_start_view(request: HttpRequest) -> HttpResponse:
+    """Redirect the browser to Google's OAuth consent screen."""
+    client_id = getattr(settings, "GOOGLE_CLIENT_ID", "").strip()
+    if not client_id:
+        return HttpResponse("Google OAuth is not configured.", status=501)
+
+    state = secrets.token_urlsafe(24)
+    request.session["google_oauth_state"] = state
+    next_url = request.GET.get("next", "/")
+    request.session["google_oauth_next"] = next_url
+
+    base_url = getattr(settings, "BASE_URL", "").rstrip("/")
+    redirect_uri = f"{base_url}/frontend-api/auth/google/callback/"
+
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "online",
+        "prompt": "select_account",
+    })
+    return HttpResponse(
+        status=302,
+        headers={"Location": f"https://accounts.google.com/o/oauth2/v2/auth?{params}"},
+    )
+
+
+def google_oauth_callback_view(request: HttpRequest) -> HttpResponse:
+    """Exchange code for tokens, resolve/create the user, log them in."""
+    client_id = getattr(settings, "GOOGLE_CLIENT_ID", "").strip()
+    client_secret = getattr(settings, "GOOGLE_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        return HttpResponse("Google OAuth is not configured.", status=501)
+
+    error = request.GET.get("error", "")
+    if error:
+        return HttpResponse(f"Google OAuth error: {error}", status=400)
+
+    code = request.GET.get("code", "")
+    state = request.GET.get("state", "")
+    stored_state = request.session.pop("google_oauth_state", "")
+    next_url = request.session.pop("google_oauth_next", "/")
+
+    if not code or not state or state != stored_state:
+        return HttpResponse("OAuth state mismatch. Please try again.", status=400)
+
+    base_url = getattr(settings, "BASE_URL", "").rstrip("/")
+    redirect_uri = f"{base_url}/frontend-api/auth/google/callback/"
+
+    # Exchange code for tokens
+    token_data = urllib.parse.urlencode({
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }).encode()
+    try:
+        token_req = urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=token_data,
+            method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(token_req, timeout=10) as resp:
+            token_json = json.loads(resp.read())
+    except Exception as exc:
+        return HttpResponse(f"Token exchange failed: {exc}", status=502)
+
+    id_token_str = token_json.get("id_token", "")
+    if not id_token_str:
+        return HttpResponse("No id_token in Google response.", status=502)
+
+    # Decode id_token payload (no signature verification needed — we just got it directly from Google over TLS)
+    try:
+        payload_b64 = id_token_str.split(".")[1]
+        # Fix padding
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        import base64
+        userinfo = json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception as exc:
+        return HttpResponse(f"Failed to decode id_token: {exc}", status=502)
+
+    google_email = str(userinfo.get("email", "")).strip().lower()
+    google_name = str(userinfo.get("name", "")).strip()
+    google_given = str(userinfo.get("given_name", "")).strip()
+    google_family = str(userinfo.get("family_name", "")).strip()
+
+    if not google_email:
+        return HttpResponse("Google did not return an email address.", status=502)
+
+    # Find or create user by email
+    user = UserModel.objects.filter(email__iexact=google_email).first()
+    if user is None:
+        # Derive a unique username from the email local part
+        base_username = re.sub(r"[^a-z0-9_]", "", google_email.split("@")[0].lower()) or "user"
+        username = base_username
+        suffix = 1
+        while UserModel.objects.filter(username=username).exists():
+            username = f"{base_username}{suffix}"
+            suffix += 1
+        user = UserModel.objects.create_user(  # type: ignore[union-attr]
+            username=username,
+            email=google_email,
+            password=None,  # unusable password — login only via Google
+            first_name=google_given or google_name.split()[0] if google_name else "",
+            last_name=google_family,
+        )
+        ensure_profile(user)
+    elif google_given and not getattr(user, "first_name", "").strip():
+        user.first_name = google_given  # type: ignore[assignment]
+        user.last_name = google_family  # type: ignore[assignment]
+        user.save(update_fields=["first_name", "last_name"])
+
+    # Log the user in — Django sessions
+    login(request, cast(Any, user), backend="django.contrib.auth.backends.ModelBackend")
+
+    # Redirect back into the SPA
+    safe_next = next_url if next_url.startswith("/") else "/"
+    return HttpResponse(status=302, headers={"Location": safe_next})
+
+
+@require_GET
+def users_search_api_view(request: HttpRequest) -> JsonResponse:
+    """Search users by username or display name (used by CreateTrip invite flow)."""
+    q = request.GET.get("q", "").strip()
+    if not q or len(q) < 2:
+        return JsonResponse({"ok": True, "users": []})
+    qs = (
+        UserModel.objects.filter(username__icontains=q)
+        | UserModel.objects.filter(first_name__icontains=q)
+        | UserModel.objects.filter(last_name__icontains=q)
+    )
+    users: list[dict[str, object]] = []
+    for u in qs.distinct()[:10]:
+        profile = ensure_profile(u)
+        users.append({
+            "username": str(u.username),
+            "display_name": str(profile.effective_display_name),
+        })
+    return JsonResponse({"ok": True, "users": users})

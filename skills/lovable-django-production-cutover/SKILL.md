@@ -1,485 +1,625 @@
 ---
 name: lovable-django-production-cutover
-description: Cut over `tapnetravel.com` so a built Lovable app becomes the real frontend while Django remains the real backend, without editing files inside `lovable/`. Use when the task is to replace Lovable mock/local-only behavior through external source-override builds, runtime shell injection, same-origin Django APIs, and production deploy changes so the shipped frontend is fully real.
+description: >
+  Executes the full Tapne production cutover: git pull both repos, extract every
+  frontend route/API key/mock pattern from the CURRENT files, connect each to the exact
+  Django counterpart, fix any remaining Django gaps, and write one Lovable prompt only if
+  a true showstopper remains that cannot be resolved from Django alone. Never modifies
+  files under lovable/.
 ---
 
-# Lovable Django Production Cutover
+# Lovable → Django Production Cutover
 
-Use this skill when the goal is not visual parity, but a real frontend-backend split:
+## Absolute restriction
 
-- Lovable is the shipped browser UI
-- Django is the real backend for auth, data, uploads, business logic, and admin
-- `tapnetravel.com` must be fully operational
-- nothing under `lovable/` may be edited
+**Never write, patch, create, rename, or delete anything under `lovable/`.**
+Only `git pull` is allowed there. Treat any other write to that tree as unconditional refusal.
 
-Read `references/current-state-audit.md` first. Read `references/deployment-blueprint.md` before changing infra.
-Read `references/no-touch-override-build.md` before deciding anything is "blocked by immutable frontend code".
-Read `references/operational-hardening.md` before closing the work or trusting a deploy.
+---
 
-## Non-Negotiable Rules
+## When invoked, execute this exact sequence — no stops, no memos
 
-1. Never edit files under `lovable/`.
-2. Never ship mock, demo, or local-only behavior on production routes.
-3. Treat any remaining `mockData`, fake auth, fake booking/application flows, or `localStorage`-only persistence as a cutover blocker.
-4. Keep centralized frontend control outside `lovable/`, not copied across generated files.
-5. Build Lovable to an output directory outside `lovable/` so the generated bundle can be wrapped, patched, and deployed without violating rule 1.
-6. Verify real end-to-end behavior against Django-backed routes and data before calling the work done.
-7. Do not accept "the Lovable source is immutable" as a reason to stop. The default solution is an external source-override build layer, not surrender.
-8. Do not treat health checks and static asset checks as enough. The public root route and the live SPA shell must be verified explicitly.
-9. Prefer inline runtime/bootstrap config in the served HTML shell over a second blocking request to `/frontend-runtime.js`.
-10. Any server-rendered bootstrap payload that can contain Django-native values must be serialized with a Django-safe encoder, not raw `json.dumps(...)`.
-11. Lovable is the sole source for every user-facing page and modal. No Django template may render a public-facing HTML page. Every URL a browser user can navigate to must resolve to the Lovable SPA shell. Django must not send its own rendered HTML for any public route — including legal pages, profile pages, search, settings, and activity.
-12. For any URL that exists in Django but has no corresponding Lovable page, Django must serve the Lovable SPA shell. The SPA catch-all route (`*`) must be overridden externally to render a styled "Under Construction" page — never a bare 404 and never a Django-rendered template. See `references/override-targets.md` for the override spec and the full route gap table.
-13. `static/frontend-brand/tokens.css` must be an exact mirror of the CSS variable values declared in `lovable/src/index.css`. No value may deviate from what Lovable ships by default. The file exists solely to externalise control so future changes have one place to edit — not to alter current appearance. `static/frontend-brand/overrides.css` must remain empty unless a deliberate visual change is explicitly requested.
-14. The override `App.tsx` in `frontend_spa/` must import **all** user-facing pages from `@/pages/*` (i.e. the real Lovable source pages under `lovable/src/pages/`). The only permitted `@frontend/pages/*` import is `UnderConstructionPage`. Every other page must come from `@/`. Importing a custom replacement page from `@frontend/pages/*` instead of the real Lovable page is a critical regression — it strips out all Lovable UI (carousels, tabs, custom components) and replaces it with a stripped-down shell.
-15. The override `App.tsx` must preserve every React provider that exists in `lovable/src/App.tsx`. Read `lovable/src/App.tsx` before writing the override and mirror the provider tree exactly: `QueryClientProvider`, `AuthProvider`, `DraftProvider`, `TooltipProvider`, both `Toaster`s. Dropping any provider causes silent runtime failures across all pages.
-16. Every Django URL that previously rendered an HTML template must have an explicit SPA shell pattern in `frontend/urls.py` **before** the Django app's own `urls.py` is included. The global catch-all in `tapne/urls.py` is a safety net, not a substitute for explicit patterns. Parameterised routes (`trips/<id>/edit/`, `trips/<id>/delete/`, `blogs/<slug>/edit/`, `u/<username>/`, etc.) must be listed explicitly with `re_path`. Never assume the catch-all will reach them first — Django's URL resolver matches in declaration order and app-specific `urls.py` files are included before the catch-all.
-17. After every `lovable/` submodule pull, verify that the four dual-mode files are still present and intact: `lovable/src/lib/mode.ts`, `lovable/src/lib/devMock.ts`, `lovable/src/lib/api.ts`, and `lovable/src/main.tsx`. Lovable can silently overwrite any of them during normal development. A missing or reverted `mode.ts` makes `IS_DEV_MODE` permanently undefined (crash). A reverted `api.ts` removes the mock interception and sends real fetch calls to `/__devmock__/*` URLs that do not exist on Django. Re-apply the dual-mode changes before building whenever these files have regressed.
+---
 
-## Use This Skill When
-
-- The user wants Lovable to become the real frontend for `tapnetravel.com`.
-- The user wants Django to remain the real backend.
-- The current Django templates should stop being the main public UI.
-- The user explicitly disallows changes inside `lovable/`.
-- The work includes Cloud Run, Django routing, static/frontend asset serving, session/auth integration, or replacing frontend mock behavior with real backend behavior.
-
-## Repo Facts
-
-- Public deployment for this repo runs through [infra/run-cloud-run-workflow.ps1](e:/tapne/infra/run-cloud-run-workflow.ps1) and [infra/Dockerfile.web](e:/tapne/infra/Dockerfile.web).
-- Depending on `LOVABLE_FRONTEND_ENABLED`, those deploy paths can serve Django-rendered public pages or the Lovable SPA shell through Django.
-- Do not assume the live site is still in an earlier Django-only mode. Verify the current live shell and revision on every invocation.
-- Lovable is a standalone Vite SPA from [lovable/package.json](e:/tapne/lovable/package.json).
-- **Dual-mode architecture** — Lovable operates in two modes controlled entirely by whether `window.TAPNE_RUNTIME_CONFIG` is present at page load:
-  - **Lovable dev mode** (`window.TAPNE_RUNTIME_CONFIG` absent): `lovable/src/lib/mode.ts` detects absence, injects a mock runtime config with `/__devmock__/*` API URLs, and sets `IS_DEV_MODE = true`. All API calls in `lovable/src/lib/api.ts` are intercepted by `lovable/src/lib/devMock.ts`, which returns in-memory mock responses built from `mockData.ts`. Auth, drafts, and all page data work fully in the Lovable editor without Django.
-  - **Django production mode** (`window.TAPNE_RUNTIME_CONFIG` present, injected by Django): `IS_DEV_MODE = false`. `mode.ts` does not overwrite the real config. All `api.ts` functions skip mock interception and execute real Django fetch calls exactly as before.
-  - The switch is automatic — no manual flag or env var needed. Pulling `lovable/` into this repo and building with Django's HTML shell injection activates Django mode.
-- The four dual-mode files that must stay intact across Lovable submodule updates:
-  - [lovable/src/lib/mode.ts](e:/tapne/lovable/src/lib/mode.ts) — mode detection and dev config injection (must be first import in main.tsx)
-  - [lovable/src/lib/devMock.ts](e:/tapne/lovable/src/lib/devMock.ts) — in-memory mock API resolver for dev mode
-  - [lovable/src/lib/api.ts](e:/tapne/lovable/src/lib/api.ts) — IS_DEV_MODE interception in all four API functions
-  - [lovable/src/main.tsx](e:/tapne/lovable/src/main.tsx) — `import "@/lib/mode"` must be the first import
-- `lovable/src/data/mockData.ts` is no longer a production blocker — it is only used by `devMock.ts` for Lovable dev mode. In the production build, `@/lib/devMock` is aliased to `frontend_spa/src/lib/devMockStub.ts`, which excludes both `devMock.ts` and `mockData.ts` from the bundle entirely.
-- The former mock blockers in Lovable are now resolved:
-  - `lovable/src/contexts/AuthContext.tsx` — Django session-backed (real login/signup/profile via `cfg.api.*`)
-  - `lovable/src/contexts/DraftContext.tsx` — Django-backed draft CRUD (real persistence via `cfg.api.trip_drafts`)
-  - All pages (`Index`, `BrowseTrips`, `TripDetail`, `MyTrips`, `Profile`, `Blogs`) — Django API-backed via `apiGet/apiPost` through `lovable/src/lib/api.ts`
-- Lovable SPA pages (from [lovable/src/App.tsx](e:/tapne/lovable/src/App.tsx)): `/`, `/trips`, `/trips/:id`, `/create-trip`, `/my-trips`, `/blogs`, `/login`, `/signup`, `/profile`, `*` (catch-all).
-- Django routes with user-facing HTML that are NOT covered by a Lovable page — these must all resolve to the Lovable SPA shell, where the `*` catch-all renders the "Under Construction" page:
-  - `/about/`, `/how-it-works/`, `/safety/`, `/contact/`, `/terms/`, `/privacy/`
-  - `/search/`
-  - `/u/<username>/` (public user profile)
-  - `/settings/`, `/settings/appearance/`
-  - `/social/bookmarks/`
-  - `/interactions/dm/`, `/interactions/dm/<id>/`
-  - `/reviews/<type>/<id>/`
-  - `/activity/`
-  - `/blogs/create/`, `/blogs/<slug>/`, `/blogs/<slug>/edit/`, `/blogs/<slug>/delete/`
-  - `/enroll/hosting/inbox/`
-- Django routes with user-facing HTML that ARE covered by a Lovable page — these must redirect to the SPA equivalent instead of rendering a Django template:
-  - `/accounts/login/` → `/login`
-  - `/accounts/signup/` → `/signup`
-  - `/accounts/me/` and `/accounts/me/edit/` → `/profile`
-  - `/trips/` → `/trips`
-  - `/trips/create/` → `/create-trip`
-  - `/trips/mine/` → `/my-trips`
-  - `/trips/<id>/` → `/trips/<id>`
-  - `/trips/<id>/edit/` → `/create-trip?draft=<id>`
-  - `/blogs/` → `/blogs`
-  - `/` (feed home Django view) → covered by SPA fallback
-- The SPA catch-all must be implemented via a **global Django catch-all** appended at the very end of `tapne/urls.py` (after all real routes) when `LOVABLE_FRONTEND_ENABLED=True`. This guarantees every unclaimed URL serves the SPA shell rather than a 404 or Django template.
-- Lovable already exposes theme variables in [lovable/src/index.css](e:/tapne/lovable/src/index.css), which makes centralized external overrides feasible.
-
-## Allowed Modification Surfaces
-
-- Django apps, models, views, serializers, templates, and settings
-- `infra/**`
-- new static assets and runtime config files outside `lovable/`
-- external override modules, external Vite config, and build wrapper code outside `lovable/`
-- new wrapper templates or SPA fallback views in Django
-- generated Lovable build output outside `lovable/`
-- deployment scripts, container build steps, and Cloud Run routing
-
-## Forbidden Shortcuts
-
-- Do not leave Lovable auth backed by fake `setUser(users[0])`.
-- Do not leave trip/blog/profile pages reading compiled mock catalogs in production.
-- Do not rely on `localStorage` as the system of record for drafts, bookings, or applications.
-- Do not cut traffic over to a frontend route until create/read/update/delete flows are real.
-- Do not solve theme control by hand-editing compiled bundle colors in many places; centralize via injected CSS variables and override files.
-- Do not default to raw post-build bundle surgery if the problem can be solved more cleanly with external source-level alias overrides.
-- **Do not write custom `@frontend/pages/*` replacements for pages that Lovable already implements.** The Lovable source pages (`@/pages/*`) must be used directly. Custom page replacements bypass the entire Lovable UI and produce visually broken pages. Only create `@frontend/` components for things that do not exist at all in Lovable (e.g. `UnderConstructionPage`).
-- **Do not omit providers when writing the override `App.tsx`.** Read `lovable/src/App.tsx` first and copy the provider tree exactly. A missing `QueryClientProvider` or `DraftProvider` breaks all data-fetching and draft management silently.
-- **Do not rely on the global `tapne/urls.py` catch-all to intercept parameterised Django routes.** Django resolves URLs in declaration order — app-specific `urls.py` files (trips, blogs, accounts) are included before the catch-all, so `trips/<id>/edit/` and similar paths will be matched by the Django template view unless an explicit SPA shell pattern is declared in `frontend/urls.py` first.
-- **Do not add visual CSS rules to `overrides.css`.** Rules like `font-family: serif`, `border-radius: ... !important`, or `box-shadow: ... !important` change the visual appearance of the app relative to standalone Lovable. `overrides.css` exists only for non-visual functional fixes (z-index corrections, etc.) unless a deliberate visual change is explicitly requested by the user.
-- **Do not let the production Vite build include `devMock.ts` or `mockData.ts`.** The production build entry (`frontend_spa/`) must alias `@/lib/devMock` to `frontend_spa/src/lib/devMockStub.ts` in `frontend_spa/vite.production.config.ts`. Without this stub, the bundle carries all mock trip and user data, fails the `"mock_data"` banned-marker artifact check, and is ~50 KB larger than necessary. The stub is already in place — do not remove it or remove the alias.
-- **Do not remove or weaken the dual-mode files in `lovable/src/lib/`.** If Lovable overwrites `mode.ts`, `devMock.ts`, `api.ts`, or `main.tsx` during a submodule update, re-apply the dual-mode changes before building. Check with `git diff HEAD~1 -- lovable/src/lib/api.ts lovable/src/lib/mode.ts lovable/src/main.tsx` after every submodule pull.
-
-## Workflow
-
-### 1. Audit Lovable production blockers
-
-Run the bundled audit script:
-
-```powershell
-python skills/lovable-django-production-cutover/scripts/audit_lovable_blockers.py --repo-root e:\tapne
-```
-
-This identifies mock-data imports, local-only storage, and fake state patterns that block production cutover.
-It is intentionally rerun each time because Lovable is expected to evolve.
-
-Then inspect:
-
-- `references/current-state-audit.md`
-- `references/override-targets.md`
-- [lovable/src/App.tsx](e:/tapne/lovable/src/App.tsx)
-
-Do not start infra work before you know which Lovable routes are still fake.
-
-### 1b. Verify dual-mode files after every submodule pull (run every time)
-
-After pulling `lovable/` changes, verify these four files are still intact before doing anything else. Lovable can silently overwrite them during normal development sessions.
+## Step 1 — Git pull both repos
 
 ```bash
-# Check if any dual-mode files were changed in the latest lovable commit
-cd lovable && git diff HEAD~1 -- src/lib/mode.ts src/lib/devMock.ts src/lib/api.ts src/main.tsx
+git pull
+git -C lovable pull
 ```
 
-For each file, confirm:
+Report the HEAD SHA of each repo after pull so the run is traceable.
 
-| File | Required condition |
-|---|---|
-| `lovable/src/main.tsx` | First import is `import "@/lib/mode"` |
-| `lovable/src/lib/mode.ts` | Exports `IS_DEV_MODE`, injects `DEV_RUNTIME_CONFIG` when dev, all `/__devmock__/*` API URLs present |
-| `lovable/src/lib/api.ts` | Imports `IS_DEV_MODE` and `resolveMockRequest`; all four functions have `if (IS_DEV_MODE) return resolveMockRequest(...)` as first line |
-| `lovable/src/lib/devMock.ts` | Exports `resolveMockRequest`; handles session, auth, home, trips, trip detail, blogs, my-trips, draft CRUD, profile |
+---
 
-If any file has been overwritten by Lovable, re-apply the dual-mode changes (see `references/no-touch-override-build.md` Section "Dual-mode system"). Then continue with the rest of the workflow.
+## Step 2 — Extract all routes, API keys, and backend communication from the frontend
 
-### 1d. Audit the override App.tsx and frontend/urls.py (run every time)
+> **Nothing in this step is pre-answered. Read the actual current files every time.**
+> The **Baseline Reference** section at the bottom of this skill lists what existed
+> as of April 2026. Diff your findings against it and explicitly flag every item that is NEW
+> (present in current files but not in the baseline) and every item that is REMOVED
+> (in the baseline but gone from the current files). New items drive all the work in Steps 3–6.
 
-Before touching anything else, cross-check these two files against `lovable/src/App.tsx`:
+Read these files in full:
 
-**`frontend_spa/src/App.tsx` checklist:**
+- [lovable/src/App.tsx](../../lovable/src/App.tsx)
+- [lovable/src/types/api.ts](../../lovable/src/types/api.ts)
+- [lovable/src/types/messaging.ts](../../lovable/src/types/messaging.ts) ← **required**: Inbox uses ThreadData/InboxResponse from here, not api.ts
+- [lovable/src/lib/mode.ts](../../lovable/src/lib/mode.ts)
+- [lovable/src/lib/api.ts](../../lovable/src/lib/api.ts)
+- [lovable/src/lib/devMock.ts](../../lovable/src/lib/devMock.ts)
+- [lovable/src/data/mockData.ts](../../lovable/src/data/mockData.ts)
+- [lovable/src/main.tsx](../../lovable/src/main.tsx)
+- [lovable/src/contexts/AuthContext.tsx](../../lovable/src/contexts/AuthContext.tsx)
+- [lovable/src/contexts/DraftContext.tsx](../../lovable/src/contexts/DraftContext.tsx)
+- [frontend_spa/src/App.tsx](../../frontend_spa/src/App.tsx)
+- [frontend_spa/src/lib/api.ts](../../frontend_spa/src/lib/api.ts)
+- [frontend_spa/vite.production.config.ts](../../frontend_spa/vite.production.config.ts)
 
-1. Open `lovable/src/App.tsx` and list every import, every provider, every route.
-2. In `frontend_spa/src/App.tsx`, confirm:
-   - Every page import uses `@/pages/<PageName>` (Lovable source) — **not** `@frontend/pages/<PageName>`.
-   - The only `@frontend/pages/*` import is `UnderConstructionPage`.
-   - The provider tree matches `lovable/src/App.tsx` exactly: `QueryClientProvider`, `AuthProvider`, `DraftProvider`, `TooltipProvider`, `Toaster` (both variants).
-   - The route list matches `lovable/src/App.tsx` exactly — same paths, same page components, same `*` catch-all (pointing to `UnderConstructionPage`).
-3. If any page is imported from `@frontend/pages/*` other than `UnderConstructionPage`, replace it with `@/pages/*` immediately — this is a critical visual regression.
+Also scan for any additional `*.ts` type files imported by pages/contexts/components:
 
-**`frontend/urls.py` checklist:**
+```bash
+grep -rn "from \"@/types/" lovable/src/pages lovable/src/contexts lovable/src/components \
+  --include="*.ts" --include="*.tsx" | grep -v "api\|messaging" | sort -u
+```
 
-1. List every Django URL pattern across all `urls.py` files that renders an HTML template for a browser user (see route tables in `references/current-state-audit.md`).
-2. For every such URL, confirm `frontend/urls.py` has an explicit SPA shell pattern (`path(...)` or `re_path(...)` pointing to `frontend_entrypoint_view`) that will be matched **before** the Django template view.
-3. Pay special attention to parameterised routes: `trips/<id>/edit/`, `trips/<id>/delete/`, `blogs/<slug>/edit/`, `blogs/<slug>/delete/`, `u/<username>/`, `interactions/dm/<id>/`.
-4. Verify using Django's URL resolver:
-   ```bash
-   python manage.py shell -c "
-   from django.urls import resolve
-   for url in ['/trips/1/edit/', '/accounts/login/', '/u/testuser/']:
-       print(url, '->', resolve(url).func.__name__)
-   "
-   ```
-   Every URL must resolve to `frontend_entrypoint_view`, not a template-rendering view.
+Any type file found here must also be read in full — it may define response shapes that Django must satisfy.
 
-### 2. Define route ownership
+Then scan every page component and context for any additional `cfg.api.*` usages, direct fetch calls, or `apiGet`/`apiPost`/`apiPatch`/`apiDelete` calls:
 
-Route ownership in this repo is permanently fixed:
+```bash
+grep -rn "apiGet\|apiPost\|apiPatch\|apiDelete\|cfg\.api\.\|cfg\.auth\." \
+  lovable/src/pages lovable/src/contexts lovable/src/components \
+  --include="*.ts" --include="*.tsx"
+```
 
-- `spa-public`: **every browser-navigable URL** — served by the Lovable SPA shell via Django's SPA fallback. Includes all routes defined in `lovable/src/App.tsx` and all Django user-facing URLs listed in the Repo Facts section above. No exceptions.
-- `backend-only`: `/frontend-api/**`, `/admin/`, `/uploads/`, `/runtime/`, `/trips/<id>/banner/`, `/trips/api/destination/**`, `/accounts/logout/`, `/enroll/trips/<id>/request/`, `/enroll/requests/<id>/approve|deny/`, `/social/follow/**`, `/social/bookmark|unbookmark/`, `/interactions/comment/`, `/interactions/reply/`, `/interactions/dm/open/`, `/interactions/dm/<id>/send/`, `/reviews/create/`, `/runtime/health/`, `/robots.txt`, `/sitemap.xml`, `google*.html`. These are called by the SPA via `fetch()` — they never render HTML for a user.
+Produce four fresh tables from what you actually read — do **not** copy-paste the baseline:
 
-**There is no `django-web` class.** Django no longer renders any user-facing page. Every URL not in `backend-only` gets the SPA shell.
+### 2a. Page routes — extracted from lovable/src/App.tsx vs frontend_spa/src/App.tsx
 
-Django URL patterns that previously rendered HTML templates for public-facing routes must be converted to one of:
-  - a redirect to the equivalent SPA path (if one exists in `lovable/src/App.tsx`), OR
-  - a pass-through to the SPA catch-all (if there is no Lovable page — the SPA's `*` route will render "Under Construction")
+One row per `<Route>` in `lovable/src/App.tsx`. Compare against `frontend_spa/src/App.tsx`.
+If Lovable has a route not mirrored in `frontend_spa/src/App.tsx`, flag it.
+If `frontend_spa/src/App.tsx` has an extra route not in Lovable, flag it.
 
-### 3. Build Lovable through an external override layer
+### 2b. TapneRuntimeConfig.api keys — extracted from lovable/src/types/api.ts
 
-Default approach for this repo:
+One row per key in the `api` field of `TapneRuntimeConfig`. For each key, note:
+- The key name (e.g. `trips`)
+- The `/__devmock__/...` URL used in `mode.ts` DEV_RUNTIME_CONFIG
+- HTTP methods that `lovable/src/lib/api.ts` and page components call against it
 
-1. keep `lovable/` source untouched
-2. create production replacement modules outside `lovable/`
-3. build the app with an external Vite config that aliases specific Lovable imports to those replacement modules
-4. emit the build artifact outside the Lovable tree
+### 2c. All API call patterns — extracted from pages, contexts, and components
 
-This is the primary method for removing fake logic without source edits. Use post-build transforms only for shell injection or residual fixes that aliasing cannot reach.
+One row per distinct call site: file, API key used (`cfg.api.X`), HTTP method, any URL interpolation (e.g. `${cfg.api.trips}${id}/`), request body fields.
 
-Read:
+### 2d. Django URL → view map — extracted from frontend/urls.py
 
-- `references/no-touch-override-build.md`
-- `references/override-targets.md`
+One row per URL pattern: HTTP method, path, view function name.
 
-Typical replacements in this repo:
+After producing these tables, write a **Diff summary**:
 
-- fake auth context -> Django session-backed auth context
-- `mockData` imports -> live data facade with the same export shape
-- localStorage draft context -> Django-backed draft provider with identical external API
-- fake booking/application logic -> same-origin Django API mutations
+```
+NEW routes (in lovable/src/App.tsx, not in baseline):         [list or "none"]
+NEW api keys in TapneRuntimeConfig (not in baseline):          [list or "none"]
+NEW api call patterns (not in baseline):                       [list or "none"]
+NEW django endpoints (in frontend/urls.py, not in baseline):   [list or "none"]
+REMOVED from baseline:                                         [list or "none"]
+```
 
-### 4. Build Lovable outside the source tree
+If all diffs are "none", state that explicitly and continue.
 
-Do not build into `lovable/dist` if you need to patch or wrap output. Build externally:
+---
+
+## Step 3 — Connect every route and API call to the exact Django backend handler
+
+Read [frontend/urls.py](../../frontend/urls.py) and [frontend/views.py](../../frontend/views.py) in full first.
+
+For **every** entry in your Step 2c table:
+
+1. Resolve the full URL from the `cfg.api.*` key + any interpolation (e.g. `cfg.api.trips` → `/frontend-api/trips/`, full call → `/frontend-api/trips/${id}/`).
+2. Find the corresponding Django URL pattern and view in `frontend/urls.py`.
+3. If it exists and is correct → mark ✓.
+4. If it is missing or wrong → mark ✗ and fix it now (add view + URL entry). Do not defer.
+
+**Also scan for `cfg.api.base` interpolation patterns** — these are NOT named api keys but still need Django endpoints:
+
+```bash
+grep -rn "cfg\.api\.base" lovable/src/pages lovable/src/contexts lovable/src/components \
+  --include="*.ts" --include="*.tsx"
+```
+
+Each result like `${cfg.api.base}/profile/${profileId}/` needs a matching `frontend-api/profile/<id>/` URL in `frontend/urls.py`. These are easy to miss because they don't appear in `TapneRuntimeConfig.api`.
+
+Decision rules for NEW items found in the diff:
+
+- **New route in lovable/src/App.tsx** → needs a matching `<Route>` in `frontend_spa/src/App.tsx` AND a Django SPA entrypoint URL in `frontend/urls.py` (pointing at `views.frontend_entrypoint_view`).
+- **New `TapneRuntimeConfig.api` key** → needs a corresponding entry in `_runtime_config_payload()` in `frontend/views.py` AND a Django URL+view to handle it.
+- **New API call against an existing key at a new URL shape** (e.g. new `/${id}/action/` suffix) → needs a new Django URL pattern and view.
+- **New call in a context or component not previously scanned** → treat the same as a page-level call.
+
+For items carried over from the baseline, verify they still exist and still match. If anything drifted, fix it.
+
+### 3b. Auth-gate and unauthenticated-state audit
+
+For every page and context that makes API calls, determine:
+
+1. **Does the page auth-gate before calling the API?** Read the component and check whether it guards behind `isAuthenticated` / `requireAuth()` before firing the request.
+2. **What happens if the user is NOT authenticated and the call fires anyway?** The Django view returns `_member_only_error()` (401). Does the frontend handle this gracefully (silent catch), or does it show a success toast anyway?
+3. **Does the Django view return the correct 401 with a clear error body?** Confirm `_member_only_error()` is called before any DB access.
+
+Known unauthenticated-path issues to check every run:
+
+| Component | Risk | Expected behaviour |
+|---|---|---|
+| `CreateTrip.tsx` | `createDraft()` fires on mount even before auth hydrates | Django rejects with 401; `draftId` stays null; `saveDraftData()` is a no-op; but toast may fire anyway — Lovable prompt needed if toast fires when `draftId == null` |
+| `DraftContext.tsx` | Loads drafts from `my_trips` on mount, gated by `cfg.session.authenticated` | Verify the gate is checking the session before firing |
+| `Inbox.tsx` | Calls `dm_inbox` then calls `.find()` on result | Verify unauthenticated response is `{ threads: [] }` not an error object |
+
+### 3c. Backend-owned routes — never handed to the SPA
+
+These are always Django-only regardless of what Lovable adds. Check they are still present and not accidentally shadowed by the SPA catch-all in `tapne/urls.py`:
+
+- `/admin/`
+- `/health/`
+- `/runtime/`
+- `/uploads/`
+- `/search/`
+- `/accounts/login/` and `/accounts/signup/` (Django form views — SPA serves its own `/login` and `/signup`)
+- `/trips/` (Django template URLs when `LOVABLE_FRONTEND_ENABLED=False`)
+- `/sitemap.xml`
+- `/robots.txt`
+- `/google*.html` (site verification)
+- `/assets/...` (built frontend static assets)
+- `/u/<username>/` (public profile — Django view, not SPA route)
+- Any root-level static artifacts (favicon, manifest)
+
+---
+
+## Step 4 — Extract all mock/fake/placeholder patterns from the frontend
+
+> **Again: read the actual current files. Do not assume the mock is identical to the baseline.**
+
+Re-read `lovable/src/lib/devMock.ts` and `lovable/src/data/mockData.ts`:
+
+```bash
+grep -rn "import\|from" lovable/src/lib/devMock.ts
+grep -rn "import\|from" lovable/src/data/mockData.ts
+```
+
+Produce a fresh list of:
+
+- Every URL pattern handled by `resolveMockRequest()` in `devMock.ts` (the `/__devmock__/...` paths it dispatches on)
+- Every hardcoded value in `devMock.ts` that simulates a real Django response (auth state, user fields, trip shapes, etc.)
+- Every data fixture in `mockData.ts` that shapes what the frontend expects from Django (trip fields, user fields, blog fields)
+- Any new mock patterns present in the current `devMock.ts` that are absent from the baseline
+
+Write a **Mock diff summary** (new mock patterns vs baseline, removed mock patterns vs baseline).
+
+---
+
+## Step 5 — Connect every mock pattern to its exact Django replacement
+
+For every mock pattern found in Step 4:
+
+1. Identify the Django view and response shape that serves the real equivalent.
+2. Verify the view exists in `frontend/urls.py` and `frontend/views.py`.
+3. Verify the response shape matches what `lovable/src/types/api.ts` declares (all required fields present, correct types, snake_case names throughout).
+4. If a Django view is missing or its response shape is wrong → fix it now.
+
+### 5a. The mock bypass mechanism
+
+The production build excludes `devMock.ts` and the fixture data from the bundle via two Vite aliases in `frontend_spa/vite.production.config.ts`:
+
+```ts
+"@/lib/devMock"   → frontend_spa/src/lib/devMockStub.ts   // stubs resolveMockRequest
+"@/data/mockData" → frontend_spa/src/data/mockDataStub.ts  // stubs ApplicationQuestion types
+```
+
+In production, `IS_DEV_MODE` is always `false` because `window.TAPNE_RUNTIME_CONFIG` is defined (Django injects it before the bundle executes). This means all `if (IS_DEV_MODE)` branches are dead code and the real `fetch()` calls are used.
+
+Verify:
+- The `@/lib/devMock` alias `find` value in `vite.production.config.ts` matches the exact import path used in `lovable/src/lib/api.ts`.
+- The `@/data/mockData` alias `find` value matches the exact import path used in `lovable/src/pages/CreateTrip.tsx` (and any other pages that import from mockData).
+- If Lovable changed either import path, update the alias `find` value in `frontend_spa/vite.production.config.ts` now (this file is outside `lovable/`, so edits are allowed).
+
+### 5b. Baseline mock-to-Django map (for reference — not the authoritative extraction)
+
+See the **Baseline Reference** section at the bottom of this skill.
+
+### 5c. Runtime config injection — verify it covers every new api key
+
+`_frontend_shell_html()` in `frontend/views.py` injects:
+
+```html
+<script data-tapne-runtime="inline-config">
+  window.__TAPNE_FRONTEND_CONFIG__ = {...};
+  window.TAPNE_RUNTIME_CONFIG = window.__TAPNE_FRONTEND_CONFIG__;
+</script>
+```
+
+`_runtime_config_payload()` in `frontend/views.py` must include an `api` key for every entry in `TapneRuntimeConfig.api` (from `lovable/src/types/api.ts`). If a new api key was added to the TypeScript type but is missing from `_runtime_config_payload()`, add it now — even if the endpoint is deferred (use a placeholder path like `/frontend-api/<resource>/`).
+
+---
+
+## Step 6 — Identify gaps, fix in Django, write Lovable prompt only if showstopper
+
+Run these verification checklists in order. Fix each failure before moving to the next.
+
+### Checklist A — All extracted routes have both SPA router entries and Django entrypoints
+
+For every route in `lovable/src/App.tsx` marked ✗ in Step 3 → confirm the fix was applied:
+- `frontend_spa/src/App.tsx` has a matching `<Route>`
+- `frontend/urls.py` has a matching SPA shell URL pointing at `frontend_entrypoint_view`
+
+### Checklist B — All API calls resolve to a Django endpoint
+
+For every call site marked ✗ in Step 3 → confirm the Django URL+view was added.
+
+### Checklist C — TapneRuntimeConfig.api keys all present in _runtime_config_payload()
+
+Compare `TapneRuntimeConfig.api` keys against `_runtime_config_payload()["api"]` in `frontend/views.py`. Every key in the TypeScript interface must be present in the Django payload. Flag and add any missing ones.
+
+### Checklist D — Response shapes match TypeScript contracts
+
+> **This checklist applies to EVERY endpoint — not just new ones. Existing endpoints can be broken from day one. Do not skip any row in the interface table.**
+
+For every interface in **all** lovable type files (`api.ts`, `messaging.ts`, any others found in Step 2) that Django must produce:
+
+**Required verification method — do not shortcut:**
+
+1. Read the TypeScript interface field-by-field.
+2. Read the actual Django view function body (or the builder it calls) and find the `return` / `JsonResponse(...)` statement.
+3. For every required TypeScript field, confirm the exact field name appears in the Django return dict.
+4. For array fields (`participants`, `messages`, `threads`, etc.) confirm each element of the array also satisfies the nested interface — read the inner builder or loop body.
+
+Failure conditions — any of these is a ✗:
+- A required TypeScript field is absent from the Django return dict entirely
+- A required array field is present but elements have different field names (e.g. Django returns `created_at`, TypeScript expects `sent_at`)
+- A required array field is missing from the Django response (e.g. TypeScript says `messages: MessageData[]` but Django omits `messages` key or returns `message_count` instead)
+- Field names are camelCase in Django (Tapne uses snake_case throughout — no conversion)
+- A non-optional field can be `None`/missing in certain code paths
+
+If ANY field is wrong: fix the Django view now. Do not move to the next checklist item until fixed.
+
+### Checklist E — Build and artifact
+
+Run the production build:
 
 ```powershell
 pwsh -File infra/build-lovable-production-frontend.ps1
 ```
 
-Use the external output directory as the deployable frontend artifact. This keeps the source tree untouched while allowing production packaging work.
+Verify:
+- [ ] Build exits 0
+- [ ] `artifacts/lovable-production-dist/index.html` exists
+- [ ] No `/__devmock__/` URLs remain in the bundle (confirms mock bypass aliases worked)
+- [ ] No `IS_DEV_MODE` branches with real fetch logic remain active (dead code eliminated by bundler)
 
-If you are using an external override build config, keep it outside `lovable/` too.
+Check for devmock URLs in the built bundle:
+```bash
+grep -r "__devmock__" artifacts/lovable-production-dist/ | grep -v "node_modules"
+```
+Any match is a failure — the mock bypass alias did not apply.
 
-### 5. Externalize centralized frontend control
-
-Keep frontend control in files outside `lovable/`:
-
-- `static/frontend-brand/tokens.css`
-- `static/frontend-brand/overrides.css`
-- `static/frontend-brand/runtime-config.js`
-
-For this repo, the preferred production shell is:
-
-- inline `window.__TAPNE_FRONTEND_CONFIG__` in the served HTML
-- no hard dependency on `/frontend-runtime.js` for the public page bootstrap
-
-Load them into the shipped frontend shell after the Lovable bundle is built:
-
-- `tokens.css`: CSS variable declarations that must exactly match `lovable/src/index.css` — both `:root` and `.dark` blocks. Copy the values verbatim. Do not invent or change any value. The purpose is externalised control, not visual change.
-- `overrides.css`: must be empty by default. Only add rules here when a deliberate visual change is explicitly requested by the user. Never populate it as part of a standard cutover.
-- `runtime-config.js`: API base URL, environment flags, auth/bootstrap config
-
-**Exact token values to use in `tokens.css`** (sourced from `lovable/src/index.css`):
-
-`:root` block:
-```css
---background: 160 20% 98%;
---foreground: 200 25% 10%;
---card: 0 0% 100%;
---card-foreground: 200 25% 10%;
---popover: 0 0% 100%;
---popover-foreground: 200 25% 10%;
---primary: 174 55% 42%;
---primary-foreground: 0 0% 100%;
---secondary: 170 25% 94%;
---secondary-foreground: 200 25% 15%;
---muted: 170 15% 94%;
---muted-foreground: 200 10% 46%;
---accent: 174 40% 90%;
---accent-foreground: 174 55% 25%;
---destructive: 0 72% 55%;
---destructive-foreground: 0 0% 100%;
---border: 170 20% 88%;
---input: 170 20% 88%;
---ring: 174 55% 42%;
---radius: 0.625rem;
---sidebar-background: 160 20% 97%;
---sidebar-foreground: 200 15% 30%;
---sidebar-primary: 174 55% 42%;
---sidebar-primary-foreground: 0 0% 100%;
---sidebar-accent: 170 25% 94%;
---sidebar-accent-foreground: 200 25% 15%;
---sidebar-border: 170 20% 88%;
---sidebar-ring: 174 55% 42%;
+Also check that `TAPNE_RUNTIME_CONFIG` is referenced (confirms production mode detection):
+```bash
+grep -r "TAPNE_RUNTIME_CONFIG" artifacts/lovable-production-dist/ || echo "not found in bundle"
 ```
 
-`.dark` block:
-```css
---background: 200 20% 8%;
---foreground: 160 10% 92%;
---card: 200 15% 12%;
---card-foreground: 160 10% 92%;
---popover: 200 15% 12%;
---popover-foreground: 160 10% 92%;
---primary: 174 55% 42%;
---primary-foreground: 0 0% 100%;
---secondary: 200 15% 18%;
---secondary-foreground: 160 10% 85%;
---muted: 200 10% 18%;
---muted-foreground: 200 8% 55%;
---accent: 174 30% 18%;
---accent-foreground: 174 40% 75%;
---destructive: 0 62% 50%;
---destructive-foreground: 0 0% 100%;
---border: 200 12% 20%;
---input: 200 12% 20%;
---ring: 174 55% 42%;
---sidebar-background: 200 15% 10%;
---sidebar-foreground: 160 10% 80%;
---sidebar-primary: 174 55% 42%;
---sidebar-primary-foreground: 0 0% 100%;
---sidebar-accent: 200 15% 18%;
---sidebar-accent-foreground: 160 10% 85%;
---sidebar-border: 200 12% 20%;
---sidebar-ring: 174 55% 42%;
+### Checklist F — Live shell verification
+
+```bash
+python manage.py runserver 0.0.0.0:8000
 ```
 
-Font: `font-family: 'Inter', system-ui, -apple-system, sans-serif;` on `body`.
+For every SPA-owned page route found in Step 2a:
+- [ ] `GET <route>` returns 200 with `data-tapne-runtime="inline-config"` in the HTML
+- [ ] The injected `window.__TAPNE_FRONTEND_CONFIG__` contains an `api` key for every `TapneRuntimeConfig.api` key
 
-Border radius: `--radius: 0.625rem`. Derived values (`lg`, `md`, `sm`) are computed by Tailwind — do not redeclare them.
+For every Django API endpoint found in Step 2d:
+- [ ] Returns valid JSON with the expected shape
 
-If the build output needs injection, patch the external build artifact or serve it through a Django wrapper template. Do not patch files under `lovable/`.
-If the injected runtime payload includes datetimes, decimals, or model-derived data, use Django-safe JSON serialization.
+Plus:
+- [ ] `GET /health/` returns `{"status": "ok", ...}`
+- [ ] `GET /admin/` is not accidentally shadowed by the SPA
+- [ ] `GET /u/<username>/` is handled by Django, not the SPA shell
+- [ ] `GET /runtime/health/` returns `{"status": "ok"}`
 
-### 6. Replace mock behavior with real backend behavior
+---
 
-This is the core cutover requirement.
+### Fix protocol for gaps found in Step 6
 
-For each Lovable route or modal:
+1. Missing Django view → add to `frontend/views.py` + `frontend/urls.py`
+2. Missing api key in runtime config → add to `_runtime_config_payload()["api"]` in `frontend/views.py`
+3. Missing response field → add to the relevant Django model method or builder function in the appropriate app (`trips/`, `blogs/`, `accounts/`, `enrollment/`, `interactions/`, etc.)
+4. Missing SPA entrypoint URL → add to `frontend/urls.py` under the `if settings.LOVABLE_FRONTEND_ENABLED:` block, pointing at `views.frontend_entrypoint_view`
+5. Missing SPA router entry → add to `frontend_spa/src/App.tsx`
+6. Wrong Vite alias → fix in `frontend_spa/vite.production.config.ts`
+7. Use `DjangoJSONEncoder` for all JSON responses — never raw `json.dumps`
+8. **Response returns data but view passes through a Django TypedDict with different field names** → build the response shape inline in the view, field by field, mapping Django names to TypeScript names. Do NOT spread a Django TypedDict directly if its field names differ from what the TypeScript interface declares.
+9. **Django view returns `trip` but context expects `draft`** → check the key name in the `JsonResponse` matches exactly what the frontend destructures (e.g. `data.draft` vs `data.trip`).
+10. **Django view returns only one tab's trips** → if the frontend fetches once and filters all tabs client-side, the view must return ALL trips (drafts + published + past) in a single response. Check `MyTrips.tsx` and `DraftContext.tsx` for how many fetches they make.
+11. **Missing `frontend-api/profile/<id>/` endpoint** → `Profile.tsx` calls `${cfg.api.base}/profile/${profileId}/` which does NOT go through a named `cfg.api.*` key. This URL must be registered in `frontend/urls.py` and handled by a view. Check every `cfg.api.base` interpolation — they are invisible to the api-key audit.
+12. Re-run the build after every fix
 
-1. identify which data or actions are currently fake
-2. expose or refine the corresponding Django backend contract
-3. connect the shipped frontend to real endpoints
-4. confirm browser behavior against real records
+---
 
-Acceptable implementation patterns without editing `lovable/`:
+### When to write a Lovable prompt
 
-- external source-level alias overrides for specific Lovable modules
-- server-rendered bootstrap JSON injected into the SPA shell
-- wrapper-injected runtime shims
-- post-build JavaScript transforms against the external build output
-- same-origin Django APIs consumed by the shipped frontend
-- reverse proxy rules that keep browser URLs stable while splitting frontend and backend responsibilities
+Only write a Lovable prompt if ALL of the following are simultaneously true:
 
-Preferred order:
+1. A required behavior exists in the **rendered frontend** (not just mock/dev code)
+2. That behavior cannot be correctly served by fixing the Django views, `_runtime_config_payload()`, or `frontend_spa/vite.production.config.ts`
+3. The mismatch causes a visible user-facing failure on a production route
 
-1. external source-level override build
-2. same-origin backend API contract
-3. server/bootstrap runtime injection
-4. post-build artifact transform only where needed
+If this condition is met, write exactly one prompt covering all showstoppers found. Format:
 
-Do not mark a route blocked merely because the original Lovable source uses fake logic. First prove that:
-
-- the import cannot be overridden externally, and
-- the remaining behavior cannot be replaced through runtime/bootstrap or deterministic artifact transforms
-
-Only then is it a real blocker.
-
-### 7. Use Django as the real backend
-
-Django remains responsible for:
-
-- session/auth and identity
-- profiles
-- trips, blogs, drafts, bookings, applications
-- uploads/media access
-- business rules and validation
-- admin and operational endpoints
-
-Favor same-origin APIs for the browser app so cookies, CSRF, and deployment are simpler on `tapnetravel.com`.
-
-When replacing a Lovable module externally, preserve its public API shape whenever possible. The replacement module should make the compiled app believe it is still talking to the same context/provider/data helpers, but all reads and writes must route to Django-backed truth.
-
-### 8. Serve the frontend correctly in production
-
-Recommended pattern for this repo:
-
-- Django/Cloud Run serves backend endpoints and, if simplest, the compiled frontend asset shell too
-- non-API public routes fall back to the Lovable SPA entrypoint
-- backend routes stay owned by Django
-- static frontend assets come from WhiteNoise or a dedicated static bucket/CDN, depending on deployment constraints
-
-Any Cloud Run or container changes should be made in:
-
-- [infra/Dockerfile.web](e:/tapne/infra/Dockerfile.web)
-- [infra/run-cloud-run-workflow.ps1](e:/tapne/infra/run-cloud-run-workflow.ps1)
-- related deploy scripts under [infra](e:/tapne/infra)
-
-When touching PowerShell deploy/orchestration scripts:
-
-- keep Windows PowerShell 5.1 compatibility in mind
-- do not depend on `ConvertFrom-Json -Depth`
-- verify switch/boolean forwarding between scripts end-to-end
-- if immutable `lovable/` lockfiles are out of sync, use a disposable install strategy outside `lovable/` rather than editing tracked files there
-
-### 9. Production acceptance checklist
-
-Do not close the work until all relevant items are true:
-
-- public frontend routes render the Lovable UI on the real domain
-- no frontend route depends on mock data
-- auth is real
-- drafts are server-backed or otherwise truly persisted by Django
-- trips/blogs/profile data are real
-- create/update/delete flows write through Django
-- direct refresh on SPA routes works in production
-- build and deploy are reproducible from repo scripts
-- centralized color/font/shape control exists outside `lovable/`
-- `static/frontend-brand/tokens.css` CSS variable values are identical to `lovable/src/index.css` — no visual deviation
-- `static/frontend-brand/overrides.css` is empty (no unsolicited visual overrides)
-- the built artifact no longer contains banned mock/local-only markers
-- the built artifact does not require `/frontend-runtime.js` to boot
-- the served root HTML includes inline runtime config
-- the root route works for both signed-out and signed-in sessions
-- no Django template is being served for any browser-navigable URL (run `grep -r "render(request" <all_app_views>` and confirm every hit is either a `backend-only` endpoint or has been replaced by an SPA redirect/fallback)
-- every Django URL that previously rendered a user-facing template now either redirects to the SPA equivalent or falls through to the SPA catch-all
-- the SPA catch-all (`*` route) renders an "Under Construction" page — not a blank screen, not a Django 404, not an error
-- the "Under Construction" page uses the same Lovable design tokens (colors, font, radius) as the rest of the SPA — it must look like it belongs to the same app
-- `frontend_spa/src/App.tsx` imports every user-facing page from `@/pages/*` (Lovable source) — no `@frontend/pages/*` imports except `UnderConstructionPage`
-- `frontend_spa/src/App.tsx` provider tree matches `lovable/src/App.tsx` exactly (`QueryClientProvider`, `AuthProvider`, `DraftProvider`, `TooltipProvider`, both `Toaster`s)
-- `frontend/urls.py` has explicit SPA shell patterns for every parameterised Django route that previously rendered a template (`trips/<id>/edit/`, `trips/<id>/delete/`, `blogs/<slug>/edit/`, `u/<username>/`, etc.) — verified with Django's URL resolver
-- `static/frontend-brand/overrides.css` contains no visual CSS rules (no font-family overrides, no `!important` border-radius or shadow overrides) — only non-visual functional fixes are permitted
-- dual-mode files in `lovable/src/lib/` are intact: `mode.ts` exports `IS_DEV_MODE` and injects mock config, `devMock.ts` exports `resolveMockRequest`, `api.ts` has IS_DEV_MODE interception in all four functions, `main.tsx` imports `@/lib/mode` first
-- `frontend_spa/vite.production.config.ts` aliases `@/lib/devMock` to `frontend_spa/src/lib/devMockStub.ts` — verified present in the alias map
-- production bundle does not contain `mockData` in any JS bundle or source map file (confirmed by artifact checker — a failure here means the devMockStub alias was not applied)
-
-Run the bundled verifier against the final artifact:
-
-```powershell
-python skills/lovable-django-production-cutover/scripts/verify_cutover_artifact.py ^
-  --repo-root e:\tapne ^
-  --build-dir e:\tapne\artifacts\lovable-production-dist
+```
+CONTEXT: [one sentence describing what changed in Lovable]
+PROBLEM: [exact symptom the user sees in the browser]
+REQUIRED CHANGE: [minimal, concrete change needed in the Lovable frontend]
+DO NOT CHANGE: [list what must remain exactly as-is]
 ```
 
-Then verify the live deployment, not just the artifact:
+Keep the prompt under 200 words. Do not mention Django internals, file paths outside `lovable/`, or implementation details that Lovable cannot act on.
 
-```powershell
-python skills/lovable-django-production-cutover/scripts/verify_live_cutover.py ^
-  --base-url https://tapnetravel.com/
-```
+---
 
-### 10. Browser verification
+## Reporting when done
 
-Always verify with real renders, not assumptions.
+1. HEAD SHAs after pull (Django repo + lovable submodule)
+2. Diff summary from Step 2 — new/removed routes, api keys, call patterns, Django endpoints
+3. For each new item: how it was connected (new Django view, new api key in runtime config, new router entry, or existing handler confirmed sufficient)
+4. Build artifact status (clean / what was found in devmock check)
+5. Live shell verification results (pass/fail per route and per API endpoint)
+6. Lovable prompt text if written, or "No Lovable prompt needed — all gaps resolved from Django side"
 
-Use the browser loop to check:
+---
 
-- signed-out and signed-in states
-- direct route loads
-- create/edit/publish flows
-- 404 and fallback handling
-- responsive breakpoints
-- fresh browser session with no legacy localStorage state
-- hard refresh after auth, drafts, bookings, and application actions
-- that source-override replacements actually drive the visible UI rather than dormant backend endpoints
-- that `/` does not blank-screen because of bootstrap/runtime config failures
-- that the active Cloud Run revision is not still serving `500` requests after deploy
+## Key file map (verify after each pull — paths are stable but content may change)
 
-For visual QA or screenshot sweeps, also use:
+| Purpose | Path |
+|---|---|
+| Lovable source router | `lovable/src/App.tsx` |
+| TypeScript API contracts | `lovable/src/types/api.ts` |
+| Dev mode detection | `lovable/src/lib/mode.ts` |
+| API client (fetch wrapper + IS_DEV_MODE branches) | `lovable/src/lib/api.ts` |
+| Mock request handler | `lovable/src/lib/devMock.ts` |
+| Mock data fixtures | `lovable/src/data/mockData.ts` |
+| Bootstrap entry | `lovable/src/main.tsx` |
+| Auth + session API calls | `lovable/src/contexts/AuthContext.tsx` |
+| Trip draft API calls | `lovable/src/contexts/DraftContext.tsx` |
+| Production router (mirrors Lovable routes) | `frontend_spa/src/App.tsx` |
+| Production API client | `frontend_spa/src/lib/api.ts` |
+| Runtime config types | `frontend_spa/src/lib/config.ts` |
+| Mock bypass stub (devMock) | `frontend_spa/src/lib/devMockStub.ts` |
+| Mock data stub (ApplicationQuestion types) | `frontend_spa/src/data/mockDataStub.ts` |
+| External Vite config (alias overrides) | `frontend_spa/vite.production.config.ts` |
+| Build script | `infra/build-lovable-production-frontend.ps1` |
+| Django URL routing (frontend + SPA entrypoints) | `frontend/urls.py` |
+| Django views, runtime config injection | `frontend/views.py` |
+| Root URL conf | `tapne/urls.py` |
+| Feature flags | `tapne/settings.py` (`LOVABLE_FRONTEND_ENABLED`, `LOVABLE_FRONTEND_REQUIRE_LIVE_DATA`, `LOVABLE_FRONTEND_DIST_DIR`) |
+| Built artifact | `artifacts/lovable-production-dist/` |
 
-- `../webpage-visual-perfection-audit/SKILL.md`
+---
 
-## Reporting
+## Baseline reference
 
-When closing the work, report:
+> These tables record the state as of the April 2026 cutover work.
+> They exist to speed up the Step 2 diff — they are NOT the authoritative extraction.
+> Always produce fresh tables from the current files first; then compare against these.
 
-- which routes are now Lovable-fronted
-- which routes remain Django-rendered and why
-- which mock blockers were removed
-- where centralized brand/runtime control lives
-- how the build and deploy flow changed
-- what was verified in the browser against real backend data
+### Routes (April 2026 baseline)
 
-## Resources
+**lovable/src/App.tsx routes:**
 
-- `references/current-state-audit.md`: repo-specific mock blocker inventory
-- `references/deployment-blueprint.md`: production serving and cutover patterns for this repo
-- `references/no-touch-override-build.md`: primary strategy for replacing immutable Lovable modules
-- `references/operational-hardening.md`: runtime shell, workflow, and live verification guardrails
-- `references/override-targets.md`: repo-specific Lovable module override map
-- `scripts/audit_lovable_blockers.py`: quick audit for mock/local-only frontend blockers
-- `scripts/verify_cutover_artifact.py`: final check that the emitted frontend artifact no longer contains banned mock/local-only patterns
-- `scripts/verify_live_cutover.py`: live-domain check for the hardened SPA shell and same-origin Django APIs
+| Route path | Component |
+|---|---|
+| `/` | `Index` |
+| `/trips` | `BrowseTrips` |
+| `/trips/:id` | `TripDetail` |
+| `/create-trip` | `CreateTrip` |
+| `/my-trips` | `MyTrips` |
+| `/experiences` | `Experiences` |
+| `/experiences/create` | `ExperienceCreate` |
+| `/experiences/edit` | `ExperienceEdit` |
+| `/experiences/:slug` | `ExperienceDetail` |
+| `/blogs` | `Experiences` (alias) |
+| `/travelers` | `Travelers` |
+| `/bookmarks` | `Bookmarks` |
+| `/inbox` | `Inbox` |
+| `/manage-trip/:id` | `ManageTrip` |
+| `/login` | `Login` |
+| `/signup` | `SignUp` |
+| `/profile` | `Profile` |
+| `/profile/:userId` | `Profile` |
+| `*` | `NotFound` / `UnderConstructionPage` |
+
+---
+
+### TapneRuntimeConfig.api keys (April 2026 baseline)
+
+| Key | Django endpoint | Primary HTTP methods | Notes |
+|---|---|---|---|
+| `base` | `/frontend-api` | — | URL prefix, not a direct endpoint |
+| `session` | `/frontend-api/session/` | GET | Bootstrap session check |
+| `login` | `/frontend-api/auth/login/` | POST | `{ email, password }` |
+| `signup` | `/frontend-api/auth/signup/` | POST | `{ first_name, email, password }` |
+| `logout` | `/frontend-api/auth/logout/` | POST | |
+| `home` | `/frontend-api/home/` | GET | Returns `HomeResponse` |
+| `trips` | `/frontend-api/trips/` | GET, GET `/{id}/`, POST `/{id}/join-request/`, POST `/{id}/duplicate/` | |
+| `blogs` | `/frontend-api/blogs/` | GET, GET `/{slug}/`, POST, PATCH `/{slug}/`, DELETE `/{slug}/` | |
+| `my_trips` | `/frontend-api/my-trips/` | GET | Returns `MyTripsResponse` |
+| `trip_drafts` | `/frontend-api/trips/drafts/` | POST, GET/PATCH `/{id}/`, DELETE `/{id}/`, POST `/{id}/publish/` | |
+| `profile_me` | `/frontend-api/profile/me/` | GET, PATCH | Own profile |
+| `bookmarks` | `/frontend-api/bookmarks/` | GET, POST `/{trip_id}/`, DELETE `/{trip_id}/` | |
+| `activity` | `/frontend-api/activity/` | GET | |
+| `settings` | `/frontend-api/settings/` | GET | |
+| `hosting_inbox` | `/frontend-api/hosting-inbox/` | GET | `?status=all` supported |
+| `dm_inbox` | `/frontend-api/dm/inbox/` | GET, GET/POST via threads | also `GET /dm/threads/{id}/`, `POST /dm/inbox/{id}/messages/` |
+| `manage_trip` | `/frontend-api/manage-trip/` | GET `/{id}/`, POST `/{id}/booking-status/`, POST `/{id}/participants/{p}/remove/`, POST `/{id}/cancel/`, POST `/{id}/message/` | URL prefix only |
+| `messages` | `/frontend-api/messages/` | — | Deferred — not yet called by any page |
+| `trip_chat` | `/frontend-api/trip-chat/` | — | Deferred — not yet called by any page |
+
+**Additional endpoints not accessed via a named api key (use `cfg.api.base` prefix):**
+
+| URL shape | HTTP | Used in | Django view | Notes |
+|---|---|---|---|---|
+| `/frontend-api/profile/{id}/` | GET | `Profile.tsx` | `profile_detail_api_view` | `${cfg.api.base}/profile/${profileId}/` — profile_id is username OR numeric id |
+| `/frontend-api/profile/{username}/follow/` | POST, DELETE | `Profile.tsx` | *(deferred)* | Follow/unfollow |
+| `/frontend-api/hosting-requests/{id}/decision/` | POST | `ManageTrip.tsx`, `ApplicationManager.tsx` | `hosting_decision_api_view` | `{ decision }` |
+
+> **Warning:** These `cfg.api.base` patterns are NOT in `TapneRuntimeConfig.api` and do NOT appear in the api-key audit. Run a dedicated grep for `cfg.api.base` every run to catch them.
+
+---
+
+### Django URL → view map (April 2026 baseline)
+
+| URL pattern | View |
+|---|---|
+| `GET /frontend-api/session/` | `session_api_view` |
+| `POST /frontend-api/auth/login/` | `auth_login_api_view` |
+| `POST /frontend-api/auth/signup/` | `auth_signup_api_view` |
+| `POST /frontend-api/auth/logout/` | `auth_logout_api_view` |
+| `GET /frontend-api/home/` | `home_api_view` |
+| `GET,POST /frontend-api/trips/` | `trip_list_api_view` |
+| `GET /frontend-api/trips/{trip_id}/` | `trip_detail_api_view` |
+| `POST /frontend-api/trips/drafts/` | `trip_draft_create_api_view` |
+| `GET,PATCH /frontend-api/trips/drafts/{trip_id}/` | `trip_draft_detail_api_view` |
+| `POST /frontend-api/trips/drafts/{trip_id}/publish/` | `trip_draft_publish_api_view` |
+| `GET /frontend-api/my-trips/` | `my_trips_api_view` |
+| `GET,POST /frontend-api/blogs/` | `blog_list_api_view` |
+| `GET,PATCH,DELETE /frontend-api/blogs/{slug}/` | `blog_detail_api_view` |
+| `GET,PATCH /frontend-api/profile/me/` | `my_profile_api_view` |
+| `GET /frontend-api/bookmarks/` | `bookmarks_api_view` |
+| `POST,DELETE /frontend-api/bookmarks/{trip_id}/` | `bookmark_trip_api_view` |
+| `GET /frontend-api/activity/` | `activity_api_view` |
+| `GET /frontend-api/settings/` | `settings_api_view` |
+| `GET /frontend-api/hosting-inbox/` | `hosting_inbox_api_view` |
+| `GET /frontend-api/dm/inbox/` | `dm_inbox_api_view` |
+| `GET /frontend-api/dm/threads/{thread_id}/` | `dm_thread_api_view` |
+| `POST /frontend-api/dm/inbox/{thread_id}/messages/` | `dm_send_message_api_view` |
+| `POST /frontend-api/trips/{trip_id}/join-request/` | `trip_join_request_api_view` |
+| `POST /frontend-api/trips/{trip_id}/duplicate/` | `trip_duplicate_api_view` |
+| `GET /frontend-api/manage-trip/{trip_id}/` | `manage_trip_api_view` |
+| `POST /frontend-api/manage-trip/{trip_id}/booking-status/` | `manage_trip_booking_status_view` |
+| `POST /frontend-api/manage-trip/{trip_id}/participants/{participant_id}/remove/` | `manage_trip_remove_participant_view` |
+| `POST /frontend-api/manage-trip/{trip_id}/cancel/` | `manage_trip_cancel_view` |
+| `POST /frontend-api/manage-trip/{trip_id}/message/` | `manage_trip_message_view` |
+| `POST /frontend-api/hosting-requests/{request_id}/decision/` | `hosting_decision_api_view` |
+| `GET /frontend-api/profile/{profile_id}/` | `profile_detail_api_view` |
+| `GET /frontend-api/users/search/` | `users_search_api_view` |
+
+**SPA entrypoint routes (all → `frontend_entrypoint_view`):**
+
+| URL pattern | Named route |
+|---|---|
+| `GET /` | `entrypoint-home` |
+| `GET /trips` | `entrypoint-trips` |
+| `GET /trips/{trip_id}` | `entrypoint-trip-detail` |
+| `GET /trips/{trip_id}/edit` | `entrypoint-trip-edit` |
+| `GET /trips/create/` | `entrypoint-trip-create` |
+| `GET /trips/mine/` | `entrypoint-trip-mine` |
+| `GET /create-trip` | `entrypoint-create-trip` |
+| `GET /my-trips` | `entrypoint-my-trips` |
+| `GET /experiences` | `entrypoint-experiences` |
+| `GET /experiences/create` | `entrypoint-experience-create` |
+| `GET /experiences/:slug` | `entrypoint-experience-detail` |
+| `GET /blogs` | `entrypoint-blogs` |
+| `GET /travelers` | `entrypoint-travelers` |
+| `GET /bookmarks` | `entrypoint-bookmarks-spa` |
+| `GET /inbox` | `entrypoint-inbox` |
+| `GET /manage-trip/:id` | `entrypoint-manage-trip` |
+| `GET /login` | `entrypoint-login` |
+| `GET /signup` | `entrypoint-signup` |
+| `GET /profile` | `entrypoint-profile` |
+| `GET /profile/:userId` | `entrypoint-profile-detail` |
+| `GET /accounts/login/` | `entrypoint-accounts-login` |
+| `GET /accounts/signup/` | `entrypoint-accounts-signup` |
+| `GET /accounts/me/` | `entrypoint-accounts-me` |
+| `re_path r"^.*$"` (catch-all in tapne/urls.py) | `spa-catchall` |
+
+---
+
+### Mock patterns (April 2026 baseline)
+
+| Mock pattern in devMock.ts | Django replacement |
+|---|---|
+| `GET /__devmock__/session/` | `session_api_view` → `SessionResponse` shape |
+| `POST /__devmock__/auth/login/` hardcoded user | `auth_login_api_view` → `request.user` |
+| `POST /__devmock__/auth/signup/` | `auth_signup_api_view` |
+| `GET /__devmock__/home/` fixture trips/blogs | `home_api_view` → `HomeResponse` |
+| `GET /__devmock__/trips/` mock trip list | `trip_list_api_view` → `TripListResponse` |
+| `GET /__devmock__/trips/{id}/` | `trip_detail_api_view` → `TripDetailResponse` |
+| `POST /__devmock__/trips/drafts/` | `trip_draft_create_api_view` |
+| `GET,PATCH /__devmock__/trip-drafts/{id}/` | `trip_draft_detail_api_view` |
+| `POST /__devmock__/trip-drafts/{id}/publish/` | `trip_draft_publish_api_view` |
+| `GET /__devmock__/my-trips/` | `my_trips_api_view` → `MyTripsResponse` |
+| `GET /__devmock__/blogs/` fixture blogs | `blog_list_api_view` |
+| `GET,POST,PATCH,DELETE /__devmock__/blogs/{slug}/` | `blog_detail_api_view` |
+| `GET,PATCH /__devmock__/accounts/me/` | `my_profile_api_view` |
+| `GET /__devmock__/bookmarks/` | `bookmarks_api_view` |
+| `POST,DELETE /__devmock__/bookmarks/{id}/` | `bookmark_trip_api_view` |
+| `GET /__devmock__/activity/` | `activity_api_view` |
+| `GET /__devmock__/settings/` | `settings_api_view` |
+| `GET /__devmock__/hosting/inbox/` | `hosting_inbox_api_view` |
+| `GET /__devmock__/dm/inbox/` | `dm_inbox_api_view` |
+| `POST /__devmock__/dm/inbox/{id}/messages/` | `dm_send_message_api_view` |
+| `GET,POST /__devmock__/manage-trip/{id}/` | `manage_trip_api_view` + action views |
+| `POST /__devmock__/hosting-requests/{id}/decision/` | `hosting_decision_api_view` |
+| `mockData.ts` trip fixtures (10–20 trips with full TripData shape) | `Trip` model via `build_trip_list_payload_for_user()` etc. |
+| `mockData.ts` user fixtures | `User` + `AccountProfile` via `_member_identity_payload()` |
+| `IS_DEV_MODE = window.TAPNE_RUNTIME_CONFIG === undefined` | Django injects `window.TAPNE_RUNTIME_CONFIG` → always `false` in production |
+
+---
+
+### Known hardcoded mock/placeholder patterns that are NOT in devMock.ts
+
+These are baked into component source files and require Lovable prompts — they cannot be fixed from the Django side:
+
+| Location | Hardcoded value | Required fix |
+|---|---|---|
+| `Navbar.tsx` (top-level `const notifications = [...]`) | 3 fake notification items always shown | Lovable prompt: fetch from `cfg.api.notifications`; remove hardcoded array |
+| `LoginModal.tsx` `handleGoogleAuth` | Calls `login("google@tapne.com","google")` — fake credentials | Lovable prompt: check `cfg.google_oauth_url`; if truthy `window.location.href = cfg.google_oauth_url + "?next=" + encodeURIComponent(window.location.pathname)`; if falsy hide the Google button and divider |
+| `HeroSection.tsx` stats fallbacks | `"3,000+"` / `"120+"` / `"50+"` shown when `stats` prop is `undefined` | Django fix: always return `stats` key from `home_api_view` (never omit it) |
+| `CreateTrip.tsx` `handleSaveDraft` | Shows "Draft saved!" toast even when `draftId == null` (unauthenticated) | Lovable prompt: guard toast behind `draftId != null && isAuthenticated` |
+
+For each entry in this table:
+- If the fix is "Django fix" → apply it from the Django side now.
+- If the fix is "Lovable prompt" → add it to the Lovable prompt written in Step 6 (only if it causes a visible user-facing failure).
+
+### Key TypeScript interfaces to verify against Django responses (April 2026 baseline)
+
+Tapne uses **snake_case** throughout — Django and TypeScript both use snake_case field names. There is no camelCase conversion. For any new field Lovable adds to a TypeScript interface, the Django view must return a field with exactly the same snake_case name.
+
+| TypeScript interface | Source file | Django view / builder | Critical array fields to verify |
+|---|---|---|---|
+| `SessionUser` | `api.ts` | `_session_user_payload()` in `frontend/views.py` | — |
+| `SessionResponse` | `api.ts` | `session_api_view` | — |
+| `TripData` | `api.ts` | `Trip.to_trip_data()` + `enrich_trip_preview_fields()` | `highlights`, `itinerary_days`, `faqs` |
+| `TripDetailResponse` | `api.ts` | `trip_detail_api_view` | `similar_trips[]` must be `TripData` |
+| `TripListResponse` | `api.ts` | `trip_list_api_view` | `trips[]` must be `TripData` |
+| `MyTripsResponse` | `api.ts` | `my_trips_api_view` via `build_my_trips_payload_for_member()` | `trips[]` must be `TripData` |
+| `ManageTripResponse` | `api.ts` | `manage_trip_api_view` | `participants[]`, `applications[]` |
+| `BlogData` | `api.ts` | `blog_list_api_view` / `blog_detail_api_view` | `tags[]` |
+| `HomeResponse` | `api.ts` | `home_api_view` via `build_home_payload_for_user()` | `community_profiles[]`, `testimonials[]` |
+| `EnrollmentRequestData` | `api.ts` | `hosting_inbox_api_view` via `build_hosting_inbox_payload_for_member()` | — |
+| `TapneRuntimeConfig` | `api.ts` | `_runtime_config_payload()` in `frontend/views.py` | `api{}` must have every key in the TS interface |
+| `ProfileResponse` | inline in `Profile.tsx` | `profile_detail_api_view` | `profile{}`, `trips_hosted[]`, `trips_joined[]`, `reviews[]`, `gallery[]` — note: `HomeFeedPayload.profiles` (feed/models.py `ProfileData`) does NOT have `display_name`/`location` fields — `_enrich_profile_cards()` adds them |
+| `CommunityProfile` | `api.ts` | `home_api_view` (built inline, not from `HomeFeedPayload.profiles` directly) | fields: `username`, `display_name`, `bio`, `location`; `HomeFeedPayload` uses `ProfileData` which lacks `display_name` — must be remapped via `_enrich_profile_cards()` |
+| `HomeResponse.stats` | `api.ts` | `home_api_view` | `{ travelers, trips_hosted, destinations }` — must come from real DB counts, NOT hardcoded fallbacks. `HeroSection` shows fallback values `"3,000+"/"120+"/"50+"` when `stats` is undefined/null — Django must always return this key |
+| `HomeResponse.testimonials` | `api.ts` | `home_api_view` | `TestimonialData[]` — return `[]` if no testimonials model; `TestimonialsSection` hides itself when empty |
+| `HomeResponse.community_profiles` | `api.ts` | `home_api_view` | `CommunityProfile[]` — `CommunitySection` hides itself when empty; must be non-null array |
+| `InboxResponse` | **`messaging.ts`** | `dm_inbox_api_view` (custom builder in `frontend/views.py`) | `threads[]` must be `ThreadData` |
+| `ThreadData` | **`messaging.ts`** | built inline in `dm_inbox_api_view` | `participants[]` (username+display_name), `messages[]` (MessageData) |
+| `MessageData` | **`messaging.ts`** | built inline in `dm_inbox_api_view` message loop | fields: `id`, `thread_id`, `sender_username`, `sender_display_name`, `body`, `sent_at` |
+
+> **Warning:** `messaging.ts` types are NOT in `api.ts`. They are imported directly by `Inbox.tsx`. If you only check `api.ts` you will miss all DM/messaging shape requirements.
+>
+> **Warning:** Django's `DMThreadPreviewData` TypedDict in `interactions/models.py` has a **different shape** from TypeScript's `ThreadData`. The `dm_inbox_api_view` must NOT pass `DMThreadPreviewData` through to the frontend — it must build the `ThreadData` shape explicitly. The field mapping is:
+> - `peer_username` / `peer_url` → NOT equivalent to `participants[]` array
+> - `last_message_preview` → frontend field name is `last_message`
+> - `last_message_at` → frontend field name is `last_sent_at`
+> - `message_count` → frontend expects `messages[]` array, not a count
+> - Missing from Django model: `type`, `title`, `participants[]`, `unread_count`

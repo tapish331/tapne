@@ -77,10 +77,14 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      // Stub out the dev-mode mock resolver so lovable/src/data/mockData.ts
-      // and lovable/src/lib/devMock.ts are excluded from the production bundle.
-      // Must come before the "@" alias so it takes precedence (longer key = checked first).
+      // Stub out dev-only modules so mockData.ts is excluded from the production
+      // bundle. Both aliases must come before "@" so they take precedence
+      // (Vite checks aliases in declaration order; longer prefixes win).
       "@/lib/devMock": path.resolve(__dirname, "src/lib/devMockStub.ts"),
+      // CreateTrip.tsx imports ApplicationQuestion/ApplicationQuestionType from
+      // mockData as TypeScript types. The stub re-exports them as types so the
+      // real mockData fixture file (trips, users, etc.) never enters the bundle.
+      "@/data/mockData": path.resolve(__dirname, "src/data/mockDataStub.ts"),
       "@": path.resolve(lovableRoot, "src"),
       "@frontend": path.resolve(__dirname, "src"),
     },
