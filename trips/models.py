@@ -468,6 +468,8 @@ class Trip(models.Model):
             trip_data["cancellation_policy"] = str(self.cancellation_policy or "").strip()
         if self.faqs:
             trip_data["faqs"] = [dict(item) for item in cast(list[dict[str, object]], self.faqs)]
+        if self.co_hosts:
+            trip_data["co_hosts"] = str(self.co_hosts or "").strip()
         return trip_data
 
 MINE_TABS: Final[tuple[str, ...]] = ("drafts", "published", "past")

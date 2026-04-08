@@ -14,6 +14,9 @@ from typing import Any, Final, cast
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login, logout
+from django.core.cache import cache
+from django.core.mail import send_mail
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
@@ -58,7 +61,27 @@ BRAND_TOKENS_MARKER: Final[str] = "frontend-brand/tokens"
 BRAND_OVERRIDES_MARKER: Final[str] = "frontend-brand/overrides"
 FRONTEND_RUNTIME_INLINE_ATTR: Final[str] = "data-tapne-runtime"
 FRONTEND_RUNTIME_INLINE_VALUE: Final[str] = "inline-config"
+OTP_CACHE_TTL: Final[int] = 600  # 10 minutes
+OTP_MAX_ATTEMPTS: Final[int] = 5
 UserModel = get_user_model()
+
+
+def _otp_cache_key(email: str) -> str:
+    return f"tapne:otp:{email.lower().strip()}"
+
+
+def _generate_otp() -> str:
+    return str(secrets.randbelow(900000) + 100000)
+
+
+def _generate_username_from_email(email: str) -> str:
+    base = re.sub(r"[^a-z0-9_]", "", email.split("@")[0].lower())[:20] or "traveler"
+    username = base
+    counter = 1
+    while UserModel.objects.filter(username__iexact=username).exists():
+        username = f"{base}{counter}"
+        counter += 1
+    return username
 
 
 def _frontend_dist_dir() -> Path:
@@ -407,15 +430,15 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "dm_inbox": reverse("frontend:api-dm-inbox"),
             "trip_drafts": reverse("frontend:api-trip-draft-create"),
             "manage_trip": "/frontend-api/manage-trip/",
-            # Deferred features — keys defined in mode.ts dev config; no page
-            # calls them yet but they must be present so cfg.api.* is never
-            # undefined if Lovable adds a call before Django wires the endpoint.
             "messages": "/frontend-api/messages/",
             "trip_chat": "/frontend-api/trip-chat/",
             "users_search": reverse("frontend:api-users-search"),
             "notifications": reverse("frontend:api-notifications"),
             "trip_reviews": "/frontend-api/trips/",
+            "trip_review": "/frontend-api/trips/",
             "dm_start": reverse("frontend:api-dm-start-thread"),
+            "account_deactivate": reverse("frontend:api-account-deactivate"),
+            "account_delete": reverse("frontend:api-account-delete"),
         },
         "routes": {
             "home": "/",
@@ -580,11 +603,36 @@ def auth_login_api_view(request: HttpRequest) -> JsonResponse:
 @require_http_methods(["POST"])
 def auth_signup_api_view(request: HttpRequest) -> JsonResponse:
     payload = _request_payload(request)
-    form = SignUpForm(payload)
-    if not form.is_valid():
-        return _json_error("Signup failed.", extra={"errors": _form_errors(form)})
+    email = _normalize_string(payload.get("email", ""))
+    password = _normalize_string(payload.get("password", ""))
+    first_name = _normalize_string(payload.get("first_name", ""))
 
-    user = form.save()
+    if not email or not password:
+        return _json_error("Email and password are required.", extra={"errors": {"email": ["Required."]}})
+
+    from email_validator import EmailNotValidError, validate_email as _validate_email
+    try:
+        normalized_email = _validate_email(email, check_deliverability=False).normalized.lower()
+    except EmailNotValidError as exc:
+        return _json_error(str(exc), extra={"errors": {"email": [str(exc)]}})
+
+    if UserModel.objects.filter(email__iexact=normalized_email).exists():
+        return _json_error("An account with this email already exists.", extra={"errors": {"email": ["An account with this email already exists."]}})
+
+    if len(password) < 8:
+        return _json_error("Password must be at least 8 characters.", extra={"errors": {"password": ["Password must be at least 8 characters."]}})
+
+    username = _generate_username_from_email(normalized_email)
+    try:
+        user = UserModel.objects.create_user(
+            username=username,
+            email=normalized_email,
+            password=password,
+            first_name=first_name,
+        )
+    except Exception:
+        return _json_error("Signup failed. Please try again.")
+
     ensure_profile(user)
     login(request, user)
     return JsonResponse(
@@ -676,6 +724,10 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
     trip_payload = dict(payload.get("trip", {}))
     host_identity = _member_identity_payload(trip_row.host)
 
+    co_hosts_str = str(getattr(trip_row, "co_hosts", "") or "").strip()
+    co_host_usernames = [u for u in co_hosts_str.split() if u]
+    co_host_profiles = list(_identity_map_for_usernames(co_host_usernames).values()) if co_host_usernames else []
+
     participants: list[dict[str, str]] = [
         {
             "username": host_identity["username"],
@@ -754,6 +806,7 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
             **payload,
             "trip": _enrich_trip_cards([trip_payload])[0],
             "host": host_identity,
+            "co_host_profiles": co_host_profiles,
             "participants": participants,
             "similar_trips": [_serialize_trip_for_frontend(row) for row in similar_rows],
             "join_request": join_request_payload,
@@ -800,8 +853,10 @@ def my_trips_api_view(request: HttpRequest) -> JsonResponse:
     })
 
 
-@require_GET
+@require_http_methods(["GET", "POST"])
 def blog_list_api_view(request: HttpRequest) -> JsonResponse:
+    if request.method == "POST":
+        return blog_create_api_view(request)
     payload = build_blog_list_payload_for_user(request.user)
     response_payload: dict[str, object] = dict(payload)
     response_payload["blogs"] = _enrich_blog_cards([dict(row) for row in payload.get("blogs", [])])
@@ -1013,14 +1068,6 @@ def trip_draft_publish_api_view(request: HttpRequest, trip_id: int) -> JsonRespo
 
     _apply_trip_payload(trip, _request_payload(request))
     trip.is_published = True
-    try:
-        trip.full_clean()
-    except ValidationError as exc:
-        trip.is_published = False
-        if hasattr(exc, "message_dict"):
-            return _json_error("Trip cannot be published yet.", extra={"errors": exc.message_dict})
-        return _json_error("Trip cannot be published yet.")
-
     trip.save()
     return JsonResponse({"ok": True, "trip": _serialize_trip_for_frontend(trip)})
 
@@ -1686,3 +1733,255 @@ def dm_start_thread_api_view(request: HttpRequest) -> JsonResponse:
         "self-thread-blocked": "You cannot send a message to yourself.",
     }
     return _json_error(_outcome_errors.get(str(outcome), "Could not start conversation."), status=400)
+
+
+# ── User Search ───────────────────────────────────────────────────────────────
+
+
+@require_GET
+def user_search_api_view(request: HttpRequest) -> JsonResponse:
+    q = str(request.GET.get("q", "") or "").strip()
+    if len(q) < 2:
+        return JsonResponse({"ok": True, "users": []})
+    users = (
+        UserModel.objects.select_related("account_profile")
+        .filter(Q(username__icontains=q) | Q(account_profile__display_name__icontains=q))
+        .distinct()[:8]
+    )
+    return JsonResponse({"ok": True, "users": [_member_identity_payload(u) for u in users]})
+
+
+# ── OTP Signup ────────────────────────────────────────────────────────────────
+
+
+@require_POST
+def send_otp_api_view(request: HttpRequest) -> JsonResponse:
+    from runtime.models import check_rate_limit
+    from email_validator import EmailNotValidError, validate_email as _validate_email
+
+    payload = _request_payload(request)
+    email = _normalize_string(payload.get("email", ""))
+
+    if not email or "@" not in email:
+        return _json_error("A valid email address is required.")
+
+    try:
+        normalized_email = _validate_email(email, check_deliverability=False).normalized.lower()
+    except EmailNotValidError as exc:
+        return _json_error(str(exc), extra={"errors": {"email": [str(exc)]}})
+
+    if UserModel.objects.filter(email__iexact=normalized_email).exists():
+        return _json_error(
+            "An account with this email already exists.",
+            extra={"errors": {"email": ["An account with this email already exists."]}},
+        )
+
+    rate = check_rate_limit(scope="otp-send", identifier=normalized_email, limit=3, window_seconds=600)
+    if not rate["allowed"]:
+        return _json_error("Too many requests. Please wait before requesting another code.", status=429)
+
+    otp_code = _generate_otp()
+    cache.set(_otp_cache_key(normalized_email), {"otp": otp_code, "attempts": 0}, timeout=OTP_CACHE_TTL)
+
+    try:
+        send_mail(
+            subject="Your Tapne verification code",
+            message=(
+                f"Your Tapne verification code is: {otp_code}\n\n"
+                "This code expires in 10 minutes. Do not share it with anyone."
+            ),
+            from_email=None,  # uses DEFAULT_FROM_EMAIL from settings
+            recipient_list=[normalized_email],
+            fail_silently=True,
+        )
+    except Exception:
+        pass  # OTP is stored — delivery failure is non-fatal
+
+    return JsonResponse({"ok": True, "email": normalized_email})
+
+
+@require_POST
+def verify_otp_api_view(request: HttpRequest) -> JsonResponse:
+    from email_validator import EmailNotValidError, validate_email as _validate_email
+
+    payload = _request_payload(request)
+    email = _normalize_string(payload.get("email", ""))
+    otp = _normalize_string(payload.get("otp", ""))
+    first_name = _normalize_string(payload.get("first_name", ""))
+    password = _normalize_string(payload.get("password", ""))
+
+    if not email or not otp:
+        return _json_error("Email and verification code are required.")
+    if not password:
+        return _json_error("Password is required.")
+
+    try:
+        normalized_email = _validate_email(email, check_deliverability=False).normalized.lower()
+    except EmailNotValidError as exc:
+        return _json_error(str(exc))
+
+    cache_key = _otp_cache_key(normalized_email)
+    stored = cache.get(cache_key)
+
+    if stored is None:
+        return _json_error("Verification code has expired. Please request a new one.", status=400)
+
+    attempts = int(stored.get("attempts", 0)) + 1
+    if attempts > OTP_MAX_ATTEMPTS:
+        cache.delete(cache_key)
+        return _json_error("Too many incorrect attempts. Please request a new code.", status=400)
+
+    if stored.get("otp") != otp:
+        cache.set(cache_key, {"otp": stored["otp"], "attempts": attempts}, timeout=OTP_CACHE_TTL)
+        remaining = OTP_MAX_ATTEMPTS - attempts
+        return _json_error(
+            f"Incorrect code. {remaining} attempt{'s' if remaining != 1 else ''} remaining.",
+            status=400,
+        )
+
+    cache.delete(cache_key)
+
+    # Guard against race — check email still available
+    if UserModel.objects.filter(email__iexact=normalized_email).exists():
+        return _json_error(
+            "An account with this email already exists.",
+            extra={"errors": {"email": ["An account with this email already exists."]}},
+        )
+
+    if len(password) < 8:
+        return _json_error("Password must be at least 8 characters.", extra={"errors": {"password": ["Password must be at least 8 characters."]}})
+
+    username = _generate_username_from_email(normalized_email)
+    try:
+        user = UserModel.objects.create_user(
+            username=username,
+            email=normalized_email,
+            password=password,
+            first_name=first_name,
+        )
+    except Exception:
+        return _json_error("Account creation failed. Please try again.")
+
+    ensure_profile(user)
+    login(request, user)
+    return JsonResponse(
+        {
+            "ok": True,
+            "authenticated": True,
+            "csrf_token": get_token(request),
+            "user": _session_user_payload(request),
+        },
+        status=201,
+    )
+
+
+# ── Trip Review ───────────────────────────────────────────────────────────────
+
+
+@require_POST
+def trip_review_create_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    trip = Trip.objects.filter(pk=trip_id, is_published=True).first()
+    if trip is None:
+        return _json_error("Trip not found.", status=404)
+
+    from reviews.models import Review
+
+    payload = _request_payload(request)
+    try:
+        rating = max(1, min(5, int(payload.get("rating", 5))))
+    except (TypeError, ValueError):
+        rating = 5
+    body = " ".join(str(payload.get("body", "") or "").strip().split())
+    headline = " ".join(str(payload.get("headline", "") or "").strip().split())
+
+    if not body:
+        return _json_error("Review body is required.", extra={"errors": {"body": ["Required."]}})
+
+    review, created = Review.objects.update_or_create(
+        author=request.user,
+        target_type=Review.TARGET_TRIP,
+        target_key=str(trip_id),
+        defaults={
+            "rating": rating,
+            "body": body,
+            "headline": headline,
+            "target_label": str(trip.title or "").strip(),
+            "target_url": f"/trips/{trip_id}/",
+        },
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": created,
+            "review": {
+                "id": int(review.pk or 0),
+                "rating": review.rating,
+                "body": review.body,
+                "headline": review.headline,
+            },
+        },
+        status=201 if created else 200,
+    )
+
+
+# ── Blog / Experience Create ───────────────────────────────────────────────────
+
+
+def blog_create_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    from blogs.models import Blog
+    from django.utils.text import slugify
+
+    payload = _request_payload(request)
+    title = _normalize_string(payload.get("title", ""))
+    if not title:
+        return _json_error("Title is required.", extra={"errors": {"title": ["Required."]}})
+
+    base_slug = slugify(title)[:150] or "experience"
+    slug = base_slug
+    counter = 1
+    while Blog.objects.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+
+    blog = Blog(
+        author=request.user,
+        slug=slug,
+        title=title,
+        excerpt=_normalize_string(payload.get("short_description", "")),
+        body=str(payload.get("body", "") or "").strip(),
+        is_published=True,
+    )
+    blog.save()
+    return JsonResponse({"ok": True, "blog": blog.to_blog_data()}, status=201)
+
+
+# ── Account Management ────────────────────────────────────────────────────────
+
+
+@require_POST
+def account_deactivate_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    user = request.user
+    logout(request)
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    return JsonResponse({"ok": True, "deactivated": True})
+
+
+@require_POST
+def account_delete_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    user = request.user
+    logout(request)
+    user.delete()
+    return JsonResponse({"ok": True, "deleted": True})

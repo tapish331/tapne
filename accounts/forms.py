@@ -70,8 +70,20 @@ class LoginForm(AuthenticationForm):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         _add_input_css_classes(self)
-        self.fields["username"].widget.attrs.setdefault("autocomplete", "username")
+        self.fields["username"].label = "Username or Email"
+        self.fields["username"].widget.attrs.setdefault("autocomplete", "username email")
         self.fields["password"].widget.attrs.setdefault("autocomplete", "current-password")
+
+    def clean(self) -> dict[str, Any]:
+        identifier = str(self.cleaned_data.get("username", "") or "").strip()
+        # If it looks like an email, resolve to the matching username before auth.
+        if identifier and "@" in identifier:
+            try:
+                matched = UserModel.objects.get(email__iexact=identifier)
+                self.cleaned_data["username"] = str(getattr(matched, "username", "") or "").strip()
+            except (UserModel.DoesNotExist, UserModel.MultipleObjectsReturned):
+                pass  # Let parent raise the invalid-credentials error
+        return super().clean()
 
 
 class ProfileEditForm(forms.ModelForm):

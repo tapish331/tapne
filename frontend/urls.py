@@ -13,6 +13,9 @@ urlpatterns = [
     path("frontend-api/auth/login/", views.auth_login_api_view, name="api-auth-login"),
     path("frontend-api/auth/signup/", views.auth_signup_api_view, name="api-auth-signup"),
     path("frontend-api/auth/logout/", views.auth_logout_api_view, name="api-auth-logout"),
+    path("frontend-api/auth/send-otp/", views.send_otp_api_view, name="api-auth-send-otp"),
+    path("frontend-api/auth/verify-otp/", views.verify_otp_api_view, name="api-auth-verify-otp"),
+    path("frontend-api/users/search/", views.user_search_api_view, name="api-users-search"),
     path("frontend-api/home/", views.home_api_view, name="api-home"),
     path("frontend-api/trips/", views.trip_list_api_view, name="api-trips-list"),
     path("frontend-api/trips/<int:trip_id>/", views.trip_detail_api_view, name="api-trips-detail"),
@@ -42,6 +45,9 @@ urlpatterns = [
     re_path(r"^frontend-api/manage-trip/(?P<trip_id>\d+)/participants/(?P<participant_id>\d+)/remove/$", views.manage_trip_remove_participant_view, name="api-manage-trip-remove-participant"),
     path("frontend-api/manage-trip/<int:trip_id>/cancel/", views.manage_trip_cancel_view, name="api-manage-trip-cancel"),
     path("frontend-api/manage-trip/<int:trip_id>/message/", views.manage_trip_message_view, name="api-manage-trip-message"),
+    path("frontend-api/trips/<int:trip_id>/review/", views.trip_review_create_api_view, name="api-trip-review-create"),
+    path("frontend-api/account/deactivate/", views.account_deactivate_api_view, name="api-account-deactivate"),
+    path("frontend-api/account/delete/", views.account_delete_api_view, name="api-account-delete"),
     path(
         "frontend-api/hosting-requests/<int:request_id>/decision/",
         views.hosting_decision_api_view,
@@ -49,7 +55,6 @@ urlpatterns = [
     ),
     path("frontend-api/trips/<int:trip_id>/reviews/", views.trip_review_submit_api_view, name="api-trip-review-submit"),
     path("frontend-api/dm/start/", views.dm_start_thread_api_view, name="api-dm-start-thread"),
-    path("frontend-api/users/search/", views.users_search_api_view, name="api-users-search"),
     re_path(r"^frontend-api/profile/(?P<profile_id>[^/]+)/follow/$", views.profile_follow_api_view, name="api-profile-follow"),
     re_path(r"^frontend-api/profile/(?P<profile_id>[^/]+)/$", views.profile_detail_api_view, name="api-profile-detail"),
     path("frontend-api/notifications/", views.notifications_api_view, name="api-notifications"),
@@ -73,6 +78,9 @@ if settings.LOVABLE_FRONTEND_ENABLED:
             # These must be declared here (frontend.urls is included first in
             # tapne/urls.py) so they are matched before trips/urls.py, which would
             # otherwise serve Django HTML templates for the same paths.
+            # /trips/preview must come before the numeric :id regex.
+            path("trips/preview", views.frontend_entrypoint_view, name="entrypoint-trip-preview"),
+            path("trips/preview/", views.frontend_entrypoint_view),
             path("trips", views.frontend_entrypoint_view, name="entrypoint-trips"),
             path("trips/", views.frontend_entrypoint_view),
             path("trips/create/", views.frontend_entrypoint_view, name="entrypoint-trip-create"),
@@ -98,6 +106,30 @@ if settings.LOVABLE_FRONTEND_ENABLED:
                 name="entrypoint-blog-edit",
             ),
 
+            # ── Experiences ───────────────────────────────────────────────────────
+            # Static sub-paths (create, edit) must come before the :slug regex.
+            path("experiences", views.frontend_entrypoint_view, name="entrypoint-experiences"),
+            path("experiences/", views.frontend_entrypoint_view),
+            path("experiences/create", views.frontend_entrypoint_view, name="entrypoint-experience-create"),
+            path("experiences/create/", views.frontend_entrypoint_view),
+            path("experiences/edit", views.frontend_entrypoint_view, name="entrypoint-experience-edit"),
+            path("experiences/edit/", views.frontend_entrypoint_view),
+            re_path(
+                r"^experiences/(?P<slug>(?!create$)(?!edit$)[-a-zA-Z0-9_]+)/?$",
+                views.frontend_entrypoint_view,
+                name="entrypoint-experience-detail",
+            ),
+
+            # ── Other new SPA routes ──────────────────────────────────────────────
+            path("travel-hosts", views.frontend_entrypoint_view, name="entrypoint-travel-hosts"),
+            path("travel-hosts/", views.frontend_entrypoint_view),
+            # /bookmarks is the SPA direct route; /social/bookmarks/ is the Django HTML
+            # route intercepted further below. Both must resolve to the SPA shell.
+            path("bookmarks", views.frontend_entrypoint_view, name="entrypoint-bookmarks-spa"),
+            path("bookmarks/", views.frontend_entrypoint_view),
+            path("inbox", views.frontend_entrypoint_view, name="entrypoint-inbox"),
+            path("inbox/", views.frontend_entrypoint_view),
+
             # ── Accounts ─────────────────────────────────────────────────────────
             # /accounts/login/ and /accounts/signup/ would otherwise hit the Django
             # template views inside accounts/urls.py.
@@ -118,6 +150,8 @@ if settings.LOVABLE_FRONTEND_ENABLED:
             # ── Profile / trip management ─────────────────────────────────────────
             path("profile", views.frontend_entrypoint_view, name="entrypoint-profile"),
             path("profile/", views.frontend_entrypoint_view),
+            # /profile/:userId — parameterised public profile route in lovable/src/App.tsx
+            re_path(r"^profile/(?P<user_id>[^/]+)/?$", views.frontend_entrypoint_view, name="entrypoint-profile-user"),
             path("create-trip", views.frontend_entrypoint_view, name="entrypoint-create-trip"),
             path("create-trip/", views.frontend_entrypoint_view),
             path("my-trips", views.frontend_entrypoint_view, name="entrypoint-my-trips"),

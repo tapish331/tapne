@@ -85,6 +85,11 @@ export default defineConfig({
       // mockData as TypeScript types. The stub re-exports them as types so the
       // real mockData fixture file (trips, users, etc.) never enters the bundle.
       "@/data/mockData": path.resolve(__dirname, "src/data/mockDataStub.ts"),
+      // Component overrides — replace Lovable stubs with Django-connected versions.
+      // Order matters: more-specific aliases must precede the catch-all "@" alias.
+      "@/contexts/AuthContext": path.resolve(__dirname, "src/contexts/AuthContext.tsx"),
+      "@/components/ReviewModal": path.resolve(__dirname, "src/components/ReviewModal.tsx"),
+      "@/components/Navbar": path.resolve(__dirname, "src/components/Navbar.tsx"),
       "@": path.resolve(lovableRoot, "src"),
       "@frontend": path.resolve(__dirname, "src"),
     },
