@@ -392,6 +392,39 @@ If any such provider wraps `<RouterProvider>` → the entire React tree crashes 
 
 ---
 
+### Checklist J — Real browser render + console gate
+
+**This checklist is mandatory before Step 7. HTTP 200 + injected runtime config is not sufficient.**
+The SPA must be opened in a real browser against the local Django server and allowed to execute its JS bundle.
+
+Use the `playwright` skill (real browser, not just `curl`) against the local server started in Checklist F.
+
+Minimum required browser run:
+
+- Open `GET /` in a real browser after the production build is in `artifacts/lovable-production-dist/`
+- Wait for network idle / hydration to settle
+- Capture all `pageerror` events and all `console.error` messages
+- Confirm the JS module asset referenced by the HTML is served with a JavaScript MIME type (`text/javascript` or `application/javascript`), not `text/plain`
+- Confirm `#root` contains rendered app content (not just an empty shell / blank screen)
+- Confirm the browser does **not** crash with any router/provider hook error, including:
+  - `"useNavigate() may be used only in the context of a <Router> component"`
+  - `"useAuth must be used within AuthProvider"`
+  - any uncaught error thrown during initial render
+
+Required pass conditions:
+
+- [ ] `/` renders visible content in the browser (not blank)
+- [ ] No uncaught exceptions (`pageerror`) during initial render
+- [ ] No `console.error` entries during initial render
+- [ ] The initial JS bundle is fetched with a JavaScript MIME type and executes successfully
+- [ ] If any context in `lovable/src/contexts/` uses router hooks (`useNavigate`, `useLocation`, `useParams()`), at least one route exercising that provider is opened in the browser and confirmed stable
+
+Failure rule:
+
+- Any blank screen, empty `#root`, `pageerror`, or `console.error` on `/` is a hard ✗ and blocks Step 7 deploy
+- Any module-script MIME mismatch (`text/plain`, etc.) is a hard ✗ and must be fixed in Django's artifact response before deploy
+- Do **not** proceed to deploy just because smoke-test URLs return 200
+
 ### When to write a Lovable prompt
 
 Only write a Lovable prompt if ALL of the following are simultaneously true:
@@ -497,8 +530,9 @@ Report the final exit code, the deployed service URL, and which of 7a/7b/7c requ
 3. For each new item: how it was connected (new Django view, new api key in runtime config, new router entry, or existing handler confirmed sufficient)
 4. Build artifact status (clean / what was found in devmock check)
 5. Live shell verification results (pass/fail per route and per API endpoint)
-6. Lovable prompt text if written, or "No Lovable prompt needed — all gaps resolved from Django side"
-7. Cloud Run workflow: which of 7a/7b/7c required script modifications (list each), workflow exit code, deployed service URL
+6. Real browser verification results (route(s) opened, whether visible content rendered, whether any `pageerror` / `console.error` occurred)
+7. Lovable prompt text if written, or "No Lovable prompt needed — all gaps resolved from Django side"
+8. Cloud Run workflow: which of 7a/7b/7c required script modifications (list each), workflow exit code, deployed service URL
 
 ---
 

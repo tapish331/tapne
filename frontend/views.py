@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+import base64
+import binascii
 import json
 import mimetypes
 import re
@@ -16,8 +19,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth import login, logout
 from django.core.cache import cache
 from django.core.mail import send_mail
+from django.core.files.base import ContentFile
 from django.db.models import Q
-from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
@@ -29,7 +32,7 @@ from django.utils.timezone import now
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST, require_safe
 
-from accounts.forms import LoginForm, ProfileEditForm, SignUpForm
+from accounts.forms import LoginForm, ProfileEditForm
 from accounts.models import ensure_profile
 from accounts.views import profile_trip_sections_for_member
 from activity.models import build_activity_payload_for_member
@@ -41,7 +44,6 @@ from enrollment.models import (
     submit_join_request,
 )
 from feed.models import build_home_payload_for_user, enrich_trip_preview_fields
-from django.db.models import Q
 
 from interactions.models import (
     DirectMessage,
@@ -53,7 +55,13 @@ from interactions.models import (
 from reviews.models import submit_review
 from settings_app.models import build_settings_payload_for_member
 from social.models import Bookmark, build_bookmarks_payload_for_member, resolve_bookmark_target
-from trips.models import Trip, build_trip_detail_payload_for_user, build_trip_list_payload_for_user
+from trips.models import (
+    Trip,
+    TripFaqItem,
+    TripItineraryDay,
+    build_trip_detail_payload_for_user,
+    build_trip_list_payload_for_user,
+)
 
 PUBLIC_CACHE_SECONDS: Final[int] = 3600
 IMMUTABLE_CACHE_SECONDS: Final[int] = 31536000
@@ -61,6 +69,16 @@ BRAND_TOKENS_MARKER: Final[str] = "frontend-brand/tokens"
 BRAND_OVERRIDES_MARKER: Final[str] = "frontend-brand/overrides"
 FRONTEND_RUNTIME_INLINE_ATTR: Final[str] = "data-tapne-runtime"
 FRONTEND_RUNTIME_INLINE_VALUE: Final[str] = "inline-config"
+FRONTEND_MIME_TYPE_OVERRIDES: Final[dict[str, str]] = {
+    ".css": "text/css",
+    ".ico": "image/x-icon",
+    ".js": "text/javascript",
+    ".json": "application/json",
+    ".map": "application/json",
+    ".mjs": "text/javascript",
+    ".svg": "image/svg+xml",
+    ".webmanifest": "application/manifest+json",
+}
 OTP_CACHE_TTL: Final[int] = 600  # 10 minutes
 OTP_MAX_ATTEMPTS: Final[int] = 5
 UserModel = get_user_model()
@@ -128,7 +146,9 @@ def _frontend_json_dumps(payload: object) -> str:
 
 
 def _file_response(path: Path, *, immutable: bool) -> FileResponse:
-    content_type, _ = mimetypes.guess_type(str(path))
+    content_type = FRONTEND_MIME_TYPE_OVERRIDES.get(path.suffix.lower())
+    if content_type is None:
+        content_type, _ = mimetypes.guess_type(str(path))
     response = FileResponse(path.open("rb"), content_type=content_type or "application/octet-stream")
     cache_seconds = IMMUTABLE_CACHE_SECONDS if immutable else PUBLIC_CACHE_SECONDS
     cache_suffix = ", immutable" if immutable else ""
@@ -300,6 +320,53 @@ def _normalize_string_list(value: object, *, max_items: int = 24, max_length: in
     return cleaned
 
 
+def _normalize_itinerary_days(value: object) -> list[TripItineraryDay]:
+    if not isinstance(value, list):
+        return []
+
+    cleaned: list[TripItineraryDay] = []
+    for raw_day in cast(list[object], value):
+        if not isinstance(raw_day, Mapping):
+            continue
+        day = cast(Mapping[str, object], raw_day)
+        title = " ".join(str(day.get("title", "") or "").strip().split())[:180]
+        description = str(day.get("description", "") or "").strip()[:2000]
+        stay = " ".join(str(day.get("stay", "") or "").strip().split())[:180]
+        meals = " ".join(str(day.get("meals", "") or "").strip().split())[:180]
+        activities = " ".join(str(day.get("activities", "") or "").strip().split())[:280]
+        is_flexible = bool(day.get("is_flexible", False))
+        if not any((title, description, stay, meals, activities)):
+            continue
+        cleaned.append(
+            {
+                "title": title,
+                "description": description,
+                "stay": stay,
+                "meals": meals,
+                "activities": activities,
+                "is_flexible": is_flexible,
+            }
+        )
+    return cleaned
+
+
+def _normalize_faqs(value: object) -> list[TripFaqItem]:
+    if not isinstance(value, list):
+        return []
+
+    cleaned: list[TripFaqItem] = []
+    for raw_faq in cast(list[object], value):
+        if not isinstance(raw_faq, Mapping):
+            continue
+        faq = cast(Mapping[str, object], raw_faq)
+        question = " ".join(str(faq.get("question", "") or "").strip().split())[:280]
+        answer = str(faq.get("answer", "") or "").strip()[:2000]
+        if not question and not answer:
+            continue
+        cleaned.append({"question": question, "answer": answer})
+    return cleaned
+
+
 def _normalize_optional_int(value: object) -> int | None:
     if value in (None, ""):
         return None
@@ -330,14 +397,68 @@ def _normalize_optional_datetime(value: object) -> datetime | None:
     return parsed
 
 
+def _normalize_json_mapping(value: object) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(raw_key): raw_value
+        for raw_key, raw_value in cast(Mapping[object, object], value).items()
+        if str(raw_key).strip()
+    }
+
+
+def _save_data_url_to_image_field(
+    *,
+    field_file: Any,
+    data_url: object,
+    file_prefix: str,
+) -> bool:
+    raw_value = str(data_url or "").strip()
+    if not raw_value.startswith("data:image/"):
+        return False
+
+    match = re.match(r"^data:image/(?P<ext>[a-zA-Z0-9.+-]+);base64,(?P<data>.+)$", raw_value)
+    if match is None:
+        return False
+
+    ext = str(match.group("ext") or "png").lower()
+    if ext == "jpeg":
+        ext = "jpg"
+
+    try:
+        decoded = base64.b64decode(match.group("data"), validate=True)
+    except (ValueError, binascii.Error):
+        return False
+
+    if not decoded:
+        return False
+
+    safe_name = f"{file_prefix}_{secrets.token_hex(8)}.{ext}"
+    field_file.save(safe_name, ContentFile(decoded), save=False)
+    return True
+
+
 def _apply_trip_payload(trip: Trip, payload: dict[str, object]) -> None:
     trip.title = _normalize_string(payload.get("title", trip.title))
     trip.destination = _normalize_string(payload.get("destination", trip.destination))
     trip.summary = _normalize_string(payload.get("summary", trip.summary))
     trip.description = str(payload.get("description", trip.description) or "").strip()
     trip.trip_type = _normalize_string(payload.get("trip_type", trip.trip_type)).lower()
+    trip.currency = _normalize_string(payload.get("currency", trip.currency)).upper() or "INR"
+    trip.difficulty_level = _normalize_string(payload.get("difficulty_level", trip.difficulty_level)).lower()
+    trip.pace_level = _normalize_string(payload.get("pace_level", trip.pace_level)).lower()
     trip.cancellation_policy = str(payload.get("cancellation_policy", trip.cancellation_policy) or "").strip()
     trip.code_of_conduct = str(payload.get("code_of_conduct", trip.code_of_conduct) or "").strip()
+    trip.general_policies = str(payload.get("general_policies", trip.general_policies) or "").strip()
+    trip.access_type = _normalize_string(payload.get("access_type", trip.access_type)).lower() or "open"
+    trip.payment_method = _normalize_string(payload.get("payment_method", trip.payment_method)).lower() or "direct_contact"
+    trip.payment_details = str(payload.get("payment_details", trip.payment_details) or "").strip()
+    trip.medical_declaration_required = bool(payload.get("medical_declaration_required", trip.medical_declaration_required))
+    trip.emergency_contact_required = bool(payload.get("emergency_contact_required", trip.emergency_contact_required))
+    trip.contact_preference = _normalize_string(payload.get("contact_preference", trip.contact_preference)).lower() or "in_app"
+    trip.co_hosts = " ".join(_normalize_string(payload.get("co_hosts", trip.co_hosts)).split())
+    if "draft_form_data" in payload:
+        trip.draft_form_data = _normalize_json_mapping(payload.get("draft_form_data"))
 
     starts_at = _normalize_optional_datetime(payload.get("starts_at"))
     ends_at = _normalize_optional_datetime(payload.get("ends_at"))
@@ -357,9 +478,15 @@ def _apply_trip_payload(trip: Trip, payload: dict[str, object]) -> None:
         trip.price_per_person = _normalize_optional_decimal(payload.get("price_per_person"))
     if "total_trip_price" in payload:
         trip.total_trip_price = _normalize_optional_decimal(payload.get("total_trip_price"))
+    if "early_bird_price" in payload:
+        trip.early_bird_price = _normalize_optional_decimal(payload.get("early_bird_price"))
+    if "payment_terms" in payload:
+        trip.payment_terms = _normalize_string(payload.get("payment_terms", trip.payment_terms))
 
     if "highlights" in payload:
         trip.highlights = _normalize_string_list(payload.get("highlights"))
+    if "itinerary_days" in payload:
+        trip.itinerary_days = _normalize_itinerary_days(payload.get("itinerary_days"))
     if "included_items" in payload:
         trip.included_items = _normalize_string_list(payload.get("included_items"))
     if "not_included_items" in payload:
@@ -370,6 +497,14 @@ def _apply_trip_payload(trip: Trip, payload: dict[str, object]) -> None:
         trip.suitable_for = _normalize_string_list(payload.get("suitable_for"), max_items=8, max_length=80)
     if "trip_vibe" in payload:
         trip.trip_vibe = _normalize_string_list(payload.get("trip_vibe"), max_items=8, max_length=80)
+    if "faqs" in payload:
+        trip.faqs = _normalize_faqs(payload.get("faqs"))
+    if "banner_image_data" in payload:
+        _save_data_url_to_image_field(
+            field_file=trip.banner_image,
+            data_url=payload.get("banner_image_data"),
+            file_prefix=f"trip_{int(getattr(trip, 'pk', 0) or 0) or 'draft'}",
+        )
 
 
 def _member_only_error() -> JsonResponse:
@@ -405,6 +540,11 @@ def _session_user_payload(request: HttpRequest) -> dict[str, object] | None:
 
 def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
     request_user = getattr(request, "user", None)
+    dm_inbox_url = reverse("frontend:api-dm-inbox")
+    if request.path.rstrip("/") == "/inbox":
+        dm_username = str(request.GET.get("dm", "") or "").strip()
+        if dm_username:
+            dm_inbox_url = f"{dm_inbox_url}?{urllib.parse.urlencode({'dm': dm_username})}"
     return {
         "app_name": "tapne",
         "generated_at": now().isoformat(),
@@ -427,7 +567,7 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "activity": reverse("frontend:api-activity"),
             "settings": reverse("frontend:api-settings"),
             "hosting_inbox": reverse("frontend:api-hosting-inbox"),
-            "dm_inbox": reverse("frontend:api-dm-inbox"),
+            "dm_inbox": dm_inbox_url,
             "trip_drafts": reverse("frontend:api-trip-draft-create"),
             "manage_trip": "/frontend-api/manage-trip/",
             "messages": "/frontend-api/messages/",
@@ -795,6 +935,7 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
             .first()
         )
         if existing_request is not None:
+            trip_payload["join_request_status"] = str(existing_request.status or "").strip().lower()
             join_request_payload = {
                 "status": str(existing_request.status or "").strip().lower(),
                 "outcome": "existing",
@@ -824,12 +965,7 @@ def my_trips_api_view(request: HttpRequest) -> JsonResponse:
 
     viewer = request.user
     if not bool(getattr(viewer, "is_authenticated", False)):
-        return JsonResponse({
-            "ok": True,
-            "trips": [],
-            "active_tab": "drafts",
-            "tab_counts": {"drafts": 0, "published": 0, "past": 0},
-        })
+        return _member_only_error()
 
     now = _tz.now()
     hosted_qs = _Trip.objects.select_related("host").filter(host=viewer)
@@ -844,7 +980,7 @@ def my_trips_api_view(request: HttpRequest) -> JsonResponse:
     return JsonResponse({
         "ok": True,
         "trips": enriched,
-        "active_tab": "drafts",
+        "active_tab": "created",
         "tab_counts": {
             "drafts": len(draft_rows),
             "published": len(published_rows),
@@ -863,8 +999,40 @@ def blog_list_api_view(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"ok": True, **response_payload})
 
 
-@require_GET
+@require_http_methods(["GET", "PATCH", "DELETE"])
 def blog_detail_api_view(request: HttpRequest, slug: str) -> JsonResponse:
+    from blogs.models import Blog
+
+    if request.method == "PATCH":
+        if not request.user.is_authenticated:
+            return _member_only_error()
+        blog = Blog.objects.filter(slug=slug, author=request.user).first()
+        if blog is None:
+            return _json_error("Experience not found.", status=404)
+
+        payload = _request_payload(request)
+        title = _normalize_string(payload.get("title", blog.title))
+        if not title:
+            return _json_error("Title is required.", extra={"errors": {"title": ["Required."]}})
+
+        blog.title = title
+        blog.excerpt = _normalize_string(payload.get("short_description", payload.get("excerpt", blog.excerpt)))
+        blog.body = str(payload.get("body", blog.body) or "").strip()
+        blog.cover_image_url = str(payload.get("cover_image_url", blog.cover_image_url) or "").strip()
+        blog.location = _normalize_string(payload.get("location", blog.location))
+        blog.tags = _normalize_string_list(payload.get("tags"), max_items=12, max_length=40)
+        blog.save()
+        return JsonResponse({"ok": True, "blog": blog.to_blog_data()})
+
+    if request.method == "DELETE":
+        if not request.user.is_authenticated:
+            return _member_only_error()
+        blog = Blog.objects.filter(slug=slug, author=request.user).first()
+        if blog is None:
+            return _json_error("Experience not found.", status=404)
+        blog.delete()
+        return JsonResponse({"ok": True})
+
     payload = build_blog_detail_payload_for_user(request.user, slug=slug)
     source = str(payload.get("source", "") or "").strip()
     if _live_data_required() and source != "live-db":
@@ -1035,19 +1203,25 @@ def trip_draft_detail_api_view(request: HttpRequest, trip_id: int) -> JsonRespon
 
     trip = (
         Trip.objects.select_related("host", "host__account_profile")
-        .filter(pk=trip_id, host=request.user, is_published=False)
+        .filter(pk=trip_id, host=request.user)
         .first()
     )
     if trip is None:
-        return _json_error("Draft not found.", status=404)
+        return _json_error("Trip not found.", status=404)
+
+    trip_payload = _serialize_trip_for_frontend(trip)
 
     if request.method == "GET":
-        return JsonResponse({"ok": True, "trip": _serialize_trip_for_frontend(trip)})
+        return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload})
 
     if request.method == "PATCH":
         _apply_trip_payload(trip, _request_payload(request))
         trip.save()
-        return JsonResponse({"ok": True, "trip": _serialize_trip_for_frontend(trip)})
+        trip_payload = _serialize_trip_for_frontend(trip)
+        return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload})
+
+    if trip.is_published:
+        return _json_error("Published trips cannot be deleted via the draft endpoint.", status=400)
 
     trip.delete()
     return JsonResponse({"ok": True})
@@ -1060,38 +1234,48 @@ def trip_draft_publish_api_view(request: HttpRequest, trip_id: int) -> JsonRespo
 
     trip = (
         Trip.objects.select_related("host", "host__account_profile")
-        .filter(pk=trip_id, host=request.user, is_published=False)
+        .filter(pk=trip_id, host=request.user)
         .first()
     )
     if trip is None:
-        return _json_error("Draft not found.", status=404)
+        return _json_error("Trip not found.", status=404)
 
     _apply_trip_payload(trip, _request_payload(request))
-    trip.is_published = True
+    if not trip.is_published:
+        trip.is_published = True
     trip.save()
-    return JsonResponse({"ok": True, "trip": _serialize_trip_for_frontend(trip)})
+    trip_payload = _serialize_trip_for_frontend(trip)
+    return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload})
 
 
 @require_GET
 def bookmarks_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
     payload = build_bookmarks_payload_for_member(request.user)
     return JsonResponse({"ok": True, **payload})
 
 
 @require_GET
 def activity_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
     payload = build_activity_payload_for_member(request.user, activity_filter=request.GET.get("filter", "all"))
     return JsonResponse({"ok": True, **payload})
 
 
 @require_GET
 def settings_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
     payload = build_settings_payload_for_member(request.user)
     return JsonResponse({"ok": True, **payload})
 
 
 @require_GET
 def hosting_inbox_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
     payload = build_hosting_inbox_payload_for_member(request.user, status=request.GET.get("status", "pending"))
     return JsonResponse({"ok": True, **payload})
 
@@ -1106,6 +1290,15 @@ def dm_inbox_api_view(request: HttpRequest) -> JsonResponse:
     viewer_username = str(getattr(viewer, "username", "") or "").strip()
     viewer_profile = ensure_profile(viewer)
     viewer_display_name = str(viewer_profile.effective_display_name)
+
+    dm_username = str(request.GET.get("dm", "") or "").strip()
+    if dm_username and dm_username != viewer_username:
+        other_user = UserModel.objects.filter(username=dm_username).first()
+        if other_user is not None:
+            get_or_create_dm_thread_for_members(
+                member=viewer,
+                other_member=other_user,
+            )
 
     thread_rows = list(
         DirectMessageThread.objects
@@ -1372,7 +1565,7 @@ def manage_trip_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
     trip_data = _serialize_trip_for_frontend(trip_row)
     trip_data["can_manage"] = True
     trip_data["booking_status"] = booking_status
-    trip_data["access_type"] = "open"
+    trip_data["access_type"] = str(trip_data.get("access_type") or ("apply" if applications else "open"))
     trip_data["participants_count"] = len(participants)
     trip_data["applications_count"] = sum(1 for a in applications if a["status"] == "pending")
     if spots_left is not None:
@@ -1432,9 +1625,44 @@ def manage_trip_message_view(request: HttpRequest, trip_id: int) -> JsonResponse
     trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
     if trip_row is None:
         return _json_error("Trip not found.", status=404)
-    # Messaging participants is acknowledged but not yet delivered — no messaging
-    # backend exists yet. Returns ok so the frontend toast confirms the action.
-    return JsonResponse({"ok": True})
+    message = str(_request_payload(request).get("message") or "").strip()
+    if not message:
+        return _json_error("Message is required.", status=400)
+
+    approved_reqs = list(
+        EnrollmentRequest.objects.select_related("requester")
+        .filter(trip=trip_row, status=EnrollmentRequest.STATUS_APPROVED)
+        .order_by("requester_id", "pk")
+    )
+    if not approved_reqs:
+        return _json_error("There are no confirmed participants to message.", status=400)
+
+    sent_count = 0
+    seen_requester_ids: set[int] = set()
+    for req in approved_reqs:
+        requester = req.requester
+        requester_id = int(getattr(requester, "pk", 0) or 0)
+        if requester_id <= 0 or requester_id in seen_requester_ids:
+            continue
+        seen_requester_ids.add(requester_id)
+        thread, _created, outcome = get_or_create_dm_thread_for_members(
+            member=request.user,
+            other_member=requester,
+        )
+        if outcome not in ("created", "existing") or thread is None:
+            continue
+        _message, send_outcome = send_dm_message(
+            thread=thread,
+            sender=request.user,
+            body=message,
+        )
+        if send_outcome == "sent":
+            sent_count += 1
+
+    if sent_count == 0:
+        return _json_error("Could not deliver the message to participants.", status=400)
+
+    return JsonResponse({"ok": True, "sent_count": sent_count})
 
 
 @require_GET
@@ -1890,10 +2118,8 @@ def trip_review_create_api_view(request: HttpRequest, trip_id: int) -> JsonRespo
     from reviews.models import Review
 
     payload = _request_payload(request)
-    try:
-        rating = max(1, min(5, int(payload.get("rating", 5))))
-    except (TypeError, ValueError):
-        rating = 5
+    raw_rating = _normalize_optional_int(payload.get("rating"))
+    rating = max(1, min(5, raw_rating if raw_rating is not None else 5))
     body = " ".join(str(payload.get("body", "") or "").strip().split())
     headline = " ".join(str(payload.get("headline", "") or "").strip().split())
 
@@ -1955,6 +2181,9 @@ def blog_create_api_view(request: HttpRequest) -> JsonResponse:
         title=title,
         excerpt=_normalize_string(payload.get("short_description", "")),
         body=str(payload.get("body", "") or "").strip(),
+        cover_image_url=str(payload.get("cover_image_url", "") or "").strip(),
+        location=_normalize_string(payload.get("location", "")),
+        tags=_normalize_string_list(payload.get("tags"), max_items=12, max_length=40),
         is_published=True,
     )
     blog.save()
@@ -1969,7 +2198,7 @@ def account_deactivate_api_view(request: HttpRequest) -> JsonResponse:
     if not request.user.is_authenticated:
         return _member_only_error()
 
-    user = request.user
+    user = cast(Any, request.user)
     logout(request)
     user.is_active = False
     user.save(update_fields=["is_active"])

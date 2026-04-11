@@ -4,7 +4,7 @@
  * toast stub.
  */
 import { useState } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,6 +87,12 @@ const ReviewModal = ({ open, onOpenChange, trip }: ReviewModalProps) => {
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) resetForm(); }}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Share your trip review</DialogTitle>
+          <DialogDescription>
+            Rate your trip and describe what worked well and what could be improved.
+          </DialogDescription>
+        </DialogHeader>
         {/* Progress */}
         <div className="flex gap-1.5 mb-2">
           {Array.from({ length: totalSteps }).map((_, i) => (

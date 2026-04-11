@@ -88,8 +88,12 @@ export default defineConfig({
       // Component overrides — replace Lovable stubs with Django-connected versions.
       // Order matters: more-specific aliases must precede the catch-all "@" alias.
       "@/contexts/AuthContext": path.resolve(__dirname, "src/contexts/AuthContext.tsx"),
+      "@/contexts/DraftContext": path.resolve(__dirname, "src/contexts/DraftContext.tsx"),
+      "@/components/BookingModal": path.resolve(__dirname, "src/components/BookingModal.tsx"),
       "@/components/ReviewModal": path.resolve(__dirname, "src/components/ReviewModal.tsx"),
       "@/components/Navbar": path.resolve(__dirname, "src/components/Navbar.tsx"),
+      "@/pages/CreateTrip": path.resolve(__dirname, "src/pages/CreateTrip.tsx"),
+      "@/pages/ManageTrip": path.resolve(__dirname, "src/pages/ManageTrip.tsx"),
       "@": path.resolve(lovableRoot, "src"),
       "@frontend": path.resolve(__dirname, "src"),
     },

@@ -1,0 +1,34 @@
+[
+  {
+    "route": "/",
+    "url": "https://tapnetravel.com/",
+    "console_errors": [],
+    "page_errors": [],
+    "request_failures": [
+      "GET https://images.unsplash.com/photo-1626014303715-48c7b1a7a814?w=900&q=80 :: net::ERR_BLOCKED_BY_ORB"
+    ],
+    "http_status": 200,
+    "title": "Tapne",
+    "root": {
+      "childElementCount": 3,
+      "innerTextLength": 2512,
+      "h1": "Find your kind of people. Then travel.",
+      "bodyTextPreview": "Tapne\nTrips\nExperiences\nLogin\nFind your kind of people. Then travel.\n\nJoin community-led trips with like-minded travelers.\n\nPeople are already traveling together\n7+\ntravelers\n9+\ntrips hosted\n9+\ndestinations\nExplore Trips\n\nDiscover community"
+    }
+  },
+  {
+    "route": "/create-trip",
+    "url": "https://tapnetravel.com/create-trip",
+    "console_errors": [],
+    "page_errors": [],
+    "request_failures": [],
+    "http_status": 200,
+    "title": "Tapne",
+    "root": {
+      "childElementCount": 3,
+      "innerTextLength": 3451,
+      "h1": "Create a Trip",
+      "bodyTextPreview": "Tapne\nTrips\nExperiences\nLogin\nTrip Progress\n23%\nSave Draft\nPreview\nPublish\nBasic Overview\nHero & Media\nPricing\nHighlights\nItinerary\nStay & Accommodation\nWhat's Included\nNot Included\nThings to Carry\nExperience & Vibe\nSafety & Policies\nFAQs\nH"
+    }
+  }
+]

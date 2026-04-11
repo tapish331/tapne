@@ -42,6 +42,9 @@ class Blog(models.Model):
     title = models.CharField(max_length=180)
     excerpt = models.CharField(max_length=280, blank=True)
     body = models.TextField(blank=True)
+    cover_image_url = models.TextField(blank=True, default="")
+    location = models.CharField(max_length=180, blank=True, default="")
+    tags = cast(list[str], models.JSONField(default=list, blank=True))
     reads = models.PositiveIntegerField(default=0)
     reviews_count = models.PositiveIntegerField(default=0)
     is_published = models.BooleanField(default=True, db_index=True)
@@ -78,18 +81,23 @@ class Blog(models.Model):
         return cover_pool[index]
 
     def to_blog_data(self) -> BlogData:
+        cover_image_url = str(self.cover_image_url or "").strip() or self._default_cover_image_url()
+        tags = [str(tag or "").strip() for tag in self.tags if str(tag or "").strip()]
         return {
             "id": int(self.pk or 0),
             "slug": self.slug,
             "title": self.title,
             "excerpt": self.excerpt,
+            "short_description": self.excerpt,
             "summary": self.excerpt,
             "author_username": str(getattr(self.author, "username", "") or "").strip(),
             "reads": int(self.reads or 0),
             "reviews_count": int(self.reviews_count or 0),
             "url": self.get_absolute_url(),
             "body": self.body,
-            "cover_image_url": self._default_cover_image_url(),
+            "cover_image_url": cover_image_url,
+            "location": str(self.location or "").strip(),
+            "tags": tags,
             "published_label": self.created_at.strftime("%b %d, %Y"),
         }
 

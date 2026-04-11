@@ -30,6 +30,8 @@ class TripData(TypedDict):
     ends_at: NotRequired[datetime | str]
     booking_closes_at: NotRequired[datetime | str]
     booking_closes_label: NotRequired[str]
+    is_draft: NotRequired[bool]
+    is_published: NotRequired[bool]
     date_label: NotRequired[str]
     season_label: NotRequired[str]
     duration_days: NotRequired[int]
@@ -54,6 +56,9 @@ class TripData(TypedDict):
     price_per_person: NotRequired[str | int | float]
     early_bird_price: NotRequired[str | int | float]
     payment_terms: NotRequired[str]
+    access_type: NotRequired[str]
+    payment_method: NotRequired[str]
+    payment_details: NotRequired[str]
     includes_label: NotRequired[str]
     highlights: NotRequired[list[str]]
     itinerary_days: NotRequired[list[dict[str, object]]]
@@ -66,6 +71,8 @@ class TripData(TypedDict):
     code_of_conduct: NotRequired[str]
     cancellation_policy: NotRequired[str]
     faqs: NotRequired[list[dict[str, object]]]
+    co_hosts: NotRequired[str]
+    draft_form_data: NotRequired[dict[str, object]]
 
 
 class ProfileData(TypedDict):
@@ -82,6 +89,7 @@ class BlogData(TypedDict):
     title: str
     id: NotRequired[int]
     excerpt: NotRequired[str]
+    short_description: NotRequired[str]
     summary: NotRequired[str]
     author_username: NotRequired[str]
     reads: NotRequired[int]
@@ -89,6 +97,8 @@ class BlogData(TypedDict):
     url: NotRequired[str]
     body: NotRequired[str]
     cover_image_url: NotRequired[str]
+    tags: NotRequired[list[str]]
+    location: NotRequired[str]
     published_label: NotRequired[str]
 
 

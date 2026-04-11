@@ -1,0 +1,62 @@
+[09/Apr/2026 09:33:32] "GET /accounts/login/ HTTP/1.1" 302 0
+[09/Apr/2026 09:33:32] "GET /?auth=login HTTP/1.1" 200 2469
+[09/Apr/2026 09:33:32] "GET /accounts/signup/ HTTP/1.1" 302 0
+[09/Apr/2026 09:33:32] "GET /?auth=signup HTTP/1.1" 200 2469
+[09/Apr/2026 09:33:32] "GET /accounts/me/ HTTP/1.1" 302 0
+[09/Apr/2026 09:33:32] "GET /accounts/login/?next=/accounts/me/ HTTP/1.1" 302 0
+[09/Apr/2026 09:33:32] "GET /?auth=login&auth_next=%2Faccounts%2Fme%2F HTTP/1.1" 200 2469
+[09/Apr/2026 09:33:34] "GET / HTTP/1.1" 200 2469
+[09/Apr/2026 09:33:44] "GET /accounts/login/ HTTP/1.1" 302 0
+[09/Apr/2026 09:33:44] "GET /accounts/signup/ HTTP/1.1" 302 0
+[09/Apr/2026 09:33:44] "GET /accounts/me/ HTTP/1.1" 302 0
+[09/Apr/2026 09:34:11] "GET /frontend-api/session/ HTTP/1.1" 200 1986
+[09/Apr/2026 09:34:11] "GET /frontend-api/trips/ HTTP/1.1" 200 5211
+[09/Apr/2026 09:34:11] "GET /frontend-api/trips/101/ HTTP/1.1" 200 5362
+[09/Apr/2026 09:34:11] "GET /frontend-api/blogs/ HTTP/1.1" 200 2197
+[09/Apr/2026 09:34:11] "GET /frontend-api/blogs/packing-for-swing-weather/ HTTP/1.1" 200 845
+[09/Apr/2026 09:34:11] "GET /frontend-api/users/search/?q=a HTTP/1.1" 200 25
+Not Found: /frontend-api/profile/nonexistent/
+[09/Apr/2026 09:34:11] "GET /frontend-api/profile/nonexistent/ HTTP/1.1" 404 44
+[09/Apr/2026 09:34:11] "GET /frontend-api/dm/inbox/ HTTP/1.1" 200 27
+[09/Apr/2026 09:34:11] "GET /frontend-api/notifications/ HTTP/1.1" 200 52
+Unauthorized: /frontend-api/my-trips/
+[09/Apr/2026 09:34:11] "GET /frontend-api/my-trips/ HTTP/1.1" 401 50
+Unauthorized: /frontend-api/bookmarks/
+[09/Apr/2026 09:34:11] "GET /frontend-api/bookmarks/ HTTP/1.1" 401 50
+Unauthorized: /frontend-api/activity/
+[09/Apr/2026 09:34:11] "GET /frontend-api/activity/ HTTP/1.1" 401 50
+Unauthorized: /frontend-api/settings/
+[09/Apr/2026 09:34:11] "GET /frontend-api/settings/ HTTP/1.1" 401 50
+Unauthorized: /frontend-api/hosting-inbox/
+[09/Apr/2026 09:34:11] "GET /frontend-api/hosting-inbox/ HTTP/1.1" 401 50
+[09/Apr/2026 09:39:49] "GET / HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /trips HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET / HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /trips/preview HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /health/ HTTP/1.1" 200 48
+[09/Apr/2026 09:39:49] "GET /trips/1 HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /create-trip HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /my-trips HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /experiences HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /experiences/create HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /experiences/edit HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /experiences/sample-slug HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /blogs HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /travel-hosts HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /bookmarks HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /inbox HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /manage-trip/1 HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /login HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /signup HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /profile HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:49] "GET /profile/sampleuser HTTP/1.1" 200 2469
+[09/Apr/2026 09:39:56] "GET /runtime/health/ HTTP/1.1" 200 298
+[09/Apr/2026 09:39:56] "GET /search/ HTTP/1.1" 200 33946
+Not Found: /u/nonexistent/
+[09/Apr/2026 09:39:56] "GET /u/nonexistent/ HTTP/1.1" 404 36172
+[09/Apr/2026 09:39:56] "GET /sitemap.xml HTTP/1.1" 200 1731
+[09/Apr/2026 09:39:56] "GET /robots.txt HTTP/1.1" 200 66
+[09/Apr/2026 09:39:56] "GET /admin/ HTTP/1.1" 302 0
+[09/Apr/2026 09:39:56] "GET /accounts/login/ HTTP/1.1" 302 0
+[09/Apr/2026 09:39:56] "GET /accounts/signup/ HTTP/1.1" 302 0
+[09/Apr/2026 09:39:56] "GET /accounts/me/ HTTP/1.1" 302 0

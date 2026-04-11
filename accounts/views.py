@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -159,6 +159,15 @@ def _resolve_fallback_next_url(request: HttpRequest, fallback: str) -> str:
     query = f"?{split_referer.query}" if split_referer.query else ""
     fragment = f"#{split_referer.fragment}" if split_referer.fragment else ""
     return f"{path}{query}{fragment}"
+
+
+def _home_fallback_url() -> str:
+    for route_name in ("frontend:entrypoint-home", "home"):
+        try:
+            return reverse(route_name)
+        except NoReverseMatch:
+            continue
+    return "/"
 
 
 def _with_query_updates(
@@ -332,7 +341,7 @@ def signup_view(request: HttpRequest) -> HttpResponse:
         messages.info(request, "You are already signed in.")
         return redirect(reverse("accounts:me"))
 
-    origin_url = _resolve_fallback_next_url(request, reverse("home"))
+    origin_url = _resolve_fallback_next_url(request, _home_fallback_url())
     next_url = _safe_next_url(request, origin_url)
     reason = (request.POST.get("reason") or request.GET.get("reason") or "").strip().lower()
 
@@ -347,7 +356,7 @@ def signup_view(request: HttpRequest) -> HttpResponse:
     origin_url = _safe_submitted_url(
         request,
         request.POST.get("origin", ""),
-        _resolve_fallback_next_url(request, reverse("home")),
+        _resolve_fallback_next_url(request, _home_fallback_url()),
     )
     next_url = _safe_submitted_url(request, request.POST.get("next", ""), origin_url)
     if form.is_valid():
@@ -387,7 +396,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
         messages.info(request, "You are already logged in.")
         return redirect(reverse("accounts:me"))
 
-    origin_url = _resolve_fallback_next_url(request, reverse("home"))
+    origin_url = _resolve_fallback_next_url(request, _home_fallback_url())
     next_url = _safe_next_url(request, origin_url)
     reason = (request.POST.get("reason") or request.GET.get("reason") or "").strip().lower()
 
@@ -402,7 +411,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
     origin_url = _safe_submitted_url(
         request,
         request.POST.get("origin", ""),
-        _resolve_fallback_next_url(request, reverse("home")),
+        _resolve_fallback_next_url(request, _home_fallback_url()),
     )
     next_url = _safe_submitted_url(request, request.POST.get("next", ""), origin_url)
     if form.is_valid():
@@ -434,7 +443,7 @@ def login_view(request: HttpRequest) -> HttpResponse:
 
 @require_POST
 def logout_view(request: HttpRequest) -> HttpResponse:
-    next_url = _strip_auth_modal_state(_safe_next_url(request, reverse("home")))
+    next_url = _strip_auth_modal_state(_safe_next_url(request, _home_fallback_url()))
     if request.user.is_authenticated:
         current_user = cast(ProfileUserLike, request.user)
         username = current_user.get_username()

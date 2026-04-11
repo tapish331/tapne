@@ -72,11 +72,11 @@ const GlobalLoginModal = () => {
 // With createBrowserRouter these can't be placed inside BrowserRouter directly,
 // so they live in a layout route that wraps all children via <Outlet />.
 const RootLayout = () => (
-  <>
+  <DraftProvider>
     <ScrollToTop />
     <GlobalLoginModal />
     <Outlet />
-  </>
+  </DraftProvider>
 );
 
 // Route list must match lovable/src/App.tsx exactly.
@@ -114,13 +114,11 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <DraftProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <RouterProvider router={router} />
-          </TooltipProvider>
-        </DraftProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <RouterProvider router={router} />
+        </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

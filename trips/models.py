@@ -258,6 +258,9 @@ class Trip(models.Model):
     early_bird_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     has_early_bird_discount = models.BooleanField(default=False)
     payment_terms = models.TextField(blank=True, default="")
+    access_type = models.CharField(max_length=16, blank=True, default="open")
+    payment_method = models.CharField(max_length=32, blank=True, default="direct_contact")
+    payment_details = models.TextField(blank=True, default="")
     extra_costs_not_included = cast(list[str], models.JSONField(default=list, blank=True))
     cost_breakdown_accommodation = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     cost_breakdown_transportation = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
@@ -287,6 +290,7 @@ class Trip(models.Model):
     faqs = cast(list[TripFaqItem], models.JSONField(default=list, blank=True))
     contact_preference = models.CharField(max_length=280, blank=True, default="in_app")
     co_hosts = models.CharField(max_length=280, blank=True, default="")
+    draft_form_data = cast(dict[str, Any], models.JSONField(default=dict, blank=True))
     starts_at = models.DateTimeField(default=timezone.now, db_index=True)
     ends_at = models.DateTimeField(blank=True, null=True)
     traffic_score = models.PositiveIntegerField(default=0)
@@ -319,6 +323,9 @@ class Trip(models.Model):
         self.group_size_label = str(self.group_size_label or "").strip()
         self.includes_label = str(self.includes_label or "").strip()
         self.payment_terms = str(self.payment_terms or "").strip()
+        self.access_type = str(self.access_type or "open").strip().lower() or "open"
+        self.payment_method = str(self.payment_method or "direct_contact").strip().lower() or "direct_contact"
+        self.payment_details = str(self.payment_details or "").strip()
         self.approximate_flight_cost = " ".join(str(self.approximate_flight_cost or "").strip().split())
         self.optional_activities_cost = " ".join(str(self.optional_activities_cost or "").strip().split())
         self.buffer_budget_suggestion = " ".join(str(self.buffer_budget_suggestion or "").strip().split())
@@ -332,6 +339,11 @@ class Trip(models.Model):
         self.cancellation_policy = str(self.cancellation_policy or "").strip()
         self.contact_preference = str(self.contact_preference or "in_app").strip().lower() or "in_app"
         self.co_hosts = " ".join(str(self.co_hosts or "").strip().split())
+        self.draft_form_data = {
+            str(key): value
+            for key, value in cast(Mapping[object, object], self.draft_form_data).items()
+            if str(key).strip()
+        }
         self.extra_costs_not_included = _normalize_string_list(self.extra_costs_not_included)
         self.highlights = _normalize_string_list(self.highlights)
         self.included_items = _normalize_string_list(self.included_items)
@@ -396,6 +408,8 @@ class Trip(models.Model):
             "traffic_score": int(self.traffic_score or 0),
             "starts_at": self.starts_at,
             "url": self.get_absolute_url(),
+            "is_published": bool(self.is_published),
+            "is_draft": not bool(self.is_published),
         }
         if description_html:
             trip_data["description_html"] = description_html
@@ -440,6 +454,12 @@ class Trip(models.Model):
             trip_data["early_bird_price"] = str(self.early_bird_price)
         if self.payment_terms:
             trip_data["payment_terms"] = str(self.payment_terms or "").strip()
+        if self.access_type:
+            trip_data["access_type"] = str(self.access_type or "").strip()
+        if self.payment_method:
+            trip_data["payment_method"] = str(self.payment_method or "").strip()
+        if self.payment_details:
+            trip_data["payment_details"] = str(self.payment_details or "").strip()
         if self.highlights:
             trip_data["highlights"] = [str(item or "").strip() for item in self.highlights if str(item or "").strip()]
         if self.itinerary_days:
@@ -470,6 +490,12 @@ class Trip(models.Model):
             trip_data["faqs"] = [dict(item) for item in cast(list[dict[str, object]], self.faqs)]
         if self.co_hosts:
             trip_data["co_hosts"] = str(self.co_hosts or "").strip()
+        if self.draft_form_data:
+            trip_data["draft_form_data"] = {
+                str(key): value
+                for key, value in cast(Mapping[object, object], self.draft_form_data).items()
+                if str(key).strip()
+            }
         return trip_data
 
 MINE_TABS: Final[tuple[str, ...]] = ("drafts", "published", "past")

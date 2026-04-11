@@ -131,12 +131,7 @@ if settings.LOVABLE_FRONTEND_ENABLED:
             path("inbox/", views.frontend_entrypoint_view),
 
             # ── Accounts ─────────────────────────────────────────────────────────
-            # /accounts/login/ and /accounts/signup/ would otherwise hit the Django
-            # template views inside accounts/urls.py.
-            path("accounts/login/", views.frontend_entrypoint_view, name="entrypoint-accounts-login"),
-            path("accounts/signup/", views.frontend_entrypoint_view, name="entrypoint-accounts-signup"),
-            path("accounts/me/", views.frontend_entrypoint_view, name="entrypoint-accounts-me"),
-            path("accounts/me/edit/", views.frontend_entrypoint_view, name="entrypoint-accounts-me-edit"),
+            # /accounts/* are Django-owned pages and must not be shadowed by the SPA.
 
             # ── Auth SPA routes (no trailing-slash variants) ──────────────────────
             path("login", views.frontend_entrypoint_view, name="entrypoint-login"),
@@ -181,7 +176,6 @@ if settings.LOVABLE_FRONTEND_ENABLED:
             re_path(r"^profile/(?P<user_id>[^/]+)/?$", views.frontend_entrypoint_view, name="entrypoint-profile-detail"),
 
             # ── Other Django HTML pages (served via SPA Under Construction) ───────
-            path("search/", views.frontend_entrypoint_view, name="entrypoint-search"),
             path("activity/", views.frontend_entrypoint_view, name="entrypoint-activity"),
             path("settings/", views.frontend_entrypoint_view, name="entrypoint-settings"),
             path("settings/appearance/", views.frontend_entrypoint_view, name="entrypoint-settings-appearance"),
@@ -189,6 +183,5 @@ if settings.LOVABLE_FRONTEND_ENABLED:
             path("interactions/dm/", views.frontend_entrypoint_view, name="entrypoint-dm-inbox"),
             re_path(r"^interactions/dm/(?P<thread_id>\d+)/?$", views.frontend_entrypoint_view, name="entrypoint-dm-thread"),
             path("enroll/hosting/inbox/", views.frontend_entrypoint_view, name="entrypoint-hosting-inbox"),
-            re_path(r"^u/(?P<username>[^/]+)/?$", views.frontend_entrypoint_view, name="entrypoint-public-profile"),
         ]
     )

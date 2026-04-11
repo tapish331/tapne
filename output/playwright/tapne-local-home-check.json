@@ -1,0 +1,22 @@
+{
+  "url": "http://127.0.0.1:8005/",
+  "console_errors": [],
+  "page_errors": [],
+  "request_failures": [],
+  "http_status": 200,
+  "title": "Tapne",
+  "root": {
+    "exists": true,
+    "childElementCount": 3,
+    "innerTextLength": 994,
+    "innerHtmlLength": 23621,
+    "clientHeight": 2120,
+    "display": "block",
+    "heroText": "Find your kind of people. Then travel.",
+    "bodyTextPreview": "Tapne\nTrips\nExperiences\nLogin\nFind your kind of people. Then travel.\n\nJoin community-led trips with like-minded travelers.\n\nPeople are already traveling together\n0+\ntravelers\n0+\ntrips hosted\n0+\ndestinations\nExplore Trips\n\nDiscover community trips created by travelers.\n\nView all\nCity Break\nTrekking\nB"
+  },
+  "visible_h1_count": 1,
+  "body_text_len": 994,
+  "screenshot": "output\\playwright\\tapne-local-home.png",
+  "dom": "output\\playwright\\tapne-local-home-dom.html"
+}

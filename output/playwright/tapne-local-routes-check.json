@@ -1,0 +1,30 @@
+[
+  {
+    "route": "/",
+    "url": "http://127.0.0.1:8005/",
+    "console_errors": [],
+    "page_errors": [],
+    "request_failures": [],
+    "http_status": 200,
+    "title": "Tapne",
+    "root": {
+      "childElementCount": 3,
+      "innerTextLength": 994,
+      "h1": "Find your kind of people. Then travel."
+    }
+  },
+  {
+    "route": "/create-trip",
+    "url": "http://127.0.0.1:8005/create-trip",
+    "console_errors": [],
+    "page_errors": [],
+    "request_failures": [],
+    "http_status": 200,
+    "title": "Tapne",
+    "root": {
+      "childElementCount": 3,
+      "innerTextLength": 3451,
+      "h1": "Create a Trip"
+    }
+  }
+]
