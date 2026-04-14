@@ -90,7 +90,8 @@ const Navbar = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [notifications, setNotifications] = useState<ActivityItem[]>([]);
-  const [notifOpen, setNotifOpen] = useState(false);
+  const [desktopNotifOpen, setDesktopNotifOpen] = useState(false);
+  const [mobileNotifOpen, setMobileNotifOpen] = useState(false);
   const [seenIds, setSeenIds] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem("tapne_seen_notifs");
@@ -102,7 +103,12 @@ const Navbar = () => {
   const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (!isAuthenticated || fetchedRef.current) return;
+    if (!isAuthenticated) {
+      fetchedRef.current = false;
+      setNotifications([]);
+      return;
+    }
+    if (fetchedRef.current) return;
     fetchedRef.current = true;
     const cfg = window.TAPNE_RUNTIME_CONFIG;
     if (!cfg?.api?.activity) return;
@@ -134,7 +140,8 @@ const Navbar = () => {
     setSeenIds(allIds);
     localStorage.setItem("tapne_seen_notifs", JSON.stringify([...allIds]));
     const url = _notifNavUrl(item);
-    setNotifOpen(false);
+    setDesktopNotifOpen(false);
+    setMobileNotifOpen(false);
     navigate(url);
   };
 
@@ -186,7 +193,16 @@ const Navbar = () => {
               {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
 
-            <DropdownMenu open={notifOpen} onOpenChange={(o) => { setNotifOpen(o); if (o) markAllSeen(); }}>
+            <DropdownMenu
+              open={desktopNotifOpen}
+              onOpenChange={(open) => {
+                setDesktopNotifOpen(open);
+                if (open) {
+                  setMobileNotifOpen(false);
+                  markAllSeen();
+                }
+              }}
+            >
               <DropdownMenuTrigger asChild>
                 <button className="relative flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-muted">
                   <Bell className="h-4 w-4" />
@@ -243,7 +259,16 @@ const Navbar = () => {
             <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="h-9 w-9">
               {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-            <DropdownMenu open={notifOpen} onOpenChange={(o) => { setNotifOpen(o); if (o) markAllSeen(); }}>
+            <DropdownMenu
+              open={mobileNotifOpen}
+              onOpenChange={(open) => {
+                setMobileNotifOpen(open);
+                if (open) {
+                  setDesktopNotifOpen(false);
+                  markAllSeen();
+                }
+              }}
+            >
               <DropdownMenuTrigger asChild>
                 <button className="relative flex h-9 w-9 items-center justify-center rounded-md">
                   <Bell className="h-4 w-4" />

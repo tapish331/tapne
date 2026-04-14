@@ -2,7 +2,11 @@
 .tapne-placeholder-generated
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
+.playwright-cli/
 staticfiles/
 mediafiles/
 artifacts/

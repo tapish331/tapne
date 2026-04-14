@@ -723,7 +723,11 @@ def session_api_view(request: HttpRequest) -> JsonResponse:
 
 @require_http_methods(["POST"])
 def auth_login_api_view(request: HttpRequest) -> JsonResponse:
-    payload = _request_payload(request)
+    payload = dict(_request_payload(request))
+    if "username" not in payload:
+        email = _normalize_string(payload.get("email", ""))
+        if email:
+            payload["username"] = email
     form = LoginForm(request=request, data=payload)
     if not form.is_valid():
         return _json_error("Invalid credentials.", extra={"errors": _form_errors(form)})

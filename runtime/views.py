@@ -50,7 +50,7 @@ def runtime_health_view(request: HttpRequest) -> JsonResponse:
             persisted_counter_rows=snapshot["persisted_counter_rows"],
         ),
     )
-    return JsonResponse(snapshot)
+    return JsonResponse({"status": "ok", **snapshot})
 
 
 @login_required(login_url="accounts:login")
