@@ -295,3 +295,35 @@ def build_hosting_inbox_payload_for_member(
         "reason": reason,
         "active_status": active_status,
     }
+
+
+def close_trip_enrollments(trip: Trip) -> dict[str, list[int]]:
+    """Auto-deny all pending enrollments on a completed trip and report affected users.
+
+    Returns a dict with 'denied_requester_ids' (previously-pending users now denied)
+    and 'approved_requester_ids' (users who were already approved — callers use this
+    list to fan out review-prompt notifications).
+    """
+    from django.db import transaction
+
+    with transaction.atomic():
+        pending_qs = EnrollmentRequest.objects.filter(
+            trip=trip, status=EnrollmentRequest.STATUS_PENDING
+        )
+        denied_ids = list(pending_qs.values_list("requester_id", flat=True))
+        if denied_ids:
+            pending_qs.update(
+                status=EnrollmentRequest.STATUS_DENIED,
+                reviewed_at=timezone.now(),
+            )
+
+        approved_ids = list(
+            EnrollmentRequest.objects.filter(
+                trip=trip, status=EnrollmentRequest.STATUS_APPROVED
+            ).values_list("requester_id", flat=True)
+        )
+
+    return {
+        "denied_requester_ids": denied_ids,
+        "approved_requester_ids": approved_ids,
+    }

@@ -295,15 +295,46 @@ class Trip(models.Model):
     ends_at = models.DateTimeField(blank=True, null=True)
     traffic_score = models.PositiveIntegerField(default=0)
     is_published = models.BooleanField(default=True, db_index=True)
+    status = models.CharField(
+        max_length=16,
+        choices=(
+            ("draft", "Draft"),
+            ("published", "Published"),
+            ("completed", "Completed"),
+        ),
+        default="published",
+        db_index=True,
+    )
+    review_prompts_sent = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    STATUS_DRAFT = "draft"
+    STATUS_PUBLISHED = "published"
+    STATUS_COMPLETED = "completed"
 
     class Meta:
         ordering = ("starts_at", "id")
         indexes = [
             models.Index(fields=("host", "starts_at"), name="trip_host_start_idx"),
             models.Index(fields=("is_published", "starts_at"), name="trip_pub_start_idx"),
+            models.Index(fields=("status", "starts_at"), name="trip_status_start_idx"),
         ]
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        # Bidirectional sync between the legacy is_published boolean and the
+        # canonical status field. Callers may set either one; we reconcile here.
+        # Priority: explicit status=draft > legacy is_published=False > status mirror.
+        if self.status == self.STATUS_DRAFT:
+            # Caller set status=draft explicitly — authoritative.
+            self.is_published = False
+        elif not self.is_published:
+            # Legacy caller set is_published=False with no explicit status.
+            self.status = self.STATUS_DRAFT
+        else:
+            # Status is authoritative (published or completed); mirror it.
+            self.is_published = True
+        super().save(*args, **kwargs)  # type: ignore[misc]
 
     def __str__(self) -> str:
         return f"Trip #{self.pk or 'new'}: {self.title}"
@@ -401,6 +432,7 @@ class Trip(models.Model):
         trip_data: TripData = {
             "id": trip_id,
             "title": self.title,
+            "status": str(self.status or self.STATUS_PUBLISHED),
             "summary": self.summary,
             "description": description_plain,
             "destination": self.destination,
@@ -497,6 +529,63 @@ class Trip(models.Model):
                 if str(key).strip()
             }
         return trip_data
+
+def ensure_trip_status_fresh(trip: Trip) -> bool:
+    """Run all time-based lifecycle transitions for a trip on read.
+
+    Two thresholds, one helper:
+    1. `starts_at < now` → status flips to 'completed'; on that transition
+       call `close_trip_enrollments()` to auto-deny any pending join requests.
+    2. `ends_at < now` → set `review_prompts_sent=True` so review-prompt
+       notifications surface for approved travelers (once, idempotent).
+
+    Returns True if any persisted field changed. Safe to call on draft trips
+    (no-op) or fully-settled completed+sent trips (no-op).
+    """
+    if trip.status == Trip.STATUS_DRAFT:
+        return False
+
+    now = timezone.now()
+    dirty_fields: list[str] = []
+
+    # Threshold 1: starts_at → completed
+    if trip.status == Trip.STATUS_PUBLISHED and trip.starts_at is not None and trip.starts_at < now:
+        trip.status = Trip.STATUS_COMPLETED
+        dirty_fields.extend(["status", "is_published"])
+        try:
+            from enrollment.models import close_trip_enrollments
+
+            close_trip_enrollments(trip)
+        except Exception:
+            # Never let enrollment closure block the status transition.
+            pass
+
+    # Threshold 2: ends_at → review_prompts_sent (only meaningful once completed)
+    if (
+        trip.status == Trip.STATUS_COMPLETED
+        and not trip.review_prompts_sent
+        and trip.ends_at is not None
+        and trip.ends_at < now
+    ):
+        trip.review_prompts_sent = True
+        dirty_fields.append("review_prompts_sent")
+
+    if not dirty_fields:
+        return False
+
+    dirty_fields.append("updated_at")
+    trip.save(update_fields=list(dict.fromkeys(dirty_fields)))
+    return True
+
+
+def ensure_trip_statuses_fresh_bulk(trips: "list[Trip] | tuple[Trip, ...]") -> int:
+    """Bulk variant of ensure_trip_status_fresh for a list/queryset slice."""
+    changed = 0
+    for trip in trips:
+        if ensure_trip_status_fresh(trip):
+            changed += 1
+    return changed
+
 
 MINE_TABS: Final[tuple[str, ...]] = ("drafts", "published", "past")
 MINE_TAB_ALIASES: Final[dict[str, str]] = {
@@ -740,11 +829,18 @@ def normalize_mine_tab(raw_tab: str) -> str:
 
 
 def _live_trip_rows() -> list[Trip]:
-    return list(
+    rows = list(
         Trip.objects.select_related("host")
-        .filter(is_published=True)
+        .filter(status=Trip.STATUS_PUBLISHED)
         .order_by("starts_at", "pk")
     )
+    # Self-heal stale published rows whose starts_at has passed.
+    fresh: list[Trip] = []
+    for trip in rows:
+        if ensure_trip_status_fresh(trip):
+            continue
+        fresh.append(trip)
+    return fresh
 
 
 def build_trip_list_payload_for_user(
@@ -821,7 +917,32 @@ def build_trip_detail_payload_for_user(user: object, trip_id: int) -> TripDetail
     viewer_id = int(getattr(user, "pk", 0) or 0)
 
     live_row = Trip.objects.select_related("host").filter(pk=trip_id).first()
+    # Self-heal stale status on read so gating below uses fresh values.
+    if live_row is not None:
+        ensure_trip_status_fresh(live_row)
     live_row_host_id = int(getattr(live_row, "host_id", 0) or 0) if live_row is not None else 0
+
+    # Completed-trip gate: only host or approved enrollee may view the detail page.
+    # Non-participants get the "not found" fallback path below.
+    if (
+        live_row is not None
+        and live_row.status == Trip.STATUS_COMPLETED
+        and live_row_host_id != viewer_id
+    ):
+        is_approved_enrollee = False
+        if viewer_is_member and viewer_id > 0:
+            try:
+                from enrollment.models import EnrollmentRequest
+
+                is_approved_enrollee = EnrollmentRequest.objects.filter(
+                    trip_id=live_row.pk,
+                    requester_id=viewer_id,
+                    status=EnrollmentRequest.STATUS_APPROVED,
+                ).exists()
+            except Exception:
+                is_approved_enrollee = False
+        if not is_approved_enrollee:
+            live_row = None
 
     trip_data: TripData
     source: str
@@ -888,10 +1009,14 @@ def build_my_trips_payload_for_member(
 
     typed_user = cast(Any, user)
     hosted_qs = Trip.objects.select_related("host").filter(host=typed_user).order_by("starts_at", "pk")
-    now = timezone.now()
-    draft_qs = hosted_qs.filter(is_published=False).order_by("-updated_at", "-pk")
-    published_qs = hosted_qs.filter(is_published=True, starts_at__gte=now)
-    past_qs = hosted_qs.filter(is_published=True, starts_at__lt=now).order_by("-starts_at", "-pk")
+    # Self-heal: flip any stale 'published' rows that have already started.
+    for trip in hosted_qs.filter(status=Trip.STATUS_PUBLISHED):
+        ensure_trip_status_fresh(trip)
+    # Re-read after self-heal (queryset is lazy; refetch to pick up updated statuses).
+    hosted_qs = Trip.objects.select_related("host").filter(host=typed_user).order_by("starts_at", "pk")
+    draft_qs = hosted_qs.filter(status=Trip.STATUS_DRAFT).order_by("-updated_at", "-pk")
+    published_qs = hosted_qs.filter(status=Trip.STATUS_PUBLISHED)
+    past_qs = hosted_qs.filter(status=Trip.STATUS_COMPLETED).order_by("-starts_at", "-pk")
 
     if effective_tab == "published":
         selected_rows = list(published_qs[:effective_limit])

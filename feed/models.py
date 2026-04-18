@@ -17,6 +17,7 @@ from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url,
 class TripData(TypedDict):
     id: int
     title: str
+    status: NotRequired[str]
     summary: NotRequired[str]
     description: NotRequired[str]
     description_html: NotRequired[str]
@@ -820,10 +821,15 @@ def _live_trip_rows() -> list[TripData]:
     live_rows: list[TripData] = []
     queryset = (
         trip_model.objects.select_related("host")
-        .filter(is_published=True)
+        .filter(status="published")
         .order_by("-traffic_score", "starts_at", "pk")
     )
     for trip in queryset:
+        # Self-heal stale 'published' rows whose starts_at has passed.
+        from trips.models import ensure_trip_status_fresh
+
+        if ensure_trip_status_fresh(trip):
+            continue  # trip just became completed, drop from this listing
         to_trip_data = getattr(trip, "to_trip_data", None)
         if callable(to_trip_data):
             result = to_trip_data()

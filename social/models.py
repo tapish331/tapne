@@ -467,8 +467,12 @@ def _trip_data_from_bookmark(bookmark: Bookmark, *, viewer_id: int) -> TripData:
         return _fallback_trip_data(bookmark)
 
     trip_is_published = bool(getattr(trip, "is_published", True))
+    trip_status = str(getattr(trip, "status", "") or "")
     trip_host_id = int(getattr(trip, "host_id", 0) or 0)
     if not trip_is_published and trip_host_id != viewer_id:
+        return _fallback_trip_data(bookmark)
+    # Hide completed trips from bookmark lists — they live in profile carousels + MyTrips Completed tab.
+    if trip_status == "completed" and trip_host_id != viewer_id:
         return _fallback_trip_data(bookmark)
 
     to_trip_data = getattr(trip, "to_trip_data", None)

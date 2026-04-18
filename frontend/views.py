@@ -865,6 +865,22 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
     if trip_row is None:
         return _json_error("Trip not found.", status=404)
 
+    # Completed trips are only visible to the host or approved enrollees.
+    # Others (guests, non-participating travelers) get 404 — trip exists but is hidden.
+    if trip_row.status == Trip.STATUS_COMPLETED:
+        viewer_id = int(getattr(request.user, "pk", 0) or 0)
+        trip_host_id = int(getattr(trip_row, "host_id", 0) or 0)
+        is_host = request.user.is_authenticated and viewer_id == trip_host_id
+        is_enrollee = False
+        if request.user.is_authenticated and viewer_id > 0 and not is_host:
+            is_enrollee = EnrollmentRequest.objects.filter(
+                trip_id=trip_row.pk,
+                requester_id=viewer_id,
+                status=EnrollmentRequest.STATUS_APPROVED,
+            ).exists()
+        if not (is_host or is_enrollee):
+            return _json_error("Trip not found.", status=404)
+
     trip_payload = dict(payload.get("trip", {}))
     host_identity = _member_identity_payload(trip_row.host)
 
@@ -900,7 +916,7 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
     if trip_row.trip_type:
         similar_querysets.append(
             Trip.objects.select_related("host", "host__account_profile")
-            .filter(is_published=True, trip_type=trip_row.trip_type)
+            .filter(status=Trip.STATUS_PUBLISHED, trip_type=trip_row.trip_type)
             .exclude(pk=trip_row.pk)
             .order_by("-traffic_score", "starts_at", "pk")
         )
@@ -908,13 +924,13 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
     if destination_hint:
         similar_querysets.append(
             Trip.objects.select_related("host", "host__account_profile")
-            .filter(is_published=True, destination__icontains=destination_hint)
+            .filter(status=Trip.STATUS_PUBLISHED, destination__icontains=destination_hint)
             .exclude(pk=trip_row.pk)
             .order_by("-traffic_score", "starts_at", "pk")
         )
     similar_querysets.append(
         Trip.objects.select_related("host", "host__account_profile")
-        .filter(is_published=True)
+        .filter(status=Trip.STATUS_PUBLISHED)
         .exclude(pk=trip_row.pk)
         .order_by("-traffic_score", "starts_at", "pk")
     )
@@ -964,19 +980,21 @@ def my_trips_api_view(request: HttpRequest) -> JsonResponse:
     # The frontend (MyTrips.tsx + DraftContext) fetches once and filters all tabs client-side.
     # We must return all trips (drafts + published + past) in a single call.
     # Build each tab separately and merge so all trip data is available.
-    from django.utils import timezone as _tz
-    from trips.models import Trip as _Trip, enrich_trip_preview_fields as _enrich
+    from trips.models import Trip as _Trip, enrich_trip_preview_fields as _enrich, ensure_trip_status_fresh
 
     viewer = request.user
     if not bool(getattr(viewer, "is_authenticated", False)):
         return _member_only_error()
 
-    now = _tz.now()
+    hosted_qs = _Trip.objects.select_related("host").filter(host=viewer)
+    # Self-heal stale 'published' rows whose starts_at has passed.
+    for _trip in hosted_qs.filter(status=_Trip.STATUS_PUBLISHED):
+        ensure_trip_status_fresh(_trip)
     hosted_qs = _Trip.objects.select_related("host").filter(host=viewer)
 
-    draft_rows = list(hosted_qs.filter(is_published=False).order_by("-updated_at", "-pk"))
-    published_rows = list(hosted_qs.filter(is_published=True, starts_at__gte=now).order_by("starts_at", "pk"))
-    past_rows = list(hosted_qs.filter(is_published=True, starts_at__lt=now).order_by("-starts_at", "-pk"))
+    draft_rows = list(hosted_qs.filter(status=_Trip.STATUS_DRAFT).order_by("-updated_at", "-pk"))
+    published_rows = list(hosted_qs.filter(status=_Trip.STATUS_PUBLISHED).order_by("starts_at", "pk"))
+    past_rows = list(hosted_qs.filter(status=_Trip.STATUS_COMPLETED).order_by("-starts_at", "-pk"))
 
     all_trips = [dict(_enrich(t.to_trip_data())) for t in draft_rows + published_rows + past_rows]
     enriched = _enrich_trip_cards(all_trips)
@@ -1448,7 +1466,11 @@ def trip_duplicate_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
 
 @require_POST
 def trip_join_request_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
-    trip = Trip.objects.select_related("host").filter(pk=trip_id, is_published=True).first()
+    trip = (
+        Trip.objects.select_related("host")
+        .filter(pk=trip_id, status=Trip.STATUS_PUBLISHED)
+        .first()
+    )
     if trip is None:
         return _json_error("Trip not found.", status=404)
 
@@ -1687,6 +1709,7 @@ def notifications_api_view(request: HttpRequest) -> JsonResponse:
         "replies": "💬",
         "bookmarks": "🔖",
         "reviews": "⭐",
+        "review_prompt": "⭐",
     }
 
     def _rel_time(occurred_at: object) -> str:

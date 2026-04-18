@@ -229,7 +229,7 @@ def _collect_sitemap_entries(request: HttpRequest) -> list[tuple[str, datetime |
         from blogs.models import Blog
         from trips.models import Trip
 
-        for trip in Trip.objects.filter(is_published=True).only("pk", "updated_at").order_by("pk"):
+        for trip in Trip.objects.filter(status=Trip.STATUS_PUBLISHED).only("pk", "updated_at").order_by("pk"):
             entries.append((build_absolute_url(request, trip.get_absolute_url()), trip.updated_at))
 
         for blog in Blog.objects.filter(is_published=True).only("slug", "updated_at").order_by("pk"):

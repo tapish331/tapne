@@ -5,6 +5,7 @@ export type JsonObject = Record<string, unknown>;
 export type FrontendTrip = {
   id: number;
   title: string;
+  status?: "draft" | "published" | "completed";
   summary?: string;
   description?: string;
   description_html?: string;

@@ -7,6 +7,7 @@ import { formatCurrency, formatDateRange } from "@frontend/lib/format";
 
 export default function TripCard({ trip }: { trip: FrontendTrip }) {
   const priceValue = trip.price_per_person ?? trip.total_trip_price;
+  const isCompleted = trip.status === "completed";
   return (
     <Link to={`/trips/${trip.id}`}>
       <Card className="group h-full overflow-hidden transition-shadow hover:shadow-lg">
@@ -14,11 +15,18 @@ export default function TripCard({ trip }: { trip: FrontendTrip }) {
           <img
             src={trip.banner_image_url || "/placeholder.svg"}
             alt={trip.title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+              isCompleted ? "opacity-80" : ""
+            }`}
           />
           {trip.trip_type_label ? (
             <Badge className="absolute left-3 top-3 bg-primary/90 text-primary-foreground">
               {trip.trip_type_label}
+            </Badge>
+          ) : null}
+          {isCompleted ? (
+            <Badge className="absolute right-3 top-3 bg-muted text-muted-foreground">
+              Completed
             </Badge>
           ) : null}
         </div>
