@@ -521,7 +521,7 @@ def trip_detail_view(request: HttpRequest, trip_id: int) -> HttpResponse:
     if live_trip_row is not None:
         similar_candidate_rows = list(
             Trip.objects.select_related("host")
-            .filter(is_published=True)
+            .filter(status=Trip.STATUS_PUBLISHED)
             .exclude(pk=trip_id)
             .order_by("starts_at", "pk")
         )

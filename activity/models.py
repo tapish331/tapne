@@ -19,6 +19,7 @@ ActivityFilter = Literal[
     "replies",
     "bookmarks",
     "reviews",
+    "review_prompt",
 ]
 ALLOWED_ACTIVITY_FILTERS: Final[set[str]] = {
     "all",
@@ -28,6 +29,7 @@ ALLOWED_ACTIVITY_FILTERS: Final[set[str]] = {
     "replies",
     "bookmarks",
     "reviews",
+    "review_prompt",
 }
 
 
@@ -467,6 +469,75 @@ def _build_review_events_for_member(
     return events
 
 
+def _build_review_prompt_events_for_member(
+    *,
+    member_id: int,
+    member_username: str,
+    limit: int,
+) -> list[ActivityItemData]:
+    """Pending review prompts — trips the member joined that have ended, not yet reviewed.
+
+    Sourced dynamically from Trip.review_prompts_sent + approved EnrollmentRequest,
+    minus any Review rows already authored by the member. No dedicated notification
+    table: the prompt disappears once the member posts a review.
+    """
+    from django.utils import timezone as _tz
+
+    from trips.models import Trip as _Trip
+
+    now = _tz.now()
+    approved_trip_ids = list(
+        EnrollmentRequest.objects.filter(
+            requester_id=member_id,
+            status=EnrollmentRequest.STATUS_APPROVED,
+        ).values_list("trip_id", flat=True)
+    )
+    if not approved_trip_ids:
+        return []
+
+    prompt_trips = list(
+        _Trip.objects.select_related("host")
+        .filter(
+            pk__in=approved_trip_ids,
+            review_prompts_sent=True,
+            ends_at__lt=now,
+        )
+        .order_by("-ends_at", "-pk")[:limit]
+    )
+    if not prompt_trips:
+        return []
+
+    reviewed_trip_keys = set(
+        Review.objects.filter(
+            author_id=member_id,
+            target_type="trip",
+            target_key__in=[str(t.pk) for t in prompt_trips],
+        ).values_list("target_key", flat=True)
+    )
+
+    events: list[ActivityItemData] = []
+    for trip in prompt_trips:
+        trip_id = int(getattr(trip, "pk", 0) or 0)
+        if trip_id <= 0 or str(trip_id) in reviewed_trip_keys:
+            continue
+        host_username = str(getattr(getattr(trip, "host", None), "username", "") or "").strip()
+        title = str(getattr(trip, "title", "") or "").strip() or f"Trip #{trip_id}"
+        events.append(
+            {
+                "id": f"review_prompt:trip:{trip_id}",
+                "group": "review_prompt",
+                "actor_username": host_username,
+                "actor_url": f"/u/{host_username}/" if host_username else "",
+                "action": "Your trip ended — leave a review",
+                "target_label": title,
+                "target_url": _url_with_anchor(f"/trips/{trip_id}/", anchor="review"),
+                "occurred_at": trip.ends_at or trip.updated_at,
+                "preview": "Share feedback to help future travelers.",
+            }
+        )
+    return events
+
+
 def _build_activity_counts_for_member(
     *,
     member_id: int,
@@ -495,12 +566,48 @@ def _build_activity_counts_for_member(
         )
         .count(),
         "reviews": Review.objects.exclude(author_id=member_id).filter(owned_content_filter).count(),
+        "review_prompt": _count_review_prompts_for_member(member_id=member_id),
     }
     counts["all"] = sum(
         counts[key]
-        for key in ("follows", "enrollment", "comments", "replies", "bookmarks", "reviews")
+        for key in ("follows", "enrollment", "comments", "replies", "bookmarks", "reviews", "review_prompt")
     )
     return counts
+
+
+def _count_review_prompts_for_member(*, member_id: int) -> int:
+    from django.utils import timezone as _tz
+
+    from trips.models import Trip as _Trip
+
+    approved_trip_ids = list(
+        EnrollmentRequest.objects.filter(
+            requester_id=member_id,
+            status=EnrollmentRequest.STATUS_APPROVED,
+        ).values_list("trip_id", flat=True)
+    )
+    if not approved_trip_ids:
+        return 0
+
+    now = _tz.now()
+    candidate_ids = list(
+        _Trip.objects.filter(
+            pk__in=approved_trip_ids,
+            review_prompts_sent=True,
+            ends_at__lt=now,
+        ).values_list("pk", flat=True)
+    )
+    if not candidate_ids:
+        return 0
+
+    reviewed = set(
+        Review.objects.filter(
+            author_id=member_id,
+            target_type="trip",
+            target_key__in=[str(pk) for pk in candidate_ids],
+        ).values_list("target_key", flat=True)
+    )
+    return sum(1 for pk in candidate_ids if str(pk) not in reviewed)
 
 
 def build_activity_payload_for_member(
@@ -521,6 +628,7 @@ def build_activity_payload_for_member(
                 "replies": 0,
                 "bookmarks": 0,
                 "reviews": 0,
+                "review_prompt": 0,
             },
             "mode": "guest-not-allowed",
             "reason": "Activity is available for members only.",
@@ -539,6 +647,7 @@ def build_activity_payload_for_member(
                 "replies": 0,
                 "bookmarks": 0,
                 "reviews": 0,
+                "review_prompt": 0,
             },
             "mode": "member-activity",
             "reason": "No activity records are available for this account.",
@@ -618,6 +727,14 @@ def build_activity_payload_for_member(
                 member_id=member_id,
                 member_username=member_username,
                 owned_content_filter=owned_content_filter,
+                limit=stream_limit,
+            )
+        )
+    if normalized_filter in {"all", "review_prompt"}:
+        events.extend(
+            _build_review_prompt_events_for_member(
+                member_id=member_id,
+                member_username=member_username,
                 limit=stream_limit,
             )
         )

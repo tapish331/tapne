@@ -389,7 +389,7 @@ def _live_trips_for_query(query: str) -> list[TripData]:
         return []
 
     live_trips: list[TripData] = []
-    queryset = trip_model.objects.filter(is_published=True).order_by("-pk")
+    queryset = trip_model.objects.filter(status="published").order_by("-pk")
     for trip in queryset:
         title = _string_attr(trip, "title", "name")
         summary = _string_attr(trip, "summary", "excerpt")
