@@ -13,11 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import FrontendNavbar from "@frontend/components/FrontendNavbar";
 import { ErrorState, LoadingState } from "@frontend/components/PageState";
-import TripCard from "@frontend/components/TripCard";
+import TripCarousel from "@frontend/components/TripCarousel";
 import { FrontendTrip, apiGet, apiUrl } from "@frontend/lib/api";
 import { useAuth } from "@frontend/context/AuthContext";
 
@@ -173,26 +172,16 @@ export default function ProfilePage() {
             </Dialog>
           </div>
 
-          <Tabs defaultValue="created">
-            <TabsList className="mb-6">
-              <TabsTrigger value="created">Trips Created ({payload.created_trips.length})</TabsTrigger>
-              <TabsTrigger value="joined">Trips Joined ({payload.joined_trips.length})</TabsTrigger>
-            </TabsList>
-            <TabsContent value="created">
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {payload.created_trips.map((trip) => (
-                  <TripCard key={trip.id} trip={trip} />
-                ))}
-              </div>
-            </TabsContent>
-            <TabsContent value="joined">
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {payload.joined_trips.map((trip) => (
-                  <TripCard key={trip.id} trip={trip} />
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
+          <TripCarousel
+            title="Trips Hosted"
+            trips={payload.created_trips}
+            emptyLabel="You haven't hosted any trips yet."
+          />
+          <TripCarousel
+            title="Trips Joined"
+            trips={payload.joined_trips}
+            emptyLabel="You haven't joined any trips yet."
+          />
         </div>
       </main>
       <Footer />

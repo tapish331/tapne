@@ -4,9 +4,8 @@ import { useRef, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DraftProvider } from "@/contexts/DraftContext";
-import { useAuth } from "@/contexts/AuthContext";
 import LoginModal from "@/components/LoginModal";
 import ScrollToTop from "@/components/ScrollToTop";
 
@@ -68,9 +67,11 @@ const GlobalLoginModal = () => {
   );
 };
 
-// Root layout injects ScrollToTop and GlobalLoginModal into every route.
+// Root layout injects ScrollToTop, GlobalLoginModal, and DraftProvider into every route.
 // With createBrowserRouter these can't be placed inside BrowserRouter directly,
 // so they live in a layout route that wraps all children via <Outlet />.
+// DraftProvider MUST be inside the router — DraftContext calls useNavigate(),
+// which throws if rendered outside a <Router> ancestor.
 const RootLayout = () => (
   <DraftProvider>
     <ScrollToTop />
