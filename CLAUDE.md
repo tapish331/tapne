@@ -1,5 +1,15 @@
 # CLAUDE.md
 
+## Tapne — mandatory session rules
+
+Before anything else in this repo, load and obey the canonical rules:
+
+@RULES.md
+
+Everything below is supplementary context. The rules above override anything in this file unless the user explicitly countermands them in-session.
+
+---
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project
