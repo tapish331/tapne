@@ -318,7 +318,11 @@ const TripDetail = () => {
             </div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-white md:text-4xl lg:text-5xl">{trip.title}</h1>
-              <BookmarkButton tripId={trip.id} size="md" />
+              <BookmarkButton
+                tripId={trip.id}
+                initialBookmarked={Boolean((trip as { is_bookmarked?: boolean }).is_bookmarked)}
+                size="md"
+              />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-white/80 md:text-base">
               {trip.destination && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{trip.destination}</span>}

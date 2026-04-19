@@ -185,6 +185,15 @@ class RuntimeViewsTests(TestCase):
         self.assertIn("redis_configured", payload)
         self.assertIn("broker_configured", payload)
 
+    def test_runtime_root_endpoint_returns_backend_json(self) -> None:
+        response = self.client.get(reverse("runtime:root"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        payload = response.json()
+        self.assertEqual(payload["service"], "runtime")
+        self.assertEqual(payload["endpoints"]["health"], reverse("runtime:health"))
+
     def test_runtime_health_verbose_query_prints_debug_lines(self) -> None:
         with patch("builtins.print") as mock_print:
             response = self.client.get(f"{reverse('runtime:health')}?verbose=1")

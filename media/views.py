@@ -5,11 +5,11 @@ from urllib.parse import urlsplit
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .models import MediaAsset, remove_media_attachment, submit_media_upload
 
@@ -61,6 +61,20 @@ def _safe_next_url(request: HttpRequest, fallback: str) -> str:
     return fallback
 
 
+@require_GET
+def media_root_view(_request: HttpRequest) -> JsonResponse:
+    return JsonResponse(
+        {
+            "status": "ok",
+            "service": "uploads",
+            "endpoints": {
+                "upload": reverse("media:upload"),
+                "delete_template": "/uploads/delete/<attachment_id>/",
+            },
+        }
+    )
+
+
 @login_required(login_url="accounts:login")
 @require_POST
 def media_upload_view(request: HttpRequest) -> HttpResponse:
@@ -72,7 +86,7 @@ def media_upload_view(request: HttpRequest) -> HttpResponse:
         caption=request.POST.get("caption", ""),
     )
 
-    fallback_next = reverse("home")
+    fallback_next = "/"
     if target is not None:
         fallback_next = target.target_url or fallback_next
         if "#" not in fallback_next:
@@ -134,7 +148,7 @@ def media_delete_view(request: HttpRequest, attachment_id: int) -> HttpResponse:
         attachment_id=attachment_id,
     )
 
-    fallback_next = reverse("home")
+    fallback_next = "/"
     if attachment is not None:
         target_url = str(attachment.target_url or "").strip()
         if target_url:

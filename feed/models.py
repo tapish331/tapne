@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime
+from pathlib import Path
 import re
 from typing import Any, NotRequired, TypeVar, TypedDict, cast
 
@@ -10,7 +11,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 
-from tapne.features import demo_catalog_enabled
+from tapne.features import _demo_qs_filter, demo_catalog_enabled, demo_catalog_visible
 from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 
@@ -73,6 +74,8 @@ class TripData(TypedDict):
     cancellation_policy: NotRequired[str]
     faqs: NotRequired[list[dict[str, object]]]
     co_hosts: NotRequired[str]
+    booking_status: NotRequired[str]
+    status: NotRequired[str]
     draft_form_data: NotRequired[dict[str, object]]
 
 
@@ -240,7 +243,7 @@ TRIP_TYPE_LABELS: dict[str, str] = {
     "adventure-sports": "Adventure Sports",
     "adventure": "Adventure Sports",
 }
-DEFAULT_TRIP_BANNER_PATH: str = "img/trip-banners/adventure.svg"
+DEFAULT_TRIP_BANNER_PATH: str = "/placeholder.svg"
 TRIP_TYPE_BANNER_PATHS: dict[str, str] = {
     "food-culture": "img/trip-banners/food-culture.svg",
     "trekking": "img/trip-banners/trekking.svg",
@@ -415,9 +418,11 @@ def _trip_text_blob(trip: TripData) -> str:
 
 
 def _join_static_url(path: str) -> str:
-    cleaned_path = str(path or "").strip().lstrip("/")
+    cleaned_path = str(path or "").strip()
     if not cleaned_path:
         cleaned_path = DEFAULT_TRIP_BANNER_PATH
+    if cleaned_path.startswith(("http://", "https://", "/")):
+        return cleaned_path
 
     static_url = str(getattr(settings, "STATIC_URL", "/static/") or "/static/").strip()
     if not static_url:
@@ -425,12 +430,16 @@ def _join_static_url(path: str) -> str:
     if not static_url.endswith("/"):
         static_url = f"{static_url}/"
 
-    return f"{static_url}{cleaned_path}"
+    return f"{static_url}{cleaned_path.lstrip('/')}"
 
 
 def _default_trip_banner_url(trip_type: str) -> str:
     normalized_trip_type = str(trip_type or "").strip().lower()
     banner_path = TRIP_TYPE_BANNER_PATHS.get(normalized_trip_type, DEFAULT_TRIP_BANNER_PATH)
+    if not str(banner_path).startswith(("http://", "https://", "/")):
+        static_banner = Path(getattr(settings, "BASE_DIR")) / "static" / str(banner_path).lstrip("/")
+        if not static_banner.is_file():
+            banner_path = DEFAULT_TRIP_BANNER_PATH
     return _join_static_url(banner_path)
 
 
@@ -821,7 +830,7 @@ def _live_trip_rows() -> list[TripData]:
     live_rows: list[TripData] = []
     queryset = (
         trip_model.objects.select_related("host")
-        .filter(status="published")
+        .filter(status="published", **_demo_qs_filter())
         .order_by("-traffic_score", "starts_at", "pk")
     )
     for trip in queryset:
@@ -895,7 +904,8 @@ def _live_profile_rows() -> list[ProfileData]:
     follow_model = _resolve_model("social", "FollowRelation")
     profiles: list[ProfileData] = []
 
-    queryset = UserModel.objects.select_related("account_profile").all().order_by("username")
+    _profile_filter: dict[str, bool] = {} if demo_catalog_visible() else {"account_profile__is_demo": False}
+    queryset = UserModel.objects.select_related("account_profile").filter(**_profile_filter).order_by("username")
     for user in queryset:
         username = str(getattr(user, "username", "")).strip()
         if not username:
@@ -937,7 +947,7 @@ def _live_blog_rows() -> list[BlogData]:
     live_rows: list[BlogData] = []
     queryset = (
         blog_model.objects.select_related("author")
-        .filter(is_published=True)
+        .filter(is_published=True, **_demo_qs_filter())
         .order_by("-reads", "-created_at", "-pk")
     )
     for blog in queryset:

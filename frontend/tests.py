@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 from django.test import Client, TestCase, override_settings
+from django.urls import clear_url_caches, set_urlconf
 from django.utils import timezone
 
+import frontend.urls as frontend_urls
+import tapne.urls as tapne_urls
 from blogs.models import Blog
 from frontend.views import frontend_entrypoint_view
 from reviews.models import Review
@@ -539,3 +543,32 @@ class FrontendShellTests(TestCase):
                 html = response.content.decode("utf-8")
                 self.assertIn('data-tapne-runtime="inline-config"', html)
                 self.assertIn("window.__TAPNE_FRONTEND_CONFIG__", html)
+
+
+class FrontendShellToggleTests(TestCase):
+    @staticmethod
+    def _reload_urlconfs() -> None:
+        clear_url_caches()
+        importlib.reload(frontend_urls)
+        importlib.reload(tapne_urls)
+        set_urlconf(None)
+
+    @override_settings(LOVABLE_FRONTEND_ENABLED=False)
+    def test_trips_route_does_not_render_spa_shell_when_lovable_is_disabled(self) -> None:
+        self._reload_urlconfs()
+        self.addCleanup(self._reload_urlconfs)
+
+        response = self.client.get("/trips/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn('<div id="root">', response.content.decode("utf-8"))
+
+    @override_settings(LOVABLE_FRONTEND_ENABLED=False)
+    def test_frontend_api_routes_stay_available_when_lovable_is_disabled(self) -> None:
+        self._reload_urlconfs()
+        self.addCleanup(self._reload_urlconfs)
+
+        response = self.client.get("/frontend-api/session/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")

@@ -16,7 +16,7 @@ from feed.models import (
     get_demo_profiles,
     get_demo_trips,
 )
-from tapne.features import demo_catalog_enabled
+from tapne.features import _demo_qs_filter, demo_catalog_enabled, demo_catalog_visible
 from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 SearchResultType = Literal["all", "trips", "users", "blogs"]
@@ -288,7 +288,8 @@ def _live_profiles_for_query(query: str) -> list[ProfileData]:
     live_profiles: list[ProfileData] = []
     trip_model = _resolve_model("trips", "Trip")
     follow_model = _resolve_model("social", "FollowRelation")
-    users = UserModel.objects.select_related("account_profile").all().order_by("username")
+    _profile_filter: dict[str, bool] = {} if demo_catalog_visible() else {"account_profile__is_demo": False}
+    users = UserModel.objects.select_related("account_profile").filter(**_profile_filter).order_by("username")
     for user in users:
         username = str(getattr(user, "username", "")).strip()
         if not username:
@@ -389,7 +390,7 @@ def _live_trips_for_query(query: str) -> list[TripData]:
         return []
 
     live_trips: list[TripData] = []
-    queryset = trip_model.objects.filter(status="published").order_by("-pk")
+    queryset = trip_model.objects.filter(status="published", **_demo_qs_filter()).order_by("-pk")
     for trip in queryset:
         title = _string_attr(trip, "title", "name")
         summary = _string_attr(trip, "summary", "excerpt")
@@ -542,6 +543,9 @@ def _live_blogs_for_query(query: str) -> list[BlogData]:
         # Search results should not leak unpublished drafts.
         is_published_value = getattr(blog, "is_published", True)
         if isinstance(is_published_value, bool) and not is_published_value:
+            continue
+        # Respect the demo catalog visibility flag.
+        if not demo_catalog_visible() and getattr(blog, "is_demo", False):
             continue
 
         blog_id = int(getattr(blog, "pk", 0))

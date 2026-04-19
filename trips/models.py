@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 
 from feed.models import MemberFeedPreference, TripData, enrich_trip_preview_fields, get_demo_trips, get_trip_by_id
-from tapne.features import demo_catalog_enabled
+from tapne.features import _demo_qs_filter, demo_catalog_enabled
 from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 try:
@@ -120,6 +120,8 @@ CONTACT_PREFERENCE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("phone", "Phone call"),
     ("whatsapp", "WhatsApp"),
 )
+TRIP_BOOKING_STATUS_VALUES: Final[set[str]] = {"open", "closed", "full"}
+TRIP_STATUS_VALUES: Final[set[str]] = {"active", "cancelled"}
 TRIP_RICH_TEXT_ALLOWED_TAGS: Final[tuple[str, ...]] = (
     "p",
     "br",
@@ -306,6 +308,7 @@ class Trip(models.Model):
         db_index=True,
     )
     review_prompts_sent = models.BooleanField(default=False, db_index=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -411,6 +414,11 @@ class Trip(models.Model):
     def to_trip_data(self) -> TripData:
         trip_id = int(self.pk or 0)
         raw_description = str(self.description or "").strip()
+        draft_form_data = (
+            cast(Mapping[str, object], self.draft_form_data)
+            if isinstance(self.draft_form_data, Mapping)
+            else {}
+        )
         if TRIP_RICH_TEXT_CSS_SANITIZER is None:
             description_html = bleach.clean(
                 raw_description,
@@ -522,12 +530,18 @@ class Trip(models.Model):
             trip_data["faqs"] = [dict(item) for item in cast(list[dict[str, object]], self.faqs)]
         if self.co_hosts:
             trip_data["co_hosts"] = str(self.co_hosts or "").strip()
-        if self.draft_form_data:
+        if draft_form_data:
             trip_data["draft_form_data"] = {
                 str(key): value
-                for key, value in cast(Mapping[object, object], self.draft_form_data).items()
+                for key, value in draft_form_data.items()
                 if str(key).strip()
             }
+            booking_status = str(draft_form_data.get("booking_status", "") or "").strip().lower()
+            if booking_status in TRIP_BOOKING_STATUS_VALUES:
+                trip_data["booking_status"] = cast(Any, booking_status)
+            status = str(draft_form_data.get("status", "") or "").strip().lower()
+            if status in TRIP_STATUS_VALUES:
+                trip_data["status"] = cast(Any, status)
         return trip_data
 
 def ensure_trip_status_fresh(trip: Trip) -> bool:
@@ -770,6 +784,46 @@ def _rank_for_member(
     )
 
 
+def _annotate_trip_bookmark_state_for_user(user: object, trips: list[TripData]) -> list[TripData]:
+    for trip in trips:
+        trip["is_bookmarked"] = False
+
+    if not bool(getattr(user, "is_authenticated", False)):
+        return trips
+
+    viewer_id = int(getattr(user, "pk", 0) or 0)
+    if viewer_id <= 0:
+        return trips
+
+    trip_ids = sorted(
+        {
+            int(trip.get("id", 0) or 0)
+            for trip in trips
+            if int(trip.get("id", 0) or 0) > 0
+        }
+    )
+    if not trip_ids:
+        return trips
+
+    try:
+        from social.models import Bookmark
+    except Exception:
+        return trips
+
+    bookmarked_keys = set(
+        Bookmark.objects.filter(
+            member_id=viewer_id,
+            target_type=Bookmark.TARGET_TRIP,
+            target_key__in=[str(trip_id) for trip_id in trip_ids],
+        ).values_list("target_key", flat=True)
+    )
+    for trip in trips:
+        trip_id = int(trip.get("id", 0) or 0)
+        if trip_id > 0:
+            trip["is_bookmarked"] = str(trip_id) in bookmarked_keys
+    return trips
+
+
 def _guest_limited_detail(trip: TripData) -> TripData:
     limited = _as_trip_data_copy(trip)
     limited.pop("description_html", None)
@@ -831,7 +885,7 @@ def normalize_mine_tab(raw_tab: str) -> str:
 def _live_trip_rows() -> list[Trip]:
     rows = list(
         Trip.objects.select_related("host")
-        .filter(status=Trip.STATUS_PUBLISHED)
+        .filter(status=Trip.STATUS_PUBLISHED, **_demo_qs_filter())
         .order_by("starts_at", "pk")
     )
     # Self-heal stale published rows whose starts_at has passed.
@@ -979,6 +1033,8 @@ def build_trip_detail_payload_for_user(user: object, trip_id: int) -> TripDetail
         mode = "guest-limited"
         reason = "Guests see a limited preview until they authenticate."
         visible_trip = _guest_limited_detail(enriched_trip)
+
+    visible_trip = _annotate_trip_bookmark_state_for_user(user, [visible_trip])[0]
 
     return {
         "trip": visible_trip,

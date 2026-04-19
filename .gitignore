@@ -11,6 +11,8 @@ staticfiles/
 mediafiles/
 artifacts/
 test_settings.sqlite3
+output/
+tmp/
 
 # macOS filesystem metadata
 .DS_Store

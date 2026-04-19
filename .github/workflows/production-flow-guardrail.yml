@@ -1,0 +1,84 @@
+name: Production Flow Guardrail
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  production-flow-guardrail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DEBUG: "true"
+      SECRET_KEY: "ci-production-flow-guardrail-secret"
+      DATABASE_URL: "sqlite:///tmp/production-flow-guardrail.sqlite3"
+      REDIS_ENABLED: "false"
+      DJANGO_ALLOWED_HOSTS: "127.0.0.1,localhost,testserver"
+      LOVABLE_FRONTEND_ENABLED: "true"
+      LOVABLE_FRONTEND_REQUIRE_LIVE_DATA: "true"
+      TAPNE_ENABLE_DEMO_DATA: "false"
+      E2E_BASE_URL: "http://127.0.0.1:8123"
+      E2E_REFRESH_STORAGE_STATE: "1"
+      TAPNE_DEMO_PASSWORD: "TapneDemoPass!123"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r tests/e2e/requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Build production frontend artifact
+        shell: pwsh
+        run: pwsh -File infra/build-lovable-production-frontend.ps1
+
+      - name: Prepare database and deterministic demo data
+        run: |
+          python manage.py migrate --noinput
+          python manage.py bootstrap_accounts --verbose --reset-passwords
+          python manage.py bootstrap_feed --verbose --create-missing-members
+          python manage.py bootstrap_search --verbose --create-missing-member
+          python manage.py bootstrap_trips --verbose --create-missing-hosts
+          python manage.py bootstrap_blogs --verbose --create-missing-authors
+          python manage.py bootstrap_social --verbose --create-missing-members
+          python manage.py bootstrap_enrollment --verbose --create-missing-members
+          python manage.py bootstrap_interactions --verbose --create-missing-members
+          python manage.py bootstrap_reviews --verbose --create-missing-members
+          python manage.py bootstrap_activity --verbose --create-missing-members
+          python manage.py bootstrap_settings --verbose --create-missing-members
+          python manage.py bootstrap_media --verbose --create-missing-members --create-missing-targets
+          python manage.py bootstrap_runtime --verbose --create-missing-members
+
+      - name: Run smoke suite on pull requests
+        if: github.event_name == 'pull_request'
+        run: pytest -m smoke tests/e2e
+
+      - name: Run full suite on manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: pytest tests/e2e
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-flow-guardrail-artifacts
+          path: |
+            artifacts/e2e
+            artifacts/auth
+          if-no-files-found: warn

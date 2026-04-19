@@ -1,8 +1,3 @@
-/**
- * ReviewModal override — same UI as lovable/src/components/ReviewModal.tsx but
- * actually POSTs the review to the Django backend instead of just showing a
- * toast stub.
- */
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -27,9 +22,11 @@ interface ReviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trip: TripData;
+  tripId?: number;
+  onReviewSubmitted?: () => void;
 }
 
-const ReviewModal = ({ open, onOpenChange, trip }: ReviewModalProps) => {
+const ReviewModal = ({ open, onOpenChange, trip, tripId, onReviewSubmitted }: ReviewModalProps) => {
   const [step, setStep] = useState(0);
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
@@ -48,6 +45,7 @@ const ReviewModal = ({ open, onOpenChange, trip }: ReviewModalProps) => {
 
   const handleSubmit = async () => {
     const cfg = window.TAPNE_RUNTIME_CONFIG;
+    const resolvedTripId = tripId ?? trip.id;
     const body = [loved, improve, selectedTags.join(", ")]
       .filter(Boolean)
       .join("\n\n");
@@ -55,16 +53,21 @@ const ReviewModal = ({ open, onOpenChange, trip }: ReviewModalProps) => {
 
     setSubmitting(true);
     try {
-      await apiPost(`${cfg.api.trip_review}${trip.id}/review/`, {
+      const data = await apiPost<{ ok?: boolean; error?: string }>(`${cfg.api.trip_reviews}${resolvedTripId}/reviews/`, {
         rating,
         body,
         headline,
       });
+      if (data.ok === false && data.error) {
+        toast.error(data.error);
+        return;
+      }
       toast.success("Thanks for sharing your experience ❤️");
       onOpenChange(false);
       resetForm();
-    } catch {
-      toast.error("Could not save your review. Please try again.");
+      onReviewSubmitted?.();
+    } catch (error: any) {
+      toast.error(error?.error || "Could not save your review. Please try again.");
     } finally {
       setSubmitting(false);
     }

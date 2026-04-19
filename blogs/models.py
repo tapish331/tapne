@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db import models
 
 from feed.models import BlogData, MemberFeedPreference, get_blog_by_slug, get_demo_blogs
-from tapne.features import demo_catalog_enabled
+from tapne.features import _demo_qs_filter, demo_catalog_enabled
 
 
 class BlogListPayload(TypedDict):
@@ -48,6 +48,7 @@ class Blog(models.Model):
     reads = models.PositiveIntegerField(default=0)
     reviews_count = models.PositiveIntegerField(default=0)
     is_published = models.BooleanField(default=True, db_index=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -208,7 +209,7 @@ def _rank_for_member(
 def _live_blog_rows() -> list[Blog]:
     return list(
         Blog.objects.select_related("author")
-        .filter(is_published=True)
+        .filter(is_published=True, **_demo_qs_filter())
         .order_by("-created_at", "-pk")
     )
 

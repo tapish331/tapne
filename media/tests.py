@@ -112,6 +112,15 @@ class MediaViewsTests(TestCase):
         expected_redirect = f"{reverse('accounts:login')}?next={reverse('media:upload')}"
         self.assertRedirects(response, expected_redirect, fetch_redirect_response=False)
 
+    def test_media_root_endpoint_returns_backend_json(self) -> None:
+        response = self.client.get(reverse("media:root"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        payload = response.json()
+        self.assertEqual(payload["service"], "uploads")
+        self.assertEqual(payload["endpoints"]["upload"], reverse("media:upload"))
+
     def test_host_can_upload_trip_media_and_trip_detail_includes_it(self) -> None:
         self.client.login(username=self.host.username, password=self.password)
 
@@ -121,16 +130,16 @@ class MediaViewsTests(TestCase):
                 "target_type": "trip",
                 "target_id": str(self.trip.pk),
                 "caption": "  Route board from day zero  ",
-                "next": reverse("trips:detail", kwargs={"trip_id": self.trip.pk}),
+                "next": f"/trips/{self.trip.pk}/",
                 "file": self._image_file(),
             },
         )
 
-        self.assertRedirects(response, reverse("trips:detail", kwargs={"trip_id": self.trip.pk}))
+        self.assertRedirects(response, f"/trips/{self.trip.pk}/")
         self.assertEqual(MediaAsset.objects.count(), 1)
         self.assertEqual(MediaAttachment.objects.count(), 1)
 
-        detail_response = self.client.get(reverse("trips:detail", kwargs={"trip_id": self.trip.pk}))
+        detail_response = self.client.get(f"/trips/{self.trip.pk}/")
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(len(detail_response.context["trip_media_items"]), 1)
         self.assertTrue(detail_response.context["trip_media_can_upload"])
@@ -144,12 +153,12 @@ class MediaViewsTests(TestCase):
             {
                 "target_type": "trip",
                 "target_id": str(self.trip.pk),
-                "next": reverse("trips:detail", kwargs={"trip_id": self.trip.pk}),
+                "next": f"/trips/{self.trip.pk}/",
                 "file": self._image_file(),
             },
         )
 
-        self.assertRedirects(response, reverse("trips:detail", kwargs={"trip_id": self.trip.pk}))
+        self.assertRedirects(response, f"/trips/{self.trip.pk}/")
         self.assertEqual(MediaAsset.objects.count(), 0)
         self.assertEqual(MediaAttachment.objects.count(), 0)
 
@@ -161,12 +170,12 @@ class MediaViewsTests(TestCase):
             {
                 "target_type": "blog",
                 "target_id": self.blog.slug,
-                "next": reverse("blogs:detail", kwargs={"slug": self.blog.slug}),
+                "next": f"/blogs/{self.blog.slug}/",
                 "file": self._invalid_file(),
             },
         )
 
-        self.assertRedirects(response, reverse("blogs:detail", kwargs={"slug": self.blog.slug}))
+        self.assertRedirects(response, f"/blogs/{self.blog.slug}/")
         self.assertEqual(MediaAsset.objects.count(), 0)
 
     def test_member_can_upload_media_for_own_review(self) -> None:
@@ -222,7 +231,7 @@ class MediaViewsTests(TestCase):
             {
                 "target_type": "trip",
                 "target_id": str(self.trip.pk),
-                "next": reverse("trips:detail", kwargs={"trip_id": self.trip.pk}),
+                "next": f"/trips/{self.trip.pk}/",
                 "file": self._image_file(name="delete-me.png"),
             },
         )
@@ -234,18 +243,18 @@ class MediaViewsTests(TestCase):
         self.client.login(username=self.member.username, password=self.password)
         forbidden_response = self.client.post(
             reverse("media:delete", kwargs={"attachment_id": int(attachment.pk)}),
-            {"next": reverse("trips:detail", kwargs={"trip_id": self.trip.pk})},
+            {"next": f"/trips/{self.trip.pk}/"},
         )
-        self.assertRedirects(forbidden_response, reverse("trips:detail", kwargs={"trip_id": self.trip.pk}))
+        self.assertRedirects(forbidden_response, f"/trips/{self.trip.pk}/")
         self.assertTrue(MediaAttachment.objects.filter(pk=int(attachment.pk)).exists())
 
         self.client.logout()
         self.client.login(username=upload_owner.username, password=self.password)
         allowed_response = self.client.post(
             reverse("media:delete", kwargs={"attachment_id": int(attachment.pk)}),
-            {"next": reverse("trips:detail", kwargs={"trip_id": self.trip.pk})},
+            {"next": f"/trips/{self.trip.pk}/"},
         )
-        self.assertRedirects(allowed_response, reverse("trips:detail", kwargs={"trip_id": self.trip.pk}))
+        self.assertRedirects(allowed_response, f"/trips/{self.trip.pk}/")
         self.assertFalse(MediaAttachment.objects.filter(pk=int(attachment.pk)).exists())
         self.assertEqual(MediaAsset.objects.count(), 0)
 
@@ -259,12 +268,12 @@ class MediaViewsTests(TestCase):
                     "target_type": "trip",
                     "target_id": str(self.trip.pk),
                     "verbose": "1",
-                    "next": reverse("trips:detail", kwargs={"trip_id": self.trip.pk}),
+                    "next": f"/trips/{self.trip.pk}/",
                     "file": self._image_file(name="verbose.png"),
                 },
             )
 
-        self.assertRedirects(response, reverse("trips:detail", kwargs={"trip_id": self.trip.pk}))
+        self.assertRedirects(response, f"/trips/{self.trip.pk}/")
         self.assertGreaterEqual(mock_print.call_count, 1)
         printed_lines = "\n".join(str(args[0]) for args, _kwargs in mock_print.call_args_list)
         self.assertIn("[media][verbose]", printed_lines)

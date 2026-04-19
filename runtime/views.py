@@ -4,6 +4,7 @@ from typing import Final
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, JsonResponse
+from django.urls import reverse
 from django.views.decorators.http import require_GET
 
 from .models import (
@@ -30,6 +31,20 @@ def _is_verbose_request(request: HttpRequest) -> bool:
 def _vprint(request: HttpRequest, message: str) -> None:
     if _is_verbose_request(request):
         print(f"[runtime][verbose] {message}", flush=True)
+
+
+@require_GET
+def runtime_root_view(_request: HttpRequest) -> JsonResponse:
+    return JsonResponse(
+        {
+            "status": "ok",
+            "service": "runtime",
+            "endpoints": {
+                "health": reverse("runtime:health"),
+                "cache_preview": reverse("runtime:cache-preview"),
+            },
+        }
+    )
 
 
 @require_GET
