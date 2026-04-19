@@ -10,6 +10,8 @@ from django.utils import timezone
 
 from blogs.models import Blog
 from frontend.views import frontend_entrypoint_view
+from reviews.models import Review
+from social.models import FollowRelation
 from trips.models import Trip
 
 UserModel = get_user_model()
@@ -132,8 +134,270 @@ class FrontendApiTests(TestCase):
         self.assertGreaterEqual(len(detail_payload["participants"]), 1)
 
 
+class FrontendSessionBEndpointsTests(TestCase):
+    """Coverage for the SPA-cutover endpoints added in Session B:
+    - /frontend-api/profile/me/followers/ and /following/
+    - /frontend-api/reviews/ (?author=me | ?recipient=me)
+    - /frontend-api/trips/ (?q, ?sort)
+    - /frontend-api/blogs/ (?q, ?author=me)"""
+
+    def setUp(self) -> None:
+        self.password = "SessionBPass!123456"
+        self.alice = UserModel.objects.create_user(
+            username="alice",
+            email="alice@example.com",
+            password=self.password,
+        )
+        self.bob = UserModel.objects.create_user(
+            username="bob",
+            email="bob@example.com",
+            password=self.password,
+        )
+        self.carol = UserModel.objects.create_user(
+            username="carol",
+            email="carol@example.com",
+            password=self.password,
+        )
+
+    # -- Followers / following ----------------------------------------------
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_followers_endpoint_lists_current_users_followers(self) -> None:
+        FollowRelation.objects.create(follower=self.bob, following=self.alice)
+        FollowRelation.objects.create(follower=self.carol, following=self.alice)
+
+        self.client.login(username="alice", password=self.password)
+        response = self.client.get("/frontend-api/profile/me/followers/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        usernames = {row["username"] for row in payload["users"]}
+        self.assertEqual(usernames, {"bob", "carol"})
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_following_endpoint_lists_users_current_user_follows(self) -> None:
+        FollowRelation.objects.create(follower=self.alice, following=self.bob)
+        FollowRelation.objects.create(follower=self.alice, following=self.carol)
+
+        self.client.login(username="alice", password=self.password)
+        response = self.client.get("/frontend-api/profile/me/following/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        usernames = {row["username"] for row in payload["users"]}
+        self.assertEqual(usernames, {"bob", "carol"})
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_followers_endpoint_requires_authentication(self) -> None:
+        response = self.client.get("/frontend-api/profile/me/followers/")
+        self.assertEqual(response.status_code, 401)
+
+    # -- Reviews -------------------------------------------------------------
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_reviews_endpoint_author_filter_returns_authored_reviews(self) -> None:
+        alice_trip = Trip.objects.create(
+            host=self.alice,
+            title="Alice's Trip",
+            summary="Summary",
+            destination="Goa",
+            starts_at=timezone.now() + timezone.timedelta(days=30),
+            is_published=True,
+        )
+        Review.objects.create(
+            author=self.bob,
+            target_type=Review.TARGET_TRIP,
+            target_key=str(alice_trip.pk),
+            target_label="Alice's Trip",
+            rating=5,
+            body="Loved it.",
+        )
+
+        self.client.login(username="bob", password=self.password)
+        response = self.client.get("/frontend-api/reviews/?author=me")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(payload["reviews"]), 1)
+        row = payload["reviews"][0]
+        self.assertEqual(row["rating"], 5)
+        self.assertEqual(row["trip_title"], "Alice's Trip")
+        self.assertEqual(row["text"], "Loved it.")
+        self.assertTrue(row["is_mine"])
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_reviews_endpoint_recipient_filter_returns_received_reviews(self) -> None:
+        alice_trip = Trip.objects.create(
+            host=self.alice,
+            title="Alice's Trip",
+            summary="Summary",
+            destination="Goa",
+            starts_at=timezone.now() + timezone.timedelta(days=30),
+            is_published=True,
+        )
+        Review.objects.create(
+            author=self.bob,
+            target_type=Review.TARGET_TRIP,
+            target_key=str(alice_trip.pk),
+            target_label="Alice's Trip",
+            rating=4,
+            body="Great host.",
+        )
+
+        self.client.login(username="alice", password=self.password)
+        response = self.client.get("/frontend-api/reviews/?recipient=me")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["reviews"]), 1)
+        row = payload["reviews"][0]
+        self.assertEqual(row["rating"], 4)
+        self.assertFalse(row["is_mine"])
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_reviews_endpoint_requires_explicit_filter(self) -> None:
+        self.client.login(username="alice", password=self.password)
+        response = self.client.get("/frontend-api/reviews/")
+        self.assertEqual(response.status_code, 400)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_reviews_endpoint_requires_authentication(self) -> None:
+        response = self.client.get("/frontend-api/reviews/?author=me")
+        self.assertEqual(response.status_code, 401)
+
+    # -- Trip list ?q / ?sort ------------------------------------------------
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_trip_list_q_filter_matches_title_and_destination(self) -> None:
+        now = timezone.now()
+        Trip.objects.create(
+            host=self.alice,
+            title="Kerala Houseboat",
+            summary="Quiet backwaters",
+            destination="Kerala",
+            starts_at=now + timezone.timedelta(days=5),
+            is_published=True,
+        )
+        Trip.objects.create(
+            host=self.alice,
+            title="Goa Beach Weekend",
+            summary="Sun and sand",
+            destination="Goa",
+            starts_at=now + timezone.timedelta(days=10),
+            is_published=True,
+        )
+
+        response = self.client.get("/frontend-api/trips/?q=kerala")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        titles = {trip["title"] for trip in payload["trips"]}
+        self.assertIn("Kerala Houseboat", titles)
+        self.assertNotIn("Goa Beach Weekend", titles)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_trip_list_sort_recent_orders_by_start_date_desc(self) -> None:
+        now = timezone.now()
+        Trip.objects.create(
+            host=self.alice,
+            title="Near Trip",
+            summary="Soon",
+            destination="A",
+            starts_at=now + timezone.timedelta(days=3),
+            is_published=True,
+        )
+        Trip.objects.create(
+            host=self.alice,
+            title="Far Trip",
+            summary="Later",
+            destination="B",
+            starts_at=now + timezone.timedelta(days=60),
+            is_published=True,
+        )
+
+        response = self.client.get("/frontend-api/trips/?sort=recent")
+        self.assertEqual(response.status_code, 200)
+        trips = response.json()["trips"]
+        # sort=recent orders by starts_at desc, so Far Trip should come first.
+        self.assertGreaterEqual(len(trips), 2)
+        self.assertEqual(trips[0]["title"], "Far Trip")
+
+    # -- Blog list ?q / ?author=me -------------------------------------------
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_blog_list_q_filter_matches_title_and_excerpt(self) -> None:
+        Blog.objects.create(
+            author=self.alice,
+            slug="kyoto-streets",
+            title="Walking Kyoto's Streets",
+            excerpt="Old alleys and tea houses.",
+            body="...",
+            is_published=True,
+        )
+        Blog.objects.create(
+            author=self.alice,
+            slug="patagonia-trek",
+            title="Patagonia Trek",
+            excerpt="Windy ridges.",
+            body="...",
+            is_published=True,
+        )
+
+        response = self.client.get("/frontend-api/blogs/?q=kyoto")
+        self.assertEqual(response.status_code, 200)
+        slugs = {row["slug"] for row in response.json()["blogs"]}
+        self.assertIn("kyoto-streets", slugs)
+        self.assertNotIn("patagonia-trek", slugs)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_blog_list_author_me_returns_drafts_and_published_with_status(self) -> None:
+        Blog.objects.create(
+            author=self.alice,
+            slug="alice-draft",
+            title="Alice Draft",
+            excerpt="Draft excerpt",
+            body="...",
+            is_published=False,
+        )
+        Blog.objects.create(
+            author=self.alice,
+            slug="alice-published",
+            title="Alice Published",
+            excerpt="Published excerpt",
+            body="...",
+            is_published=True,
+        )
+        # Blog by someone else must not appear.
+        Blog.objects.create(
+            author=self.bob,
+            slug="bob-post",
+            title="Bob's post",
+            excerpt="...",
+            body="...",
+            is_published=True,
+        )
+
+        self.client.login(username="alice", password=self.password)
+        response = self.client.get("/frontend-api/blogs/?author=me")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        slugs_by_status = {row["slug"]: row.get("status") for row in payload["blogs"]}
+        self.assertEqual(
+            slugs_by_status,
+            {"alice-draft": "draft", "alice-published": "published"},
+        )
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_blog_list_author_me_requires_authentication(self) -> None:
+        response = self.client.get("/frontend-api/blogs/?author=me")
+        self.assertEqual(response.status_code, 401)
+
+
 class FrontendShellTests(TestCase):
-    @override_settings(LOVABLE_FRONTEND_ENABLED=True, TAPNE_ENABLE_DEMO_DATA=False)
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_shell_injects_brand_assets_and_inline_runtime_config(self) -> None:
         with TemporaryDirectory() as temp_dir:
             dist_dir = Path(temp_dir)
@@ -160,7 +424,7 @@ class FrontendShellTests(TestCase):
                 self.assertIn("window.__TAPNE_FRONTEND_CONFIG__", html)
                 self.assertNotIn("/frontend-runtime.js", html)
 
-    @override_settings(LOVABLE_FRONTEND_ENABLED=True, TAPNE_ENABLE_DEMO_DATA=False)
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_shell_deduplicates_existing_brand_assets_and_runtime_script(self) -> None:
         with TemporaryDirectory() as temp_dir:
             dist_dir = Path(temp_dir)
@@ -189,7 +453,7 @@ class FrontendShellTests(TestCase):
                 self.assertNotIn('<script src="/frontend-runtime.js"></script>', html)
                 self.assertEqual(html.count('data-tapne-runtime="inline-config"'), 1)
 
-    @override_settings(LOVABLE_FRONTEND_ENABLED=True, TAPNE_ENABLE_DEMO_DATA=False)
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_shell_renders_for_authenticated_member_with_live_session_payload(self) -> None:
         with TemporaryDirectory() as temp_dir:
             dist_dir = Path(temp_dir)
@@ -228,7 +492,7 @@ class FrontendShellTests(TestCase):
                 self.assertIn("shell-user", html)
                 self.assertIn("created_trips", html)
 
-    @override_settings(LOVABLE_FRONTEND_ENABLED=True, TAPNE_ENABLE_DEMO_DATA=False)
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_shell_renders_for_trip_detail_entrypoint_route(self) -> None:
         with TemporaryDirectory() as temp_dir:
             dist_dir = Path(temp_dir)
@@ -252,7 +516,7 @@ class FrontendShellTests(TestCase):
                 self.assertIn('data-tapne-runtime="inline-config"', html)
                 self.assertIn("window.__TAPNE_FRONTEND_CONFIG__", html)
 
-    @override_settings(LOVABLE_FRONTEND_ENABLED=True, TAPNE_ENABLE_DEMO_DATA=False)
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_shell_renders_for_blog_detail_entrypoint_route(self) -> None:
         with TemporaryDirectory() as temp_dir:
             dist_dir = Path(temp_dir)

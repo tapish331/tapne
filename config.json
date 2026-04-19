@@ -52,37 +52,11 @@
       }
     }
   },
+  "_note_post_spa_cutover": "The Django-rendered UI was retired. Production serves the Lovable SPA for every public route; Django owns APIs, admin, OAuth, and file-serving only. The per-app `required_files` and `member_routes` lists below describe the scaffolding skeleton used by initial setup scripts and have not all been pruned to reflect the cutover — treat them as historical. Source of truth for routes: lovable/src/App.tsx (planned) and frontend/urls.py (deployed).",
   "ui_shared_assets": {
-    "required_template_files": [
-      "templates/base.html",
-      "templates/partials/modals/login_prompt_modal.html",
-      "templates/partials/cards/trip_card.html",
-      "templates/partials/cards/user_card.html",
-      "templates/partials/cards/blog_card.html",
-      "templates/pages/home.html",
-      "templates/pages/search.html",
-      "templates/pages/trips/list.html",
-      "templates/pages/trips/detail.html",
-      "templates/pages/trips/form.html",
-      "templates/pages/trips/mine.html",
-      "templates/pages/blogs/list.html",
-      "templates/pages/blogs/detail.html",
-      "templates/pages/blogs/form.html",
-      "templates/pages/users/profile.html",
-      "templates/pages/activity/index.html",
-      "templates/pages/settings/index.html",
-      "templates/pages/social/bookmarks.html",
-      "templates/pages/enrollment/hosting_inbox.html",
-      "templates/pages/interactions/dm_inbox.html",
-      "templates/pages/interactions/dm_thread.html",
-      "templates/pages/reviews/list.html",
-      "templates/pages/accounts/me.html",
-      "templates/pages/accounts/me_edit.html"
-    ],
-    "required_static_files": [
-      "static/css/tapne.css",
-      "static/js/tapne-ui.js"
-    ]
+    "_note": "All Django-rendered templates and shared CSS/JS were retired in the SPA cutover. See RULES.md \u00a73 'Retired' list.",
+    "required_template_files": [],
+    "required_static_files": []
   },
   "django_apps": {
     "accounts": {

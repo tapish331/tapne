@@ -549,7 +549,7 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
         "app_name": "tapne",
         "generated_at": now().isoformat(),
         "frontend_mode": "lovable-spa",
-        "frontend_enabled": bool(settings.LOVABLE_FRONTEND_ENABLED),
+        "frontend_enabled": True,
         "live_data_required": bool(settings.LOVABLE_FRONTEND_REQUIRE_LIVE_DATA),
         "build_dir": str(_frontend_dist_dir()),
         "api": {
@@ -574,8 +574,11 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "trip_chat": "/frontend-api/trip-chat/",
             "users_search": reverse("frontend:api-users-search"),
             "notifications": reverse("frontend:api-notifications"),
-            "trip_reviews": "/frontend-api/trips/",
+            "trip_reviews": reverse("frontend:api-reviews-list"),
             "trip_review": "/frontend-api/trips/",
+            "reviews": reverse("frontend:api-reviews-list"),
+            "followers": reverse("frontend:api-profile-followers"),
+            "following": reverse("frontend:api-profile-following"),
             "dm_start": reverse("frontend:api-dm-start-thread"),
             "account_deactivate": reverse("frontend:api-account-deactivate"),
             "account_delete": reverse("frontend:api-account-delete"),
@@ -583,12 +586,21 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
         "routes": {
             "home": "/",
             "trips": "/trips",
-            "blogs": "/blogs",
-            "login": "/login",
-            "signup": "/signup",
+            "stories": "/stories",
             "profile": "/profile",
-            "create_trip": "/create-trip",
-            "my_trips": "/my-trips",
+            "profile_edit": "/profile/edit",
+            "trip_new": "/trips/new",
+            "story_new": "/stories/new",
+            "search": "/search",
+            "messages": "/messages",
+            "bookmarks": "/bookmarks",
+            "notifications": "/notifications",
+            "settings": "/settings",
+            "dashboard": "/dashboard",
+            "dashboard_trips": "/dashboard/trips",
+            "dashboard_stories": "/dashboard/stories",
+            "dashboard_reviews": "/dashboard/reviews",
+            "dashboard_subscriptions": "/dashboard/subscriptions",
         },
         "google_oauth_url": (
             reverse("frontend:api-google-oauth-start")
@@ -596,9 +608,9 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             else ""
         ),
         "auth": {
-            "login_form": "/accounts/login/",
-            "signup_form": "/accounts/signup/",
-            "logout_form": "/accounts/logout/",
+            # Auth is handled entirely via the Lovable modal + /frontend-api/auth/* endpoints.
+            # No Django-rendered auth pages exist — the legacy /accounts/login/ etc. routes
+            # were removed in the SPA cutover.
         },
         "csrf": {
             "cookie_name": settings.CSRF_COOKIE_NAME,
@@ -850,7 +862,26 @@ def trip_list_api_view(request: HttpRequest) -> JsonResponse:
         },
     )
     response_payload: dict[str, object] = dict(payload)
-    response_payload["trips"] = _enrich_trip_cards([dict(row) for row in payload.get("trips", [])])
+    trips = [dict(row) for row in payload.get("trips", [])]
+
+    query = str(request.GET.get("q", "") or "").strip().lower()
+    if query:
+        def _matches(card: dict[str, object]) -> bool:
+            haystack = " ".join(
+                str(card.get(field, "") or "")
+                for field in ("title", "destination", "summary", "description")
+            ).lower()
+            return query in haystack
+        trips = [card for card in trips if _matches(card)]
+
+    sort_order = str(request.GET.get("sort", "") or "").strip().lower()
+    if sort_order == "recent":
+        trips.sort(
+            key=lambda card: str(card.get("starts_at") or card.get("created_at") or ""),
+            reverse=True,
+        )
+
+    response_payload["trips"] = _enrich_trip_cards(trips)
     return JsonResponse({"ok": True, **response_payload})
 
 
@@ -1015,9 +1046,46 @@ def my_trips_api_view(request: HttpRequest) -> JsonResponse:
 def blog_list_api_view(request: HttpRequest) -> JsonResponse:
     if request.method == "POST":
         return blog_create_api_view(request)
+
+    from blogs.models import Blog
+
+    author_filter = str(request.GET.get("author", "") or "").strip().lower()
+    if author_filter == "me":
+        if not request.user.is_authenticated:
+            return _member_only_error()
+        rows = (
+            Blog.objects.select_related("author", "author__account_profile")
+            .filter(author=request.user)
+            .order_by("-created_at", "-id")
+        )
+        blogs = []
+        for row in rows:
+            card: dict[str, object] = dict(row.to_blog_data())
+            card["status"] = "published" if bool(row.is_published) else "draft"
+            blogs.append(card)
+        response_payload: dict[str, object] = {
+            "blogs": _enrich_blog_cards(blogs),
+            "mode": "live-db",
+            "reason": "author-me",
+            "source": "live-db",
+        }
+        return JsonResponse({"ok": True, **response_payload})
+
     payload = build_blog_list_payload_for_user(request.user)
-    response_payload: dict[str, object] = dict(payload)
-    response_payload["blogs"] = _enrich_blog_cards([dict(row) for row in payload.get("blogs", [])])
+    response_payload = dict(payload)
+    blogs = [dict(row) for row in payload.get("blogs", [])]
+
+    query = str(request.GET.get("q", "") or "").strip().lower()
+    if query:
+        def _matches(card: dict[str, object]) -> bool:
+            haystack = " ".join(
+                str(card.get(field, "") or "")
+                for field in ("title", "excerpt", "short_description", "summary", "location", "body")
+            ).lower()
+            return query in haystack
+        blogs = [card for card in blogs if _matches(card)]
+
+    response_payload["blogs"] = _enrich_blog_cards(blogs)
     return JsonResponse({"ok": True, **response_payload})
 
 
@@ -1205,6 +1273,50 @@ def profile_detail_api_view(request: HttpRequest, profile_id: str) -> JsonRespon
         "reviews": [],
         "gallery": [],
     })
+
+
+def _user_list_payload(users: list[Any]) -> list[dict[str, str]]:
+    usernames = [str(getattr(u, "username", "") or "").strip() for u in users]
+    identity_map = _identity_map_for_usernames([u for u in usernames if u])
+    rows: list[dict[str, str]] = []
+    for user in users:
+        username = str(getattr(user, "username", "") or "").strip()
+        identity = identity_map.get(username, {})
+        rows.append({
+            "username": username,
+            "display_name": identity.get("display_name", username or "Tapne member"),
+            "bio": identity.get("bio", ""),
+            "location": identity.get("location", ""),
+        })
+    return rows
+
+
+@require_GET
+def profile_followers_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    from social.models import FollowRelation
+    rows = (
+        FollowRelation.objects.select_related("follower", "follower__account_profile")
+        .filter(following=request.user)
+        .order_by("-created_at", "-id")
+    )
+    users = [relation.follower for relation in rows]
+    return JsonResponse({"ok": True, "users": _user_list_payload(users)})
+
+
+@require_GET
+def profile_following_api_view(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    from social.models import FollowRelation
+    rows = (
+        FollowRelation.objects.select_related("following", "following__account_profile")
+        .filter(follower=request.user)
+        .order_by("-created_at", "-id")
+    )
+    users = [relation.following for relation in rows]
+    return JsonResponse({"ok": True, "users": _user_list_payload(users)})
 
 
 @require_http_methods(["POST"])
@@ -1944,6 +2056,102 @@ def trip_review_submit_api_view(request: HttpRequest, trip_id: int) -> JsonRespo
         "too-long-body": "Review is too long.",
     }
     return _json_error(_error_messages.get(str(outcome), "Could not submit review."), status=400)
+
+
+@require_GET
+def reviews_list_api_view(request: HttpRequest) -> JsonResponse:
+    """List reviews written by (`?author=me`) or received on items owned by
+    (`?recipient=me`) the current user. Used by the Dashboard Reviews hub."""
+    if not request.user.is_authenticated:
+        return _member_only_error()
+
+    from blogs.models import Blog
+    from reviews.models import Review
+
+    author_filter = str(request.GET.get("author", "") or "").strip().lower()
+    recipient_filter = str(request.GET.get("recipient", "") or "").strip().lower()
+
+    viewer = request.user
+    viewer_id = int(getattr(viewer, "pk", 0) or 0)
+    viewer_identity = _member_identity_payload(viewer)
+    viewer_display_name = viewer_identity["display_name"]
+
+    if author_filter == "me":
+        review_rows = list(
+            Review.objects.select_related("author", "author__account_profile")
+            .filter(author=viewer)
+            .order_by("-created_at", "-id")
+        )
+    elif recipient_filter == "me":
+        trip_ids_owned = [
+            str(pk) for pk in Trip.objects.filter(host=viewer).values_list("pk", flat=True)
+        ]
+        blog_slugs_owned = list(
+            Blog.objects.filter(author=viewer).values_list("slug", flat=True)
+        )
+        qs = Review.objects.select_related("author", "author__account_profile")
+        filter_q = Q()
+        if trip_ids_owned:
+            filter_q |= Q(target_type=Review.TARGET_TRIP, target_key__in=trip_ids_owned)
+        if blog_slugs_owned:
+            filter_q |= Q(target_type=Review.TARGET_BLOG, target_key__in=blog_slugs_owned)
+        review_rows = list(qs.filter(filter_q).order_by("-created_at", "-id")) if filter_q else []
+    else:
+        return _json_error("Specify ?author=me or ?recipient=me.", status=400)
+
+    author_usernames = sorted({
+        str(getattr(review.author, "username", "") or "").strip()
+        for review in review_rows
+        if getattr(review.author, "username", "")
+    })
+    author_identity_map = _identity_map_for_usernames(author_usernames)
+
+    target_owner_identity_cache: dict[tuple[str, str], str] = {}
+
+    def _target_owner_display_name(review: Review) -> str:
+        cache_key = (review.target_type, review.target_key)
+        if cache_key in target_owner_identity_cache:
+            return target_owner_identity_cache[cache_key]
+
+        owner_display_name = ""
+        if review.target_type == Review.TARGET_TRIP and str(review.target_key or "").isdigit():
+            trip_row = Trip.objects.select_related("host", "host__account_profile").filter(pk=int(review.target_key)).first()
+            if trip_row is not None and trip_row.host is not None:
+                owner_display_name = _member_identity_payload(trip_row.host)["display_name"]
+        elif review.target_type == Review.TARGET_BLOG:
+            blog_row = Blog.objects.select_related("author", "author__account_profile").filter(slug=review.target_key).first()
+            if blog_row is not None and blog_row.author is not None:
+                owner_display_name = _member_identity_payload(blog_row.author)["display_name"]
+
+        target_owner_identity_cache[cache_key] = owner_display_name
+        return owner_display_name
+
+    reviews_out: list[dict[str, object]] = []
+    for review in review_rows:
+        author_username = str(getattr(review.author, "username", "") or "").strip()
+        reviewer_name = author_identity_map.get(author_username, {}).get("display_name", author_username or "Tapne member")
+
+        if recipient_filter == "me":
+            reviewee_name = viewer_display_name
+        else:
+            reviewee_name = _target_owner_display_name(review)
+
+        body_text = str(review.body or "").strip()
+        headline_text = str(review.headline or "").strip()
+        combined_text = f"{headline_text}\n\n{body_text}".strip() if headline_text else body_text
+
+        reviews_out.append({
+            "id": int(review.pk or 0),
+            "reviewer_name": reviewer_name,
+            "reviewee_name": reviewee_name,
+            "rating": int(review.rating or 0),
+            "text": combined_text,
+            "trip_title": str(review.target_label or "").strip(),
+            "created_at": review.created_at.isoformat() if review.created_at else "",
+            "is_mine": int(getattr(review, "author_id", 0) or 0) == viewer_id,
+        })
+
+    return JsonResponse({"ok": True, "reviews": reviews_out})
 
 
 @require_http_methods(["POST"])

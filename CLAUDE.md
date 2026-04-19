@@ -59,31 +59,31 @@ infra/deploy-cloud-run.ps1
 
 ## Architecture
 
-### Dual Frontend Strategy
+### Frontend
 
-The app has **two frontend approaches**, switchable via `LOVABLE_FRONTEND_ENABLED` in settings:
+All user-facing UI originates in the Lovable React SPA ([lovable/](lovable/)), customised via `frontend_spa/src/` through TypeScript path aliases (`@frontend/*` → `frontend_spa/src/*`). The SPA is built into `artifacts/lovable-production-dist/` and served by [frontend_entrypoint_view](frontend/views.py) for every SPA route declared in [frontend/urls.py](frontend/urls.py). A global catch-all in [tapne/urls.py](tapne/urls.py) routes any otherwise-unmatched URL to the same shell.
 
-1. **Server-rendered** (Django templates + jQuery): Templates in `templates/`, shared CSS in `static/css/tapne.css`, behavior in `static/js/tapne-ui.js`
-2. **React SPA** (Lovable): Located in `lovable/`, customization layer in `frontend_spa/src/`. The SPA is built and served as a static artifact from `artifacts/lovable-production-dist/`. Routes are intercepted in `frontend/urls.py` and served via `frontend_entrypoint_view`.
+There is **no Django-rendered UI fallback**. The legacy `LOVABLE_FRONTEND_ENABLED` toggle, `templates/pages/**`, `templates/partials/**`, `templates/base.html`, `static/css/tapne.css`, `static/js/tapne-ui.js`, and the Django `else:` branch in `tapne/urls.py` were all removed in the SPA cutover. Django owns data, APIs, admin, and OAuth — not visual output.
 
-The `frontend_spa/` directory extends `lovable/` via TypeScript path aliases (`@frontend/*` → `frontend_spa/src/*`).
+Planned client routes live in [lovable/src/App.tsx](lovable/src/App.tsx); the deployed SPA entrypoints must mirror them in [frontend/urls.py](frontend/urls.py) (see RULES.md §6 drift rules).
 
 ### Django Apps
 
 Each feature is a self-contained Django app with `models.py`, `views.py`, `urls.py`, `tests.py`, `admin.py`, and `management/commands/bootstrap_<app>.py`.
 
-Key apps and their roles:
-- **`accounts`** — Auth + profiles (`AccountProfile` extends Django `User` via OneToOne)
-- **`feed`** — Home feed personalization (`MemberFeedPreference` drives ranking for logged-in users; guest view shows trending)
-- **`trips`** / **`blogs`** — Main content types (CRUD + detail views)
-- **`social`** — Follow/bookmark (M2M relations)
-- **`enrollment`** — Trip join requests (host inbox + member requests)
-- **`interactions`** — Comments + direct messages
-- **`reviews`** — Ratings for trips/hosts
-- **`activity`** — Aggregated activity streams
-- **`frontend`** — ~40 JSON API endpoints (`/frontend-api/*`) consumed by the React SPA, plus SPA route interception
-- **`runtime`** — Redis caching utilities and health endpoint
-- **`settings_app`** — Per-user preferences
+Key apps and their roles. With the SPA cutover, every app's Django-rendered HTML views were retired — the apps now own models, payload builders, management commands, admin, and whatever non-page URLs remain (image serving, JSON AJAX). User-facing UI is entirely the Lovable SPA, driven by `/frontend-api/*` endpoints in the `frontend` app.
+
+- **`accounts`** — Auth + profiles (`AccountProfile` extends Django `User` via OneToOne).
+- **`feed`** — Home-feed personalization (`MemberFeedPreference` drives ranking for logged-in users; guest view shows trending).
+- **`trips`** / **`blogs`** — Main content types (models + payload builders). The `blogs` app is surfaced to end users as "Stories" in the Lovable SPA (`/stories/*`); the Django app, model, and `/frontend-api/blogs/*` endpoint all keep the `blogs` name. `trips/urls.py` still serves the trip banner image and destination autocomplete/details APIs.
+- **`social`** — Follow/bookmark relations.
+- **`enrollment`** — Trip join requests (host inbox + member requests).
+- **`interactions`** — Comments + direct messages.
+- **`reviews`** — Ratings for trips/stories.
+- **`activity`** — Aggregated activity streams.
+- **`frontend`** — JSON API endpoints (`/frontend-api/*`) consumed by the React SPA, plus SPA route interception and runtime-config injection.
+- **`runtime`** — Redis caching utilities and health endpoint.
+- **`settings_app`** — Per-user preferences; `settings_app/urls.py` exposes only the appearance JSON-update endpoint.
 
 ### Key Patterns
 
@@ -91,7 +91,7 @@ Key apps and their roles:
 
 **Demo fallbacks:** When live DB data is insufficient, apps fall back to typed demo payloads defined in `feed/models.py`. This lets the app render meaningfully without seeded data.
 
-**Auth modal (not pages):** Login/signup are handled via a modal overlay (`templates/partials/modals/login_prompt_modal.html`) triggered by URL query params (`?auth=login`, `?auth=signup`, `?auth_next=/path/`). Guest actions use class `.js-guest-action` + `data-action-label`.
+**Auth modal (not pages):** Login/signup are handled via a modal overlay in the Lovable SPA — there are no `/login` or `/signup` routes. Auth goes through `/frontend-api/auth/*` (login, signup, logout, OTP) and `/frontend-api/auth/google/*` (OAuth start/callback).
 
 **Verbose debugging:** Pass `?verbose=1` or header `X-Tapne-Verbose: 1` to any view for detailed ranking/payload logs.
 

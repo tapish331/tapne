@@ -119,9 +119,6 @@ TEMPLATES: list[dict[str, Any]] = [
                 "tapne.context_processors.canonical_meta",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "accounts.context_processors.auth_modal_forms",
-                "settings_app.context_processors.appearance_preferences",
-                "trips.context_processors.nav_trip_drafts",
             ],
         }
     }
@@ -252,8 +249,13 @@ AUTH_PASSWORD_VALIDATORS: list[dict[str, Any]] = [
 
 csrf_trusted_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "")
 CSRF_TRUSTED_ORIGINS: list[str] = [item.strip() for item in csrf_trusted_origins.split(",") if item.strip()]
-LOGIN_URL = "/accounts/login/"
-LOGIN_REDIRECT_URL = "/accounts/me/"
+# Post-SPA cutover these only matter if `@login_required` fires on a
+# Django-owned endpoint (the surviving ones return JSON 401 directly, but
+# `trip_destination_autocomplete_view` / `settings_appearance_update_view`
+# still use the decorator). Anonymous users get bounced to the SPA root
+# where the Lovable auth modal can open.
+LOGIN_URL = "/"
+LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
 if env_bool("USE_X_FORWARDED_PROTO", False):
@@ -334,14 +336,13 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@tapne.com")
 
-# Demo catalog behavior:
-# - enabled by default in DEBUG/local workflows
-# - disabled by default in production-style runs
+# Demo catalog behavior — controls whether payload builders can fall back to
+# demo data when live DB rows are insufficient. Keep disabled in production.
 TAPNE_ENABLE_DEMO_DATA = env_bool("TAPNE_ENABLE_DEMO_DATA", DEBUG)
 # Backward-compatible alias used by earlier scaffolding scripts/docs.
 TAPNE_PLACEHOLDER_MODE = TAPNE_ENABLE_DEMO_DATA
-LOVABLE_FRONTEND_ENABLED = env_bool("LOVABLE_FRONTEND_ENABLED", False)
-LOVABLE_FRONTEND_REQUIRE_LIVE_DATA = env_bool("LOVABLE_FRONTEND_REQUIRE_LIVE_DATA", LOVABLE_FRONTEND_ENABLED)
+# Production requires live data — no demo fallback on public routes.
+LOVABLE_FRONTEND_REQUIRE_LIVE_DATA = env_bool("LOVABLE_FRONTEND_REQUIRE_LIVE_DATA", not DEBUG)
 LOVABLE_FRONTEND_DIST_DIR = Path(
     os.getenv(
         "LOVABLE_FRONTEND_DIST_DIR",
@@ -349,7 +350,8 @@ LOVABLE_FRONTEND_DIST_DIR = Path(
     )
 )
 
-if LOVABLE_FRONTEND_ENABLED and LOVABLE_FRONTEND_REQUIRE_LIVE_DATA and TAPNE_ENABLE_DEMO_DATA:
+if LOVABLE_FRONTEND_REQUIRE_LIVE_DATA and TAPNE_ENABLE_DEMO_DATA:
     raise RuntimeError(
-        "LOVABLE_FRONTEND_ENABLED requires TAPNE_ENABLE_DEMO_DATA=false so public routes never fall back to mock/demo data."
+        "LOVABLE_FRONTEND_REQUIRE_LIVE_DATA=true requires TAPNE_ENABLE_DEMO_DATA=false "
+        "so public routes never fall back to mock/demo data."
     )

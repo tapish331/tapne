@@ -11,3 +11,9 @@ staticfiles/
 mediafiles/
 artifacts/
 test_settings.sqlite3
+
+# macOS filesystem metadata
+.DS_Store
+
+# Claude Code local session state (plans, memory, settings)
+.claude/

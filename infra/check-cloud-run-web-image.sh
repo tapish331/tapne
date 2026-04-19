@@ -926,19 +926,23 @@ else
 fi
 
 if [[ "$HEALTH_HTTP_CODE" == "200" ]]; then
-  css_code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/static/css/tapne.css" || true)"
-  js_code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/static/js/tapne-ui.js" || true)"
+  # Post-SPA cutover the Django-rendered CSS/JS bundles (`tapne.css`,
+  # `tapne-ui.js`) were retired. Validate that the SPA shell at `/` and the
+  # sitemap at `/sitemap.xml` still respond 200 as the production smoke
+  # signals.
+  root_code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/" || true)"
+  sitemap_code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/sitemap.xml" || true)"
 
-  if [[ "$css_code" == "200" ]]; then
-    pass "3.3a" "GET /static/css/tapne.css returned 200"
+  if [[ "$root_code" == "200" ]]; then
+    pass "3.3a" "GET / returned 200 (SPA shell)"
   else
-    fail "3.3a" "GET /static/css/tapne.css returned ${css_code}"
+    fail "3.3a" "GET / returned ${root_code}"
   fi
 
-  if [[ "$js_code" == "200" ]]; then
-    pass "3.3b" "GET /static/js/tapne-ui.js returned 200"
+  if [[ "$sitemap_code" == "200" ]]; then
+    pass "3.3b" "GET /sitemap.xml returned 200"
   else
-    fail "3.3b" "GET /static/js/tapne-ui.js returned ${js_code}"
+    fail "3.3b" "GET /sitemap.xml returned ${sitemap_code}"
   fi
 else
   fail "3.3a" "Static smoke tests skipped because app never became healthy"
@@ -1178,14 +1182,14 @@ else
 fi
 
 if [[ "$HEALTH_HTTP_CODE" == "200" ]]; then
-  css_head_code="$(curl -sS -I -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/static/css/tapne.css" || true)"
-  if [[ "$css_head_code" == "200" ]]; then
-    pass "9.2" "curl -I /static/css/tapne.css returned 200"
+  root_head_code="$(curl -sS -I -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/" || true)"
+  if [[ "$root_head_code" == "200" ]]; then
+    pass "9.2" "curl -I / returned 200 (SPA shell)"
   else
-    fail "9.2" "curl -I /static/css/tapne.css returned ${css_head_code}"
+    fail "9.2" "curl -I / returned ${root_head_code}"
   fi
 else
-  fail "9.2" "Static HEAD smoke check skipped because health check failed"
+  fail "9.2" "SPA shell HEAD smoke check skipped because health check failed"
 fi
 
 if [[ "$CONTAINER_STARTED" -eq 1 ]]; then

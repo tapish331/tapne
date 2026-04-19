@@ -138,8 +138,8 @@ param(
 
     [string]$SmokeBaseUrl = "",
     [string]$SmokeHealthPath = "/runtime/health/",
-    [string]$SmokeCssPath = "/static/css/tapne.css",
-    [string]$SmokeJsPath = "/static/js/tapne-ui.js",
+    [string]$SmokeCssPath = "/",
+    [string]$SmokeJsPath = "/sitemap.xml",
 
     [string]$UptimeCheckHost = "",
     [string]$UptimeCheckPath = "/runtime/health/",
@@ -2919,7 +2919,6 @@ $baseEnv = @(
     "APP_ENV=prod",
     "DEBUG=false",
     "TAPNE_ENABLE_DEMO_DATA=false",
-    "LOVABLE_FRONTEND_ENABLED=true",
     "LOVABLE_FRONTEND_REQUIRE_LIVE_DATA=true",
     "LOVABLE_FRONTEND_DIST_DIR=/app/artifacts/lovable-production-dist",
     ("WEB_CONCURRENCY={0}" -f $WebConcurrency),
@@ -3084,8 +3083,8 @@ if ([string]::IsNullOrWhiteSpace($uptimeCheckHostCandidate) -and -not [string]::
 
 $smokeBaseUrlResolved = Resolve-BaseUrl -Candidate $smokeBaseUrlCandidate -Fallback $serviceUrl -ParameterName "SmokeBaseUrl"
 $smokeHealthPathResolved = Resolve-HttpPath -PathValue $SmokeHealthPath -DefaultPath "/runtime/health/"
-$smokeCssPathResolved = Resolve-HttpPath -PathValue $SmokeCssPath -DefaultPath "/static/css/tapne.css"
-$smokeJsPathResolved = Resolve-HttpPath -PathValue $SmokeJsPath -DefaultPath "/static/js/tapne-ui.js"
+$smokeCssPathResolved = Resolve-HttpPath -PathValue $SmokeCssPath -DefaultPath "/"
+$smokeJsPathResolved = Resolve-HttpPath -PathValue $SmokeJsPath -DefaultPath "/sitemap.xml"
 $smokeBaseHostResolved = ([System.Uri]$smokeBaseUrlResolved).Host
 $uptimeCheckHostResolved = Resolve-HostName -Candidate $uptimeCheckHostCandidate -FallbackHost $smokeBaseHostResolved -ParameterName "UptimeCheckHost"
 $uptimeCheckPathResolved = Resolve-HttpPath -PathValue $UptimeCheckPath -DefaultPath "/runtime/health/"

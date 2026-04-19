@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from io import StringIO
-from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -14,7 +13,15 @@ from .models import MemberSettings
 UserModel = get_user_model()
 
 
-class SettingsViewTests(TestCase):
+class SettingsAppearanceEndpointTests(TestCase):
+    """Tests for the live `/settings/appearance/` JSON endpoint.
+
+    The Django-rendered settings page and its tests were retired in the
+    SPA cutover; the SPA covers settings UI via `/frontend-api/settings/`.
+    The appearance endpoint survives as a lightweight cookie-backed AJAX
+    writer for live theme toggling.
+    """
+
     def setUp(self) -> None:
         self.password = "SettingsPass!123456"
         self.member = UserModel.objects.create_user(
@@ -23,61 +30,19 @@ class SettingsViewTests(TestCase):
             password=self.password,
         )
 
-    def test_settings_page_requires_login(self) -> None:
-        response = self.client.get(reverse("settings_app:index"))
-        expected_redirect = f"{reverse('accounts:login')}?next={reverse('settings_app:index')}"
-        self.assertRedirects(response, expected_redirect, fetch_redirect_response=False)
-
-    def test_settings_page_renders_member_payload_and_initializes_row(self) -> None:
-        self.client.login(username=self.member.username, password=self.password)
-        response = self.client.get(reverse("settings_app:index"))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["settings_mode"], "member-settings")
-        self.assertIn("settings", response.context["settings_reason"].lower())
-        self.assertTrue(MemberSettings.objects.filter(member=self.member).exists())
-        self.assertEqual(response.context["settings_record"]["member_username"], self.member.username)
-
-    def test_settings_post_updates_preferences(self) -> None:
-        self.client.login(username=self.member.username, password=self.password)
-
-        response = self.client.post(
-            reverse("settings_app:index"),
-            {
-                "email_updates": MemberSettings.EMAIL_UPDATES_NONE,
-                "profile_visibility": MemberSettings.PROFILE_VISIBILITY_MEMBERS,
-                "dm_privacy": MemberSettings.DM_PRIVACY_NONE,
-                "theme_preference": MemberSettings.THEME_PREFERENCE_DARK,
-                "search_visibility": "",
-                "digest_enabled": "on",
-                "next": reverse("settings_app:index"),
-            },
-        )
-
-        self.assertRedirects(response, reverse("settings_app:index"))
-        row = MemberSettings.objects.get(member=self.member)
-        self.assertEqual(row.email_updates, MemberSettings.EMAIL_UPDATES_NONE)
-        self.assertEqual(row.profile_visibility, MemberSettings.PROFILE_VISIBILITY_MEMBERS)
-        self.assertEqual(row.dm_privacy, MemberSettings.DM_PRIVACY_NONE)
-        self.assertEqual(row.theme_preference, MemberSettings.THEME_PREFERENCE_DARK)
-        self.assertFalse(row.search_visibility)
-        self.assertTrue(row.digest_enabled)
-
     def test_settings_appearance_endpoint_requires_login(self) -> None:
         response = self.client.post(reverse("settings_app:appearance-update"))
-        expected_redirect = f"{reverse('accounts:login')}?next={reverse('settings_app:appearance-update')}"
-        self.assertRedirects(response, expected_redirect, fetch_redirect_response=False)
+        # login_url is now "/" (SPA root); anonymous POSTs redirect there so
+        # the Lovable auth modal can open.
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response["Location"].startswith("/"))
 
     def test_settings_appearance_endpoint_updates_theme_preference(self) -> None:
         self.client.login(username=self.member.username, password=self.password)
 
         response = self.client.post(
             reverse("settings_app:appearance-update"),
-            data=json.dumps(
-                {
-                    "theme_preference": MemberSettings.THEME_PREFERENCE_LIGHT,
-                }
-            ),
+            data=json.dumps({"theme_preference": MemberSettings.THEME_PREFERENCE_LIGHT}),
             content_type="application/json",
         )
 
@@ -85,42 +50,6 @@ class SettingsViewTests(TestCase):
         self.assertEqual(response.json()["ok"], True)
         row = MemberSettings.objects.get(member=self.member)
         self.assertEqual(row.theme_preference, MemberSettings.THEME_PREFERENCE_LIGHT)
-
-    def test_base_template_uses_member_persisted_appearance_preferences(self) -> None:
-        self.client.login(username=self.member.username, password=self.password)
-        MemberSettings.objects.update_or_create(
-            member=self.member,
-            defaults={
-                "theme_preference": MemberSettings.THEME_PREFERENCE_DARK,
-            },
-        )
-
-        response = self.client.get(reverse("home"))
-        html = response.content.decode("utf-8")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('data-theme-preference="dark"', html)
-        self.assertIn('appearanceSource: "member\\u002Dsettings"', html)
-
-    def test_settings_verbose_query_prints_debug_lines(self) -> None:
-        self.client.login(username=self.member.username, password=self.password)
-
-        with patch("builtins.print") as mock_print:
-            response = self.client.get(f"{reverse('settings_app:index')}?verbose=1")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(mock_print.call_count, 1)
-        printed_lines = "\n".join(str(args[0]) for args, _kwargs in mock_print.call_args_list)
-        self.assertIn("[settings][verbose]", printed_lines)
-
-    def test_settings_without_verbose_does_not_print_debug_lines(self) -> None:
-        self.client.login(username=self.member.username, password=self.password)
-
-        with patch("builtins.print") as mock_print:
-            response = self.client.get(reverse("settings_app:index"))
-
-        self.assertEqual(response.status_code, 200)
-        mock_print.assert_not_called()
 
 
 class SettingsBootstrapCommandTests(TestCase):

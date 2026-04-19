@@ -147,25 +147,34 @@ Django owns logic, data, and plumbing. It does NOT own what the user sees.
 - Page-level HTML intended to be rendered to end users on production routes
 - Any CSS, JS, or template that duplicates a Lovable component
 
-### Deprecated (flagged for removal once confirmed dead)
+### Retired (do not reintroduce)
 
-The following are legacy Django-frontend artifacts that must not be extended
-and should be pruned in a dedicated Scope-2/Scope-6 cleanup:
+The following legacy Django-frontend artifacts were retired in the SPA
+cutover. They must not be reintroduced — any visual or UX gap is a Scope 1
+(Lovable prompt) concern, not a Django template concern:
 
-- `static/css/lovable-parity.css`
-- `static/js/tapne-ui.js`
-- `templates/pages/**` mirroring Lovable pages
-- `templates/partials/modals/**` mirroring Lovable modals
+- `static/css/lovable-parity.css`, `static/css/tapne.css`
+- `static/js/tapne-ui.js`, `static/js/trip-form-builders.js`
+- `templates/pages/**`
+- `templates/partials/**`
+- `templates/base.html`, `templates/404.html`
+- `LOVABLE_FRONTEND_ENABLED` toggle (and the `else:` fallback branch it
+  used to gate in `tapne/urls.py`)
+- Django-rendered page views in `accounts/trips/blogs/feed/social/
+  enrollment/interactions/reviews/activity/settings_app/search` (views
+  that called `render(request, "pages/...html")`)
+- Django auth form pages (`/accounts/login/`, `/accounts/signup/`,
+  `/accounts/logout/`) — auth is Lovable-modal + `/frontend-api/auth/*` only
 
-Until they are removed, do not add to them. If a task would "normally" touch
-them, stop and re-classify the task as Scope 1 (Lovable prompt) or Scope 3
-(integration fix).
+If a task would "normally" touch any of these, stop and re-classify as
+Scope 1 (Lovable prompt) or Scope 3 (integration fix).
 
 ### Invariants
 
-- `LOVABLE_FRONTEND_ENABLED` must be `True` in all non-local environments.
 - **All frontend entities originate in `lovable/`.** If a visual or UX gap
   exists, the fix path is a Lovable prompt — never a Django template.
+- Production always serves the SPA. There is no Django-rendered fallback;
+  Django owns APIs, admin, OAuth, and file-serving only.
 
 ---
 

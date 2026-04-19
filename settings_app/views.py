@@ -2,24 +2,12 @@ from __future__ import annotations
 
 import json
 from typing import Final, cast
-from urllib.parse import urlsplit
 
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import redirect, render
-from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
+from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_http_methods
 
-from .forms import MemberSettingsForm
-from .models import (
-    build_settings_payload_for_member,
-    ensure_member_settings,
-    resolve_member_settings_defaults,
-    update_member_appearance,
-    update_member_settings,
-)
+from .models import ensure_member_settings, update_member_appearance
 
 VERBOSE_FLAGS: Final[set[str]] = {"1", "true", "yes", "on"}
 
@@ -39,147 +27,20 @@ def _vprint(request: HttpRequest, message: str) -> None:
         print(f"[settings][verbose] {message}", flush=True)
 
 
-def _safe_next_url(request: HttpRequest, fallback: str) -> str:
-    """
-    Resolve post-action redirect target while preventing open redirects.
-    """
-
-    allowed_hosts = {request.get_host()}
-    require_https = request.is_secure()
-
-    requested_next = str(request.POST.get("next") or request.GET.get("next") or "").strip()
-    if requested_next and url_has_allowed_host_and_scheme(
-        requested_next,
-        allowed_hosts=allowed_hosts,
-        require_https=require_https,
-    ):
-        return requested_next
-
-    referer = str(request.headers.get("Referer", "") or "").strip()
-    if referer and url_has_allowed_host_and_scheme(
-        referer,
-        allowed_hosts=allowed_hosts,
-        require_https=require_https,
-    ):
-        split = urlsplit(referer)
-        query = f"?{split.query}" if split.query else ""
-        fragment = f"#{split.fragment}" if split.fragment else ""
-        return f"{split.path or '/'}{query}{fragment}"
-
-    return fallback
-
-
-@login_required(login_url="accounts:login")
-@require_http_methods(["GET", "POST"])
-def settings_index_view(request: HttpRequest) -> HttpResponse:
-    settings_row, created = ensure_member_settings(request.user)
-    if settings_row is None:
-        messages.error(request, "Could not load settings for this account.")
-        _vprint(request, "Settings page could not resolve member row")
-        return redirect(reverse("home"))
-
-    fallback_next = reverse("settings_app:index")
-
-    if request.method == "POST":
-        next_url = _safe_next_url(request, fallback=fallback_next)
-        form = MemberSettingsForm(request.POST, instance=settings_row)
-        if form.is_valid():
-            updated_row, outcome = update_member_settings(
-                member=request.user,
-                email_updates=form.cleaned_data["email_updates"],
-                profile_visibility=form.cleaned_data["profile_visibility"],
-                dm_privacy=form.cleaned_data["dm_privacy"],
-                theme_preference=form.cleaned_data["theme_preference"],
-                search_visibility=form.cleaned_data["search_visibility"],
-                digest_enabled=form.cleaned_data["digest_enabled"],
-            )
-            changed_fields = list(form.changed_data)
-
-            if updated_row is None:
-                messages.error(request, "Could not save settings. Please try again.")
-                _vprint(request, "Settings save failed because member row could not be resolved")
-                return redirect(next_url)
-
-            if outcome in {"created", "updated"}:
-                messages.success(request, "Settings saved.")
-            else:
-                messages.info(request, "No settings changes were detected.")
-
-            _vprint(
-                request,
-                (
-                    "Settings saved for @{username}; outcome={outcome}; changed_fields={changed_fields}; "
-                    "email_updates={email_updates}; visibility={visibility}; dm_privacy={dm_privacy}; "
-                    "theme_preference={theme_preference}; "
-                    "search_visibility={search_visibility}; digest_enabled={digest_enabled}"
-                ).format(
-                    username=request.user.username,
-                    outcome=outcome,
-                    changed_fields=changed_fields,
-                    email_updates=updated_row.email_updates,
-                    visibility=updated_row.profile_visibility,
-                    dm_privacy=updated_row.dm_privacy,
-                    theme_preference=updated_row.theme_preference,
-                    search_visibility=updated_row.search_visibility,
-                    digest_enabled=updated_row.digest_enabled,
-                ),
-            )
-            return redirect(next_url)
-
-        messages.error(request, "Please fix the highlighted fields.")
-        _vprint(
-            request,
-            (
-                "Settings validation failed for @{username}; errors={errors}"
-            ).format(
-                username=request.user.username,
-                errors=form.errors.get_json_data(),
-            ),
-        )
-    else:
-        form = MemberSettingsForm(instance=settings_row)
-        _vprint(
-            request,
-            (
-                "Rendered settings page for @{username}; created={created}; "
-                "email_updates={email_updates}; visibility={visibility}; dm_privacy={dm_privacy}; "
-                "theme_preference={theme_preference}; "
-                "search_visibility={search_visibility}; digest_enabled={digest_enabled}"
-            ).format(
-                username=request.user.username,
-                created=created,
-                email_updates=settings_row.email_updates,
-                visibility=settings_row.profile_visibility,
-                dm_privacy=settings_row.dm_privacy,
-                theme_preference=settings_row.theme_preference,
-                search_visibility=settings_row.search_visibility,
-                digest_enabled=settings_row.digest_enabled,
-            ),
-        )
-
-    payload = build_settings_payload_for_member(request.user)
-    if created and payload["settings"] is not None:
-        payload["reason"] = "Settings were initialized using environment-driven defaults for this member."
-
-    context: dict[str, object] = {
-        "settings_form": form,
-        "settings_record": payload["settings"],
-        "settings_mode": payload["mode"],
-        "settings_reason": payload["reason"],
-        "settings_defaults": resolve_member_settings_defaults(),
-    }
-    return render(request, "pages/settings/index.html", context)
-
-
-@login_required(login_url="accounts:login")
+@login_required(login_url="/")
 @require_http_methods(["POST"])
 def settings_appearance_update_view(request: HttpRequest) -> JsonResponse:
+    """JSON-only endpoint for live theme/appearance updates from the SPA.
+
+    The Django-rendered settings page (`settings_index_view`) was retired in
+    the SPA cutover — the SPA handles the full settings UI via
+    `/frontend-api/settings/`. Only the live appearance write remains here
+    because it's a lightweight cookie-backed AJAX call independent of the
+    `/frontend-api/*` session plumbing.
+    """
     settings_row, _created = ensure_member_settings(request.user)
     if settings_row is None:
-        return JsonResponse(
-            {"ok": False, "error": "invalid-member"},
-            status=400,
-        )
+        return JsonResponse({"ok": False, "error": "invalid-member"}, status=400)
 
     payload: dict[str, object] = {}
     content_type = str(request.headers.get("Content-Type", "")).lower()
@@ -206,10 +67,7 @@ def settings_appearance_update_view(request: HttpRequest) -> JsonResponse:
         theme_preference=submitted_theme_preference,
     )
     if updated_row is None:
-        return JsonResponse(
-            {"ok": False, "error": "invalid-member"},
-            status=400,
-        )
+        return JsonResponse({"ok": False, "error": "invalid-member"}, status=400)
 
     _vprint(
         request,

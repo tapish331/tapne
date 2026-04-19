@@ -4,6 +4,21 @@
 
 ---
 
+> **⚠️ Post-SPA-cutover notice.** Production serves the Lovable React SPA
+> for every public route (see [lovable/src/App.tsx](lovable/src/App.tsx) for
+> the planned route list and [frontend/urls.py](frontend/urls.py) for the
+> deployed SPA entrypoints). The Django-rendered UI, the
+> `LOVABLE_FRONTEND_ENABLED` toggle, `templates/pages/**`,
+> `templates/partials/**`, `templates/base.html`, `static/css/tapne.css`,
+> and `static/js/tapne-ui.js` were all retired. Sections below that
+> describe Django templates, `/accounts/login/` pages, or shared UI
+> partials describe the **retired** architecture and remain only as
+> historical context for the migration. Any new frontend work goes
+> through a Lovable prompt ([RULES.md](RULES.md) §2b); any backend work
+> lives in `frontend/views.py` (`/frontend-api/*`).
+
+---
+
 # 1) Two user states
 
 ## Guest (not logged in)
