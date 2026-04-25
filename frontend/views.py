@@ -276,6 +276,19 @@ def _enrich_blog_cards(rows: list[dict[str, object]]) -> list[dict[str, object]]
     return cards
 
 
+def _published_stories_for_author(author: object) -> list[dict[str, object]]:
+    if not bool(getattr(author, "pk", None)):
+        return []
+    from blogs.models import Blog
+    from tapne.features import _demo_qs_filter
+    rows = list(
+        Blog.objects.select_related("author")
+        .filter(author=author, is_published=True, **_demo_qs_filter())
+        .order_by("-created_at", "-pk")
+    )
+    return _enrich_blog_cards([blog.to_blog_data() for blog in rows])
+
+
 def _enrich_profile_cards(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     cards = [dict(row) for row in rows]
     identity_map = _identity_map_for_usernames(
@@ -1242,6 +1255,7 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
             },
             "created_trips": _enrich_trip_cards([dict(row) for row in created_trips]),
             "joined_trips": _enrich_trip_cards([dict(row) for row in joined_trips]),
+            "stories": _published_stories_for_author(request.user),
             "mode": "member-profile",
             "reason": "Profile loaded from persisted account data.",
         }
@@ -1327,6 +1341,7 @@ def profile_detail_api_view(request: HttpRequest, profile_id: str) -> JsonRespon
         },
         "trips_hosted": _enrich_trip_cards([dict(row) for row in created_trips]),
         "trips_joined": _enrich_trip_cards([dict(row) for row in joined_trips]),
+        "stories": _published_stories_for_author(target_user),
         "reviews": [],
         "gallery": [],
     })

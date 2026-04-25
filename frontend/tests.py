@@ -302,6 +302,40 @@ class FrontendSessionBEndpointsTests(TestCase):
         self.assertNotIn("Goa Beach Weekend", titles)
 
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_profile_endpoints_include_authors_published_stories(self) -> None:
+        Blog.objects.create(
+            author=self.alice,
+            slug="alice-published-trek",
+            title="Trekking the Himalayas",
+            excerpt="What I learnt above 4,000 m.",
+            body="Long form body.",
+            is_published=True,
+        )
+        Blog.objects.create(
+            author=self.alice,
+            slug="alice-draft-coastline",
+            title="Draft notes on the coastline",
+            excerpt="Still writing.",
+            body="Draft body.",
+            is_published=False,
+        )
+
+        # Public profile endpoint — viewable by anyone, returns only published.
+        public_response = self.client.get(f"/frontend-api/profile/{self.alice.username}/")
+        self.assertEqual(public_response.status_code, 200)
+        public_titles = {story["title"] for story in public_response.json()["stories"]}
+        self.assertIn("Trekking the Himalayas", public_titles)
+        self.assertNotIn("Draft notes on the coastline", public_titles)
+
+        # Own profile endpoint also surfaces published stories.
+        self.client.login(username="alice", password=self.password)
+        me_response = self.client.get("/frontend-api/profile/me/")
+        self.assertEqual(me_response.status_code, 200)
+        me_titles = {story["title"] for story in me_response.json()["stories"]}
+        self.assertIn("Trekking the Himalayas", me_titles)
+        self.assertNotIn("Draft notes on the coastline", me_titles)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_profile_me_persists_travel_tags_and_avatar_url(self) -> None:
         self.client.login(username="alice", password=self.password)
 
