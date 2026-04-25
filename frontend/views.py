@@ -532,6 +532,8 @@ def _session_user_payload(request: HttpRequest) -> dict[str, object] | None:
         "bio": str(profile.bio or ""),
         "location": str(profile.location or ""),
         "website": str(profile.website or ""),
+        "avatar_url": str(profile.avatar_url or ""),
+        "travel_tags": list(profile.travel_tags or []),
         "created_trips": created_trips,
         "joined_trips": joined_trips,
         "settings": settings_payload["settings"],
@@ -1200,6 +1202,13 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
             return _json_error("Profile update failed.", extra={"errors": _form_errors(form)})
         form.save()
         refreshed_profile = ensure_profile(request.user)
+        if "avatar_url" in payload:
+            refreshed_profile.avatar_url = str(payload.get("avatar_url") or "")
+        raw_tags = payload.get("travel_tags")
+        if isinstance(raw_tags, list):
+            refreshed_profile.travel_tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+        if "avatar_url" in payload or isinstance(raw_tags, list):
+            refreshed_profile.save(update_fields=["avatar_url", "travel_tags", "updated_at"])
         return JsonResponse(
             {
                 "ok": True,
@@ -1210,6 +1219,8 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
                     "bio": str(refreshed_profile.bio or ""),
                     "location": str(refreshed_profile.location or ""),
                     "website": str(refreshed_profile.website or ""),
+                    "avatar_url": str(refreshed_profile.avatar_url or ""),
+                    "travel_tags": list(refreshed_profile.travel_tags or []),
                     "email": str(getattr(request.user, "email", "") or "").strip(),
                 },
             }
@@ -1225,6 +1236,8 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
                 "bio": str(profile.bio or ""),
                 "location": str(profile.location or ""),
                 "website": str(profile.website or ""),
+                "avatar_url": str(profile.avatar_url or ""),
+                "travel_tags": list(profile.travel_tags or []),
                 "email": str(getattr(request.user, "email", "") or "").strip(),
             },
             "created_trips": _enrich_trip_cards([dict(row) for row in created_trips]),
@@ -1298,6 +1311,7 @@ def profile_detail_api_view(request: HttpRequest, profile_id: str) -> JsonRespon
             "bio": str(profile.bio or ""),
             "location": str(profile.location or ""),
             "website": str(profile.website or ""),
+            "avatar_url": str(profile.avatar_url or ""),
             "email": str(getattr(target_user, "email", "") or "") if (
                 bool(getattr(viewer, "is_authenticated", False)) and
                 getattr(viewer, "pk", None) == getattr(target_user, "pk", None)
@@ -1306,7 +1320,7 @@ def profile_detail_api_view(request: HttpRequest, profile_id: str) -> JsonRespon
             "trips_joined": len(joined_trips),
             "followers_count": followers_count,
             "is_following": is_following,
-            "travel_tags": [],
+            "travel_tags": list(profile.travel_tags or []),
             "average_rating": None,
             "reviews_count": 0,
             "travelers_hosted": 0,

@@ -302,6 +302,41 @@ class FrontendSessionBEndpointsTests(TestCase):
         self.assertNotIn("Goa Beach Weekend", titles)
 
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_profile_me_persists_travel_tags_and_avatar_url(self) -> None:
+        self.client.login(username="alice", password=self.password)
+
+        patch_response = self.client.patch(
+            "/frontend-api/profile/me/",
+            data={
+                "display_name": "Alice A.",
+                "bio": "Curious wanderer",
+                "location": "Mumbai",
+                "website": "",
+                "avatar_url": "data:image/png;base64,iVBORw0KGgoAAAA",
+                "travel_tags": ["Backpacking", "Food", "Solo"],
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(patch_response.status_code, 200, patch_response.content)
+        member = patch_response.json()["member_profile"]
+        self.assertEqual(member["avatar_url"], "data:image/png;base64,iVBORw0KGgoAAAA")
+        self.assertEqual(member["travel_tags"], ["Backpacking", "Food", "Solo"])
+
+        get_response = self.client.get("/frontend-api/profile/me/")
+        self.assertEqual(get_response.status_code, 200)
+        profile = get_response.json()["profile"]
+        self.assertEqual(profile["avatar_url"], "data:image/png;base64,iVBORw0KGgoAAAA")
+        self.assertEqual(profile["travel_tags"], ["Backpacking", "Food", "Solo"])
+
+        clear_response = self.client.patch(
+            "/frontend-api/profile/me/",
+            data={"travel_tags": []},
+            content_type="application/json",
+        )
+        self.assertEqual(clear_response.status_code, 200)
+        self.assertEqual(clear_response.json()["member_profile"]["travel_tags"], [])
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_trip_list_destination_filter_normalizes_slug_separators(self) -> None:
         now = timezone.now()
         Trip.objects.create(

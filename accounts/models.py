@@ -26,6 +26,8 @@ class AccountProfile(models.Model):
     bio = models.TextField(blank=True, default="")
     location = models.CharField(max_length=120, blank=True)
     website = models.URLField(blank=True)
+    avatar_url = models.TextField(blank=True, default="")
+    travel_tags = models.JSONField(blank=True, default=list)
     is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
