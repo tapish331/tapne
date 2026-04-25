@@ -57,6 +57,7 @@ param(
 
     [string]$WwwDomain = "www.tapnetravel.com",
     [string]$GoogleMapsApiKey = "",
+    [bool]$EnableDemoCatalog = $true,
 
     [switch]$SkipAuthLogin,
     [switch]$SkipMigrations,
@@ -383,6 +384,7 @@ $deployArgs = @(
     "-CanonicalHost", $canonicalHost,
     "-SmokeBaseUrl", ("https://{0}" -f $canonicalHost),
     "-UptimeCheckHost", $canonicalHost,
+    "-EnableDemoCatalog", $EnableDemoCatalog,
     "-SmokeCssPath", "/",
     "-SmokeJsPath", "/sitemap.xml"
 )
@@ -400,8 +402,8 @@ if ($isVerbose) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}; DisableBuildAttestations={12}; DisableContainerVulnerabilityScanning={13}; GoogleMapsApiKeySet={14}" -f
-    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey))
+    "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}; DisableBuildAttestations={12}; DisableContainerVulnerabilityScanning={13}; GoogleMapsApiKeySet={14}; EnableDemoCatalog={15}" -f
+    $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)), $EnableDemoCatalog
 )
 
 $startTime = Get-Date

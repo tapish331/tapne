@@ -9,61 +9,115 @@ from tests.e2e.types import SessionFactory
 
 
 @pytest.mark.full
-def test_create_edit_and_delete_experience(session_factory: SessionFactory) -> None:
-    author = session_factory(name="experience-crud", username="mei")
+def test_create_and_edit_story(session_factory: SessionFactory) -> None:
+    """Create, then edit a story through the production Stories UI.
+
+    The old /experiences/* routes were replaced by /stories/* in Lovable.
+    The story-delete UI was also removed from Lovable (no delete button exists
+    on StoryDetail or StoryEdit); that flow is blocked_by_lovable_showstopper
+    and tracked in the comment at the bottom of this file.
+    """
+    author = session_factory(name="story-crud", username="mei")
     page = author.page
-    title = unique_suffix("Guardrail Experience")
+    title = unique_suffix("Guardrail Story")
     updated_title = f"{title} Updated"
     description = "Created by the production-flow guardrail."
-    updated_excerpt = "Updated through the production blog editor."
-    updated_body = "This experience was updated by the production-flow guardrail."
+    updated_description = "Updated through the production story editor."
+    body = "This story was created by the real-browser guardrail."
+    updated_body = "This story was updated by the production-flow guardrail."
+    location = "Guardrail Valley"
 
-    page.goto("/experiences")
-    page.get_by_role("heading", name="Travel Experiences").wait_for()
+    # ── Create ────────────────────────────────────────────────────────────────
+    page.goto("/stories")
+    page.get_by_role("heading", name="Stories").wait_for()
     page.get_by_role("button", name="Write").click()
 
-    page.wait_for_url(re.compile(r".*/experiences/create/?$"))
-    page.get_by_role("heading", name="Share Your Experience").wait_for()
-    page.get_by_placeholder("Give your experience a title").fill(title)
-    page.get_by_placeholder("A brief summary for the card preview").fill(description)
-    fill_rich_text_editor(page, "This experience was created by the real-browser guardrail.")
-    page.get_by_placeholder("e.g., Manali, Himachal Pradesh").fill("Guardrail Valley")
-    page.get_by_role("button", name="Publish Experience").click()
+    page.wait_for_url(re.compile(r".*/stories/new/?$"))
+    page.get_by_role("heading", name="Write a story").wait_for()
+    page.get_by_placeholder("Your story title").fill(title)
+    page.get_by_placeholder("A one-line teaser").fill(description)
+    fill_rich_text_editor(page, body)
+    page.get_by_placeholder("Bali, Indonesia").fill(location)
+    page.get_by_role("button", name="Publish").click()
 
-    page.wait_for_url(re.compile(r".*/experiences/?$"))
-    page.get_by_role("link", name=re.compile(title)).click()
-    page.wait_for_url(re.compile(r".*/experiences/[-a-z0-9_]+/?$"))
+    page.wait_for_url(re.compile(r".*/stories/[-a-z0-9_]+/?$"))
     page.get_by_role("heading", name=title).wait_for()
     slug = page.url.rstrip("/").rsplit("/", 1)[-1]
 
-    page.goto(f"/experiences/edit?slug={slug}")
-    page.wait_for_url(re.compile(rf".*/experiences/edit\?slug={re.escape(slug)}$"))
-    title_input = page.get_by_placeholder("Give your experience a title")
-    excerpt_input = page.get_by_placeholder("A brief summary for the card preview")
-    title_input.wait_for()
-    excerpt_input.wait_for()
+    # ── Edit ──────────────────────────────────────────────────────────────────
+    # StoryEdit is at /stories/:storyId/edit (storyId == slug)
+    page.goto(f"/stories/{slug}/edit")
+    page.wait_for_url(re.compile(rf".*/stories/{re.escape(slug)}/edit/?$"))
+    page.get_by_role("heading", name="Edit story").wait_for()
+
+    # StoryEdit inputs have no placeholders; use DOM order inside <main>
+    title_input = page.locator("main").get_by_role("textbox").nth(0)
+    excerpt_input = page.locator("main").get_by_role("textbox").nth(1)
+
+    # Wait for the form to be populated with the original values
     page.wait_for_function(
         """
-        ([expectedTitle, expectedExcerpt]) => {
-          const titleInput = document.querySelector("input[placeholder='Give your experience a title']");
-          const excerptInput = document.querySelector("input[placeholder='A brief summary for the card preview']");
-          return titleInput?.value === expectedTitle && excerptInput?.value === expectedExcerpt;
+        ([expectedTitle]) => {
+          const inputs = [...document.querySelectorAll("main input, main textarea")];
+          return inputs[0]?.value === expectedTitle;
         }
         """,
-        arg=[title, description],
+        arg=[title],
     )
+
     title_input.fill(updated_title)
-    excerpt_input.fill(updated_excerpt)
+    excerpt_input.fill(updated_description)
     fill_rich_text_editor(page, updated_body, replace=True)
-    page.get_by_role("button", name="Update Experience").click()
+    page.get_by_role("button", name="Publish").click()
 
-    page.wait_for_url(re.compile(rf".*/experiences/{re.escape(slug)}/?$"))
+    page.wait_for_url(re.compile(rf".*/stories/{re.escape(slug)}/?$"))
     page.get_by_role("heading", name=updated_title).wait_for()
-    page.get_by_text(updated_excerpt).wait_for()
-
-    page.once("dialog", lambda dialog: dialog.accept())
-    page.get_by_role("button", name=re.compile("^Delete")).click()
-    page.wait_for_url(re.compile(r".*/experiences/?$"))
-    assert page.get_by_text(updated_title).count() == 0
+    page.get_by_text(updated_description).wait_for()
 
     author.audit.assert_clean()
+
+
+@pytest.mark.full
+def test_story_delete_removes_story(session_factory: SessionFactory) -> None:
+    """Story owner can delete their story via the Trash2 button on StoryDetail.
+
+    The Delete button was added in the latest Lovable pull — this flow was
+    previously blocked_by_lovable_showstopper.
+    """
+    author = session_factory(name="story-delete", username="mei")
+    page = author.page
+    title = unique_suffix("Guardrail Delete Story")
+
+    # Create a fresh story to delete.
+    page.goto("/stories/new")
+    page.get_by_role("heading", name="Write a story").wait_for()
+    page.get_by_placeholder("Your story title").fill(title)
+    page.get_by_placeholder("A one-line teaser").fill("Story to be deleted by the guardrail.")
+    fill_rich_text_editor(page, "This story will be deleted.")
+    page.get_by_role("button", name="Publish").click()
+
+    page.wait_for_url(re.compile(r".*/stories/[-a-z0-9_]+/?$"))
+    page.get_by_role("heading", name=title).wait_for()
+    slug = page.url.rstrip("/").rsplit("/", 1)[-1]
+
+    # StoryDetail shows a Delete button only to the story owner.
+    # The button triggers window.confirm — accept it.
+    page.once("dialog", lambda dialog: dialog.accept())
+
+    with page.expect_response(re.compile(r"/frontend-api/blogs/[^/]+/")) as delete_resp:
+        page.get_by_role("button", name="Delete").click()
+    assert delete_resp.value.ok, f"Story delete failed: HTTP {delete_resp.value.status}"
+
+    # Successful delete navigates back to /stories.
+    page.wait_for_url(re.compile(r".*/stories/?$"))
+    page.get_by_role("heading", name="Stories").wait_for()
+
+    # Verify the story is gone — the detail page should render "Story not found".
+    page.goto(f"/stories/{slug}")
+    page.get_by_role("heading", name="Story not found").wait_for()
+
+    author.audit.assert_clean(
+        ignore_requests=["/frontend-api/home/", "/frontend-api/activity/"],
+        ignore_responses=[f"/frontend-api/blogs/{slug}/"],
+        ignore_console=["404 (Not Found)"],
+    )

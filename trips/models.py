@@ -784,6 +784,22 @@ def _rank_for_member(
     )
 
 
+def _promote_trip_type_variety(trips: list[TripData]) -> list[TripData]:
+    seen_types: set[str] = set()
+    promoted: list[TripData] = []
+    remainder: list[TripData] = []
+
+    for trip in trips:
+        trip_type = str(trip.get("trip_type", "") or "").strip().lower()
+        if trip_type and trip_type not in seen_types:
+            seen_types.add(trip_type)
+            promoted.append(trip)
+            continue
+        remainder.append(trip)
+
+    return promoted + remainder
+
+
 def _annotate_trip_bookmark_state_for_user(user: object, trips: list[TripData]) -> list[TripData]:
     for trip in trips:
         trip["is_bookmarked"] = False
@@ -927,6 +943,8 @@ def build_trip_list_payload_for_user(
             followed_usernames=followed_usernames,
             interest_keywords=interest_keywords,
         )
+        if normalized_filters["trip_type"] == "all":
+            ranked_trips = _promote_trip_type_variety(ranked_trips)
 
         reason = "Trips ranked using followed hosts and like-minded topic boosts."
         if not has_saved_preference:
@@ -948,6 +966,8 @@ def build_trip_list_payload_for_user(
         }
 
     ranked_trips = _rank_for_guest(filtered_candidates)
+    if normalized_filters["trip_type"] == "all":
+        ranked_trips = _promote_trip_type_variety(ranked_trips)
     mode = "guest-trending-live" if source == "live-db" else "guest-trending-demo"
     reason = "Trips ranked by global demand signals for guests."
     if active_filters and filtered_count > 0:

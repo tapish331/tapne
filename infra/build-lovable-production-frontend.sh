@@ -18,41 +18,47 @@ OUTPUT_DIR=""
 LOVABLE_ROOT=""
 VERBOSE=0
 
-# ── Argument parsing ──────────────────────────────────────────────────────────
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --repo-root)    REPO_ROOT="$2";   shift 2 ;;
-    --lovable-root) LOVABLE_ROOT="$2"; shift 2 ;;
-    --output-dir)   OUTPUT_DIR="$2";  shift 2 ;;
-    --skip-install) SKIP_INSTALL=1;   shift   ;;
-    -v|--verbose)   VERBOSE=1;        shift   ;;
-    -h|--help)
-      echo "Usage: $0 [--repo-root DIR] [--output-dir DIR] [--skip-install] [--verbose]"
-      exit 0
-      ;;
-    *) echo "Unknown argument: $1" >&2; exit 1 ;;
-  esac
-done
+refresh_instructions() {
+  echo "Run 'pwsh -File infra/refresh-lovable-build-lock.ps1' (or 'bash infra/refresh-lovable-build-lock.sh') to regenerate the external build lock from lovable/package.json."
+}
 
-[[ "$VERBOSE" -eq 1 ]] && set -x
+json_field() {
+  node -e 'const fs = require("fs"); const meta = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const value = meta[process.argv[2]]; if (value === undefined || value === null) { process.exit(2); } process.stdout.write(String(value));' "$1" "$2"
+}
 
-[[ -z "$OUTPUT_DIR" ]] && OUTPUT_DIR="$REPO_ROOT/artifacts/lovable-production-dist"
-[[ "$OUTPUT_DIR" != /* ]] && OUTPUT_DIR="$REPO_ROOT/$OUTPUT_DIR"
+sha256_file() {
+  node -e 'const fs = require("fs"); const crypto = require("crypto"); process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"));' "$1"
+}
 
-[[ -z "$LOVABLE_ROOT" ]] && LOVABLE_ROOT="$REPO_ROOT/lovable"
-[[ "$LOVABLE_ROOT" != /* ]] && LOVABLE_ROOT="$REPO_ROOT/$LOVABLE_ROOT"
-FRONTEND_SPA_ROOT="$REPO_ROOT/frontend_spa"
-ISOLATED_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tapne-lovable-build.XXXXXX")"
-ISOLATED_LOVABLE_ROOT="$ISOLATED_ROOT/lovable"
-ISOLATED_FRONTEND_SPA_ROOT="$ISOLATED_ROOT/frontend_spa"
-ISOLATED_CONFIG_PATH="$ISOLATED_FRONTEND_SPA_ROOT/vite.production.config.ts"
-ISOLATED_VITE="$ISOLATED_LOVABLE_ROOT/node_modules/.bin/vite"
-LOVABLE_GIT_STATUS_BEFORE=""
+assert_lovable_build_lock() {
+  local package_json_path="$1"
+  local lock_path="$2"
+  local metadata_path="$3"
+  local instructions
+  instructions="$(refresh_instructions)"
+
+  [[ -f "$lock_path" ]] || { echo "Missing external Lovable build lock: $lock_path. $instructions" >&2; exit 1; }
+  [[ -f "$metadata_path" ]] || { echo "Missing external Lovable build lock metadata: $metadata_path. $instructions" >&2; exit 1; }
+
+  local expected_hash
+  expected_hash="$(json_field "$metadata_path" "package_json_sha256" 2>/dev/null || true)"
+  [[ -n "$expected_hash" ]] || {
+    echo "External Lovable build lock metadata does not contain package_json_sha256: $metadata_path. $instructions" >&2
+    exit 1
+  }
+  expected_hash="$(printf '%s' "$expected_hash" | tr '[:upper:]' '[:lower:]')"
+
+  local actual_hash
+  actual_hash="$(sha256_file "$package_json_path")"
+  if [[ "$actual_hash" != "$expected_hash" ]]; then
+    echo "Lovable build lock is stale for $package_json_path. Expected package.json sha256 $expected_hash, actual $actual_hash. $instructions" >&2
+    exit 1
+  fi
+}
 
 cleanup() {
   rm -rf "$ISOLATED_ROOT"
 }
-trap cleanup EXIT
 
 copy_tree() {
   local source="$1"
@@ -72,27 +78,60 @@ copy_tree() {
   )
 }
 
+# ── Argument parsing ──────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repo-root)    REPO_ROOT="$2";    shift 2 ;;
+    --lovable-root) LOVABLE_ROOT="$2"; shift 2 ;;
+    --output-dir)   OUTPUT_DIR="$2";   shift 2 ;;
+    --skip-install) SKIP_INSTALL=1;    shift   ;;
+    -v|--verbose)   VERBOSE=1;         shift   ;;
+    -h|--help)
+      echo "Usage: $0 [--repo-root DIR] [--output-dir DIR] [--skip-install] [--verbose]"
+      exit 0
+      ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
+[[ "$VERBOSE" -eq 1 ]] && set -x
+
+[[ -z "$OUTPUT_DIR" ]] && OUTPUT_DIR="$REPO_ROOT/artifacts/lovable-production-dist"
+[[ "$OUTPUT_DIR" != /* ]] && OUTPUT_DIR="$REPO_ROOT/$OUTPUT_DIR"
+
+[[ -z "$LOVABLE_ROOT" ]] && LOVABLE_ROOT="$REPO_ROOT/lovable"
+[[ "$LOVABLE_ROOT" != /* ]] && LOVABLE_ROOT="$REPO_ROOT/$LOVABLE_ROOT"
+LOVABLE_PACKAGE_JSON="$LOVABLE_ROOT/package.json"
+FRONTEND_SPA_ROOT="$REPO_ROOT/frontend_spa"
+EXTERNAL_BUILD_LOCK="$REPO_ROOT/infra/lovable-build.package-lock.json"
+EXTERNAL_BUILD_LOCK_METADATA="$REPO_ROOT/infra/lovable-build.lock-metadata.json"
+ISOLATED_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tapne-lovable-build.XXXXXX")"
+ISOLATED_LOVABLE_ROOT="$ISOLATED_ROOT/lovable"
+ISOLATED_FRONTEND_SPA_ROOT="$ISOLATED_ROOT/frontend_spa"
+ISOLATED_CONFIG_PATH="$ISOLATED_FRONTEND_SPA_ROOT/vite.production.config.ts"
+ISOLATED_VITE="$ISOLATED_LOVABLE_ROOT/node_modules/.bin/vite"
+LOVABLE_GIT_STATUS_BEFORE=""
+
+trap cleanup EXIT
+
 # ── Preflight ─────────────────────────────────────────────────────────────────
-[[ -d "$LOVABLE_ROOT" ]]     || { echo "Lovable source directory not found: $LOVABLE_ROOT" >&2; exit 1; }
+[[ -d "$LOVABLE_ROOT" ]]      || { echo "Lovable source directory not found: $LOVABLE_ROOT" >&2; exit 1; }
 [[ -d "$FRONTEND_SPA_ROOT" ]] || { echo "frontend_spa directory not found: $FRONTEND_SPA_ROOT" >&2; exit 1; }
-command -v npm >/dev/null 2>&1 || { echo "npm is required but not found on PATH" >&2; exit 1; }
+[[ -f "$LOVABLE_PACKAGE_JSON" ]] || { echo "Lovable package.json not found: $LOVABLE_PACKAGE_JSON" >&2; exit 1; }
+command -v node >/dev/null 2>&1 || { echo "node is required but not found on PATH" >&2; exit 1; }
+command -v npm  >/dev/null 2>&1 || { echo "npm is required but not found on PATH" >&2; exit 1; }
 [[ -d "$LOVABLE_ROOT/.git" ]] && LOVABLE_GIT_STATUS_BEFORE="$(git -C "$LOVABLE_ROOT" status --porcelain=v1)"
+
+assert_lovable_build_lock "$LOVABLE_PACKAGE_JSON" "$EXTERNAL_BUILD_LOCK" "$EXTERNAL_BUILD_LOCK_METADATA"
 
 copy_tree "$LOVABLE_ROOT" "$ISOLATED_LOVABLE_ROOT" .git node_modules dist dist-ssr
 copy_tree "$FRONTEND_SPA_ROOT" "$ISOLATED_FRONTEND_SPA_ROOT" .git node_modules dist dist-ssr
+cp "$EXTERNAL_BUILD_LOCK" "$ISOLATED_LOVABLE_ROOT/package-lock.json"
 
 if [[ "$SKIP_INSTALL" -eq 0 ]]; then
   echo "==> Installing npm dependencies in isolated workspace"
   cd "$ISOLATED_LOVABLE_ROOT"
-  if [[ -f package-lock.json ]]; then
-    if ! npm ci; then
-      echo "npm ci failed in the isolated workspace; falling back to npm install --package-lock=false" >&2
-      rm -rf node_modules
-      npm install --package-lock=false
-    fi
-  else
-    npm install --package-lock=false
-  fi
+  npm ci
 else
   [[ -d "$LOVABLE_ROOT/node_modules" ]] || {
     echo "SkipInstall requires lovable/node_modules to already exist" >&2

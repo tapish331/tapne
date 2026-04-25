@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 from playwright.sync_api import Browser, Page
@@ -105,9 +104,8 @@ def ensure_storage_state(
     context = browser.new_context(base_url=base_url, viewport={"width": 1440, "height": 900})
     page = context.new_page()
     try:
-        page.goto(f"{base_url}/login", wait_until="load")
+        page.goto(f"{base_url}/", wait_until="load")
         login_through_page(page, username=username, password=password)
-        page.wait_for_url(re.compile(rf"{re.escape(base_url)}/?$"))
         wait_for_authenticated_state(page)
         assert _session_matches_username(page, username=username)
         context.storage_state(path=str(storage_path))
@@ -117,10 +115,9 @@ def ensure_storage_state(
 
 
 def login_through_page(page: Page, *, username: str, password: str = DEFAULT_DEMO_PASSWORD) -> None:
-    page.locator("input[type='email']").fill(user_email(username))
-    page.locator("input[type='password']").fill(password)
-    page.get_by_role("button", name="Log In").click()
-    wait_for_authenticated_state(page)
+    """Open the navbar Login modal and sign in. Call this from any SPA page."""
+    page.get_by_role("button", name="Login").click()
+    login_through_modal(page, username=username, password=password)
 
 
 def login_through_modal(page: Page, *, username: str, password: str = DEFAULT_DEMO_PASSWORD) -> None:

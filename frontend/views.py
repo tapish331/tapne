@@ -18,8 +18,9 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login, logout
 from django.core.cache import cache
-from django.core.mail import send_mail
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.core.mail import send_mail
 from django.db.models import Q
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
@@ -59,6 +60,7 @@ from trips.models import (
     Trip,
     TripFaqItem,
     TripItineraryDay,
+    TRIP_BOOKING_STATUS_VALUES,
     build_trip_detail_payload_for_user,
     build_trip_list_payload_for_user,
 )
@@ -574,7 +576,7 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "trip_chat": "/frontend-api/trip-chat/",
             "users_search": reverse("frontend:api-users-search"),
             "notifications": reverse("frontend:api-notifications"),
-            "trip_reviews": reverse("frontend:api-reviews-list"),
+            "trip_reviews": "/frontend-api/trips/",
             "trip_review": "/frontend-api/trips/",
             "reviews": reverse("frontend:api-reviews-list"),
             "followers": reverse("frontend:api-profile-followers"),
@@ -814,6 +816,7 @@ def home_api_view(request: HttpRequest) -> JsonResponse:
     payload = build_home_payload_for_user(request.user, limit_per_section=None, include_profiles=True)
     response_payload: dict[str, object] = dict(payload)
     response_payload["trips"] = _enrich_trip_cards([dict(row) for row in payload.get("trips", [])])
+    response_payload["featured_trips"] = list(cast(list[dict[str, object]], response_payload["trips"]))
     response_payload["blogs"] = _enrich_blog_cards([dict(row) for row in payload.get("blogs", [])])
 
     # Build community_profiles — shape required by CommunityProfile interface:
@@ -829,18 +832,25 @@ def home_api_view(request: HttpRequest) -> JsonResponse:
         })
     response_payload["community_profiles"] = community_profiles
 
-    # Real stats from DB
+    # Real stats from DB, filtered the same way as public catalog surfaces.
+    from accounts.models import AccountProfile
     from trips.models import Trip as _Trip
-    total_users = int(UserModel.objects.count())
-    trips_hosted = int(_Trip.objects.filter(is_published=True).count())
+    from tapne.features import _demo_qs_filter, demo_catalog_visible
+
+    profile_filter: dict[str, bool] = {} if demo_catalog_visible() else {"is_demo": False}
+    total_users = int(AccountProfile.objects.filter(**profile_filter).count())
+    trips_hosted = int(_Trip.objects.filter(is_published=True, **_demo_qs_filter()).count())
     distinct_destinations = int(
-        _Trip.objects.filter(is_published=True, destination__gt="")
+        _Trip.objects.filter(is_published=True, destination__gt="", **_demo_qs_filter())
         .values("destination").distinct().count()
     )
     response_payload["stats"] = {
         "travelers": total_users,
+        "travelers_count": total_users,
         "trips_hosted": trips_hosted,
+        "trips_hosted_count": trips_hosted,
         "destinations": distinct_destinations,
+        "destinations_count": distinct_destinations,
     }
 
     # No testimonials model yet — return empty; section hides itself when empty
@@ -1029,6 +1039,8 @@ def my_trips_api_view(request: HttpRequest) -> JsonResponse:
 
     all_trips = [dict(_enrich(t.to_trip_data())) for t in draft_rows + published_rows + past_rows]
     enriched = _enrich_trip_cards(all_trips)
+    for trip in enriched:
+        trip["can_manage"] = True
 
     return JsonResponse({
         "ok": True,
@@ -1130,6 +1142,37 @@ def blog_detail_api_view(request: HttpRequest, slug: str) -> JsonResponse:
     blog_payload = dict(payload.get("blog", {}))
     blog_rows = _enrich_blog_cards([blog_payload])
     return JsonResponse({"ok": True, **payload, "blog": blog_rows[0] if blog_rows else blog_payload})
+
+
+@require_GET
+def blog_cover_image_view(request: HttpRequest, slug: str) -> HttpResponse | FileResponse:
+    from blogs.models import Blog, build_demo_blog_cover_storage_name
+    from tapne.features import demo_catalog_visible
+
+    blog = Blog.objects.only("id", "slug", "author_id", "is_demo", "is_published").filter(slug=slug).first()
+    if blog is None or not bool(getattr(blog, "is_demo", False)):
+        raise Http404("Blog cover not found.")
+
+    viewer_id = int(getattr(request.user, "pk", 0) or 0)
+    blog_author_id = int(getattr(blog, "author_id", 0) or 0)
+    is_owner = bool(request.user.is_authenticated and blog_author_id == viewer_id)
+    is_publicly_visible = bool(getattr(blog, "is_published", False)) and demo_catalog_visible()
+    if not is_publicly_visible and not is_owner:
+        raise Http404("Blog cover not found.")
+
+    file_name = build_demo_blog_cover_storage_name(slug=str(getattr(blog, "slug", "") or ""), blog_id=int(blog.pk or 0))
+    if not default_storage.exists(file_name):
+        raise Http404("Blog cover not found.")
+
+    try:
+        blog_cover = default_storage.open(file_name, "rb")
+    except Exception as exc:
+        raise Http404("Blog cover not found.") from exc
+
+    content_type, _ = mimetypes.guess_type(file_name)
+    response = FileResponse(blog_cover, content_type=content_type or "application/octet-stream")
+    response["Cache-Control"] = "public, max-age=300" if is_publicly_visible else "private, max-age=60"
+    return response
 
 
 @require_http_methods(["GET", "PATCH"])
@@ -1719,8 +1762,17 @@ def manage_trip_booking_status_view(request: HttpRequest, trip_id: int) -> JsonR
     trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
     if trip_row is None:
         return _json_error("Trip not found.", status=404)
-    # booking_status is not yet a model field — acknowledge and return ok so the
-    # frontend optimistic update can proceed. Persisted in a future migration.
+    payload = _request_payload(request)
+    new_status = str(payload.get("status", "") or "").strip().lower()
+    if new_status in TRIP_BOOKING_STATUS_VALUES:
+        draft = dict(
+            cast(Mapping[str, object], trip_row.draft_form_data)
+            if isinstance(trip_row.draft_form_data, Mapping)
+            else {}
+        )
+        draft["booking_status"] = new_status
+        trip_row.draft_form_data = draft
+        trip_row.save(update_fields=["draft_form_data"])
     return JsonResponse({"ok": True})
 
 
@@ -1801,6 +1853,36 @@ def manage_trip_message_view(request: HttpRequest, trip_id: int) -> JsonResponse
         return _json_error("Could not deliver the message to participants.", status=400)
 
     return JsonResponse({"ok": True, "sent_count": sent_count})
+
+
+@require_POST
+def trip_remove_participant_view(request: HttpRequest, trip_id: int, user_id: int) -> JsonResponse:
+    """Remove a confirmed participant by user PK.
+
+    ApplicationManager sends removeTarget.user_id (the traveler's User PK),
+    not the enrollment-request PK, so the lookup differs from the older
+    manage_trip_remove_participant_view which used enrollment PK.
+    """
+    if not request.user.is_authenticated:
+        return _member_only_error()
+    trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
+    if trip_row is None:
+        return _json_error("Trip not found.", status=404)
+    req = (
+        EnrollmentRequest.objects.filter(
+            trip=trip_row,
+            requester_id=user_id,
+            status=EnrollmentRequest.STATUS_APPROVED,
+        )
+        .first()
+    )
+    if req is None:
+        return _json_error("Participant not found.", status=404)
+    req.status = EnrollmentRequest.STATUS_DENIED
+    req.reviewed_by = request.user  # type: ignore[assignment]
+    req.reviewed_at = timezone.now()
+    req.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+    return JsonResponse({"ok": True})
 
 
 @require_GET

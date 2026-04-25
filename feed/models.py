@@ -923,7 +923,7 @@ def _live_profile_rows() -> list[ProfileData]:
 
         trips_count = 0
         if trip_model is not None and user_id > 0:
-            trips_count = int(trip_model.objects.filter(host_id=user_id, is_published=True).count())
+            trips_count = int(trip_model.objects.filter(host_id=user_id, is_published=True, **_demo_qs_filter()).count())
 
         profiles.append(
             {

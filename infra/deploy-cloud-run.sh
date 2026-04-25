@@ -84,6 +84,7 @@ DJANGO_ALLOWED_HOSTS=""
 CSRF_TRUSTED_ORIGINS=""
 CANONICAL_HOST=""
 GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY:-}"
+ENABLE_DEMO_CATALOG=1
 SMOKE_BASE_URL=""
 SMOKE_HEALTH_PATH="/runtime/health/"
 SMOKE_CSS_PATH="/"
@@ -156,6 +157,8 @@ while [[ $# -gt 0 ]]; do
     --csrf-trusted-origins)           CSRF_TRUSTED_ORIGINS="$2";          shift 2 ;;
     --canonical-host)                 CANONICAL_HOST="$2";                shift 2 ;;
     --google-maps-api-key)            GOOGLE_MAPS_API_KEY="$2";           shift 2 ;;
+    --no-demo-catalog)                ENABLE_DEMO_CATALOG=0;              shift   ;;
+    --enable-demo-catalog)            ENABLE_DEMO_CATALOG=1;              shift   ;;
     --smoke-base-url)                 SMOKE_BASE_URL="$2";                shift 2 ;;
     --smoke-health-path)              SMOKE_HEALTH_PATH="$2";             shift 2 ;;
     --smoke-css-path)                 SMOKE_CSS_PATH="$2";                shift 2 ;;
@@ -670,6 +673,7 @@ BASE_ENV_ENTRIES=(
   "APP_ENV=prod"
   "DEBUG=false"
   "TAPNE_ENABLE_DEMO_DATA=false"
+  "TAPNE_DEMO_CATALOG_VISIBLE=$([[ "$ENABLE_DEMO_CATALOG" -eq 1 ]] && echo true || echo false)"
   "LOVABLE_FRONTEND_REQUIRE_LIVE_DATA=true"
   "LOVABLE_FRONTEND_DIST_DIR=/app/artifacts/lovable-production-dist"
   "WEB_CONCURRENCY=${WEB_CONCURRENCY}"
@@ -746,6 +750,34 @@ if [[ "$SKIP_MIGRATIONS" -eq 0 ]]; then
   ok "Migration job completed."
 else
   info "Skipping migrations (--skip-migrations)."
+fi
+
+if [[ "$ENABLE_DEMO_CATALOG" -eq 1 ]]; then
+  step "Deploying and executing demo catalog seed job"
+  gcloud run jobs deploy tapne-seed-demo-catalog \
+    --project="$PROJECT_ID" \
+    --region="$REGION" \
+    --image="$IMAGE_REF" \
+    --service-account="$SERVICE_ACCOUNT_EMAIL" \
+    --set-cloudsql-instances="$CLOUD_SQL_CONNECTION_NAME" \
+    --vpc-connector="$VPC_CONNECTOR" \
+    --vpc-egress=private-ranges-only \
+    --set-secrets="$SECRET_MAP_ARG" \
+    --set-env-vars="$JOB_ENV_ARG" \
+    --command=python \
+    --args='manage.py,populate_demo_catalog,--verbose' \
+    --tasks=1 \
+    --max-retries=1 \
+    --task-timeout=1800 \
+    --quiet
+
+  gcloud run jobs execute tapne-seed-demo-catalog \
+    --project="$PROJECT_ID" \
+    --region="$REGION" \
+    --wait
+  ok "Demo catalog seed job completed."
+else
+  info "Demo catalog mode disabled (--no-demo-catalog). Skipping demo seed job."
 fi
 
 # ── Step 15: Deploy Cloud Run web service ─────────────────────────────────────

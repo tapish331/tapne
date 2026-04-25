@@ -339,6 +339,8 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@tapne.com")
 # Demo catalog behavior — controls whether payload builders can fall back to
 # demo data when live DB rows are insufficient. Keep disabled in production.
 TAPNE_ENABLE_DEMO_DATA = env_bool("TAPNE_ENABLE_DEMO_DATA", DEBUG)
+# Controls whether seeded demo rows are visible on public live-data surfaces.
+TAPNE_DEMO_CATALOG_VISIBLE = env_bool("TAPNE_DEMO_CATALOG_VISIBLE", DEBUG)
 # Backward-compatible alias used by earlier scaffolding scripts/docs.
 TAPNE_PLACEHOLDER_MODE = TAPNE_ENABLE_DEMO_DATA
 # Production requires live data — no demo fallback on public routes.

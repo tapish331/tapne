@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createBrowserRouter, Outlet } from "react-router-dom";
+import { RouterProvider, createBrowserRouter, Outlet, Navigate } from "react-router-dom";
 import { useRef, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -13,21 +13,24 @@ import ScrollToTop from "@/components/ScrollToTop";
 // Never import page components from @frontend/pages except UnderConstructionPage.
 import Index from "@/pages/Index";
 import BrowseTrips from "@/pages/BrowseTrips";
-import TripPreview from "@/pages/TripPreview";
 import TripDetail from "@/pages/TripDetail";
 import CreateTrip from "@/pages/CreateTrip";
-import MyTrips from "@/pages/MyTrips";
-import Experiences from "@/pages/Experiences";
-import ExperienceCreate from "@/pages/ExperienceCreate";
-import ExperienceEdit from "@/pages/ExperienceEdit";
-import ExperienceDetail from "@/pages/ExperienceDetail";
-import TravelHosts from "@/pages/TravelHosts";
-import Bookmarks from "@/pages/Bookmarks";
-import Inbox from "@/pages/Inbox";
-import ManageTrip from "@/pages/ManageTrip";
-import Login from "@/pages/Login";
-import SignUp from "@/pages/SignUp";
+import Stories from "@/pages/Stories";
+import StoryDetail from "@/pages/StoryDetail";
+import StoryCreate from "@/pages/StoryCreate";
+import StoryEdit from "@/pages/StoryEdit";
 import Profile from "@/pages/Profile";
+import ProfileEdit from "@/pages/ProfileEdit";
+import Bookmarks from "@/pages/Bookmarks";
+import Messages from "@/pages/Messages";
+import Search from "@/pages/Search";
+import Notifications from "@/pages/Notifications";
+import Settings from "@/pages/Settings";
+import Dashboard from "@/pages/Dashboard";
+import DashboardTrips from "@/pages/dashboard/DashboardTrips";
+import DashboardStories from "@/pages/dashboard/DashboardStories";
+import DashboardReviews from "@/pages/dashboard/DashboardReviews";
+import DashboardSubscriptions from "@/pages/dashboard/DashboardSubscriptions";
 import UnderConstructionPage from "@frontend/pages/UnderConstructionPage";
 
 const queryClient = new QueryClient({
@@ -36,15 +39,10 @@ const queryClient = new QueryClient({
 
 // Mirrors the GlobalLoginModal in lovable/src/App.tsx — required for the
 // .js-guest-action / loginModalOpen flow to work in production.
-//
-// pendingAuthAction is captured in a ref so the callback is reliably called
-// even though React batches the state update (setLoginModalOpen → setPendingAuthAction)
-// before onSuccess fires.
 const GlobalLoginModal = () => {
   const { loginModalOpen, setLoginModalOpen, pendingAuthAction } = useAuth();
   const pendingRef = useRef<(() => void) | null>(null);
 
-  // Keep ref in sync whenever a new pending action is registered
   useEffect(() => {
     if (pendingAuthAction !== null) {
       pendingRef.current = pendingAuthAction;
@@ -68,8 +66,6 @@ const GlobalLoginModal = () => {
 };
 
 // Root layout injects ScrollToTop, GlobalLoginModal, and DraftProvider into every route.
-// With createBrowserRouter these can't be placed inside BrowserRouter directly,
-// so they live in a layout route that wraps all children via <Outlet />.
 // DraftProvider MUST be inside the router — DraftContext calls useNavigate(),
 // which throws if rendered outside a <Router> ancestor.
 const RootLayout = () => (
@@ -80,33 +76,56 @@ const RootLayout = () => (
   </DraftProvider>
 );
 
-// Route list must match lovable/src/App.tsx exactly.
-// The only permitted deviation: * catch-all → UnderConstructionPage (not NotFound).
-// /blogs intentionally maps to Experiences — this mirrors lovable/src/App.tsx.
+// Route list mirrors lovable/src/App.tsx exactly.
+// Permitted deviations from Lovable:
+//   1. * catch-all → UnderConstructionPage (not NotFound)
+//   2. /trips/:id and /trips/:id/edit use `:id` (not `:tripId`) so the
+//      frontend_spa TripDetail override's `const { id } = useParams()` resolves
+//      correctly. The URL shape is identical — only the param name differs.
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
-      { path: "/",                   element: <Index /> },
-      { path: "/trips",              element: <BrowseTrips /> },
-      { path: "/trips/preview",      element: <TripPreview /> },
-      { path: "/trips/:id",          element: <TripDetail /> },
-      { path: "/create-trip",        element: <CreateTrip /> },
-      { path: "/my-trips",           element: <MyTrips /> },
-      { path: "/experiences",        element: <Experiences /> },
-      { path: "/experiences/create", element: <ExperienceCreate /> },
-      { path: "/experiences/edit",   element: <ExperienceEdit /> },
-      { path: "/experiences/:slug",  element: <ExperienceDetail /> },
-      { path: "/blogs",              element: <Experiences /> },
-      { path: "/travel-hosts",       element: <TravelHosts /> },
-      { path: "/bookmarks",          element: <Bookmarks /> },
-      { path: "/inbox",              element: <Inbox /> },
-      { path: "/manage-trip/:id",    element: <ManageTrip /> },
-      { path: "/login",              element: <Login /> },
-      { path: "/signup",             element: <SignUp /> },
-      { path: "/profile",            element: <Profile /> },
-      { path: "/profile/:userId",    element: <Profile /> },
-      { path: "*",                   element: <UnderConstructionPage /> },
+      { path: "/", element: <Index /> },
+
+      // Trips
+      { path: "/trips", element: <BrowseTrips /> },
+      { path: "/trips/new", element: <CreateTrip /> },
+      { path: "/trips/:id/edit", element: <CreateTrip /> },
+      { path: "/trips/:id", element: <TripDetail /> },
+
+      // Stories
+      { path: "/stories", element: <Stories /> },
+      { path: "/stories/new", element: <StoryCreate /> },
+      { path: "/stories/:storyId/edit", element: <StoryEdit /> },
+      { path: "/stories/:storyId", element: <StoryDetail /> },
+
+      // Profile / Users
+      { path: "/profile", element: <Profile /> },
+      { path: "/profile/edit", element: <ProfileEdit /> },
+      { path: "/users/:profileId", element: <Profile /> },
+
+      // Messaging & utility
+      { path: "/messages", element: <Messages /> },
+      { path: "/bookmarks", element: <Bookmarks /> },
+      { path: "/search", element: <Search /> },
+      { path: "/notifications", element: <Notifications /> },
+      { path: "/settings", element: <Settings /> },
+
+      // Dashboard (nested)
+      {
+        path: "/dashboard",
+        element: <Dashboard />,
+        children: [
+          { index: true, element: <Navigate to="/dashboard/trips" replace /> },
+          { path: "trips", element: <DashboardTrips /> },
+          { path: "stories", element: <DashboardStories /> },
+          { path: "reviews", element: <DashboardReviews /> },
+          { path: "subscriptions", element: <DashboardSubscriptions /> },
+        ],
+      },
+
+      { path: "*", element: <UnderConstructionPage /> },
     ],
   },
 ]);

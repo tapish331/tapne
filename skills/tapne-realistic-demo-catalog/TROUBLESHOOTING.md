@@ -1,6 +1,6 @@
 # Troubleshooting: `tapne-realistic-demo-catalog`
 
-Six acceptance gate checklists. Declare the skill run complete only when all six pass.
+Seven acceptance gate checklists. Declare the skill run complete only when all seven pass.
 
 ---
 
@@ -8,7 +8,7 @@ Six acceptance gate checklists. Declare the skill run complete only when all six
 
 When a gate fails:
 
-1. **Identify the layer** — migration gap (Gate A), seed gap (Gate B), queryset patch gap (Gates C/D), or data-quality gap (Gates E/F).
+1. **Identify the layer** — migration gap (Gate A), seed gap (Gate B), queryset patch gap (Gates C/D), detail/data-quality gap (Gates E/F), or image-coverage gap (Gate G).
 2. **Fix the root cause** — do not work around it (e.g., do not manually insert rows to pass Gate B; fix the seed command).
 3. **Re-run from the failed gate** — you don't need to restart from Gate A unless you changed models.
 4. **Document the fix** — add a note to this file's "Known Issues" section at the bottom if the issue might recur.
@@ -50,22 +50,27 @@ from trips.models import Trip
 from blogs.models import Blog
 from accounts.models import AccountProfile
 from social.models import FollowRelation, Bookmark
+from django.db.models import Q
 
 trips = Trip.objects.filter(is_demo=True).count()
 blogs = Blog.objects.filter(is_demo=True).count()
 profiles = AccountProfile.objects.filter(is_demo=True).count()
 follows = FollowRelation.objects.count()
 bookmarks = Bookmark.objects.count()
+trip_images_missing = Trip.objects.filter(is_demo=True).filter(Q(banner_image='') | Q(banner_image__isnull=True)).count()
+blog_images_missing = Blog.objects.filter(is_demo=True).filter(Q(cover_image_url='') | Q(cover_image_url__isnull=True)).count()
 
 print(f'Trips (demo): {trips} (need ≥65)')
 print(f'Blogs (demo): {blogs} (need ≥33)')
 print(f'Profiles (demo): {profiles} (need ≥70)')
 print(f'FollowRelation total: {follows} (need ≥400)')
 print(f'Bookmark total: {bookmarks} (need ≥280)')
+print(f'Trips missing banner_image: {trip_images_missing} (must be 0)')
+print(f'Blogs missing cover_image_url: {blog_images_missing} (must be 0)')
 "
 ```
 
-**Expected:** All values at or above the threshold.
+**Expected:** All values at or above the threshold, and both missing-image counts equal `0`.
 
 **Fix if failing:** Re-run `python manage.py populate_demo_catalog --verbose`. If still failing, check for exceptions in seed output and examine the specific `_seed_*` function.
 
@@ -214,6 +219,45 @@ print(Trip.objects.filter(is_demo=True).count(),
 **Expected:** Second run produces zero new rows. Counts unchanged.
 
 **Fix if failing:** Find the model whose `_seed_*` function is using `create()` instead of `update_or_create()` / `get_or_create()`. See BASELINE.md "Idempotency keys per model".
+
+---
+
+## Gate G — No Default-Image Fallbacks
+
+Verify that public demo APIs are emitting seeded image URLs rather than backend/frontend defaults.
+
+```bash
+# Trip list: no placeholder or banner fallback route
+curl -s 'http://localhost:8000/frontend-api/trips/' | python -c "
+import json, re, sys
+d = json.load(sys.stdin)
+trips = d.get('trips', [])
+fallbacks = [
+    t for t in trips
+    if not str(t.get('banner_image_url', '') or '').strip()
+    or str(t.get('banner_image_url', '')).strip() == '/placeholder.svg'
+    or re.match(r'^/trips/\\d+/banner/', str(t.get('banner_image_url', '')).strip())
+]
+print('trip image fallbacks:', len(fallbacks), '(must be 0)')
+"
+
+# Blog list: no blank covers or frontend placeholder
+curl -s 'http://localhost:8000/frontend-api/blogs/' | python -c "
+import json, sys
+d = json.load(sys.stdin)
+blogs = d.get('blogs', [])
+fallbacks = [
+    b for b in blogs
+    if not str(b.get('cover_image_url', '') or '').strip()
+    or str(b.get('cover_image_url', '')).strip() == '/placeholder.svg'
+]
+print('blog image fallbacks:', len(fallbacks), '(must be 0)')
+"
+```
+
+**Expected:** Both fallback counts are `0`.
+
+**Fix if failing:** Blank DB fields are the usual cause. Seed `Trip.banner_image` and `Blog.cover_image_url` directly in `populate_demo_catalog.py` instead of relying on `feed._default_trip_banner_url(...)`, `build_trip_banner_fallback_url(...)`, `Blog._default_cover_image_url()`, or frontend placeholders.
 
 ---
 

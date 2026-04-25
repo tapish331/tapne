@@ -40,6 +40,8 @@ These are the minimum counts the seed command produces. Gate B in TROUBLESHOOTIN
 | `AccountProfile` (`is_demo=True`) | ≥ 70 |
 | `Trip` (`is_demo=True`) | ≥ 65 |
 | `Blog` (`is_demo=True`) | ≥ 33 |
+| `Trip` with seeded `banner_image` | match demo-trip count |
+| `Blog` with seeded `cover_image_url` | match demo-blog count |
 | `FollowRelation` (demo edges) | ≥ 400 |
 | `Bookmark` (demo) | ≥ 280 |
 | `EnrollmentRequest` (demo) | ≥ 120 |
@@ -107,4 +109,17 @@ Price range: ₹4,500 – ₹55,000.
 | `demo_catalog_visible()` | reads setting | `tapne/features.py` |
 | `_demo_qs_filter()` | `{}` when visible, `{"is_demo": False}` when hidden | `tapne/features.py` |
 
-`TAPNE_DEMO_CATALOG_VISIBLE` is **independent** of `TAPNE_ENABLE_DEMO_DATA`. See SKILL.md Hard Rule 5.
+`TAPNE_DEMO_CATALOG_VISIBLE` is **independent** of `TAPNE_ENABLE_DEMO_DATA`. See the matching note in SKILL.md Hard Rules.
+
+---
+
+## Image Coverage Contract
+
+Current backend surfaces that must be image-complete after seeding:
+
+| Surface | Required seeded field/source | Forbidden fallback path |
+|---------|-------------------------------|-------------------------|
+| Trip cards, trip detail, dashboard trip lists | `Trip.banner_image` | `feed._default_trip_banner_url(...)`, `build_trip_banner_fallback_url(...)`, frontend `/placeholder.svg` |
+| Blog cards and blog detail | `Blog.cover_image_url` | `Blog._default_cover_image_url()` and any blank value that lets feed/search/frontend inject a stock image |
+| Trip/blog galleries (when a route consumes target media) | `media.MediaAsset` + `MediaAttachment` | leaving the page image-empty and relying on generic placeholders |
+| Profile avatars | not supported by current backend schema | do not claim seeded profile images until a real field/payload exists |

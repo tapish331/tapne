@@ -289,25 +289,55 @@ every changed route:
 
 ## Section 6 — Planned-vs-deployed page audit
 
-Two standing cleanup rules run on every substantive session:
+Two standing cleanup rules run on every substantive session.
+
+### Canonical route map (authoritative — no other SPA routes are permitted)
+
+| Route | Visibility | Description |
+|---|---|---|
+| `/` | public | Homepage |
+| `/search` | public | Global search (trips, stories, users) |
+| `/trips/:tripId` | public | Trip detail |
+| `/trips/new` | private | Create trip (supports `?mode=preview`) |
+| `/trips/:tripId/edit` | private | Edit trip (supports `?mode=preview`) |
+| `/stories/:storyId` | public | Story detail |
+| `/stories/new` | private | Create story (supports `?mode=preview`) |
+| `/stories/:storyId/edit` | private | Edit story (supports `?mode=preview`) |
+| `/users/:profileId` | public | User profile |
+| `/profile/edit` | private | Edit own profile (supports `?mode=preview`) |
+| `/bookmarks` | private | Saved items |
+| `/messages` | private | Inbox and chat |
+| `/notifications` | private | Notification centre |
+| `/settings` | private | Account settings |
+| `/dashboard` | private | Dashboard overview |
+| `/dashboard/trips` | private | Trip management hub |
+| `/dashboard/stories` | private | Story management hub |
+| `/dashboard/reviews` | private | Review management hub |
+| `/dashboard/subscriptions` | private | Subscription management hub |
+| `/404` | system | Not found page |
+
+**Invariants for this map:**
+- Auth is modal-only — no `/login` or `/signup` routes exist or should ever be added.
+- Preview is not a separate route; it uses `?mode=preview` on the create/edit routes.
+- Unauthorized access opens the auth modal; there is no `/unauthorized` route.
+- Join and review actions are modals triggered from `/trips/:tripId`, not separate routes.
 
 ### Source of truth
 
-- **Planned routes** come from `lovable/src/App.tsx`. That is the sole
-  source — nothing else.
+- **Canonical routes** are the table above. That list is exhaustive — no route outside it
+  is valid.
+- **Planned routes** are verified against `lovable/src/App.tsx`; every route in the
+  canonical map must have a matching `<Route>` there.
 - **Deployed SPA-served routes** come from `frontend/urls.py` +
   `tapne/urls.py` (SPA entrypoint URLs → `frontend_entrypoint_view`).
 
 ### Drift rules
 
-- A route that exists in `frontend/urls.py` as an SPA entrypoint but has no
-  matching `<Route>` in `lovable/src/App.tsx` → **unplanned / orphan**;
-  flag for removal in a Scope-3 cleanup.
-- A route that exists in `lovable/src/App.tsx` but has no matching SPA
-  entrypoint in `frontend/urls.py` → **planned but missing**; add the
-  entrypoint in Scope 3 the same session.
-- A route that exists in both but points at a stale component name → fix in
-  Scope 3.
+- A route that exists in `frontend/urls.py` as an SPA entrypoint but does **not** appear
+  in the canonical route map above → **orphan**; remove it in a Scope-3 cleanup.
+- A route in the canonical map above that has no matching SPA entrypoint in
+  `frontend/urls.py` → **missing**; add the entrypoint in Scope 3 the same session.
+- A route that exists in both but points at a stale component name → fix in Scope 3.
 
 ### Backend-only routes (never SPA)
 

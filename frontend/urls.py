@@ -27,6 +27,7 @@ urlpatterns = [
     ),
     path("frontend-api/my-trips/", views.my_trips_api_view, name="api-my-trips"),
     path("frontend-api/blogs/", views.blog_list_api_view, name="api-blogs-list"),
+    path("frontend-api/blogs/<slug:slug>/cover-image/", views.blog_cover_image_view, name="api-blogs-cover-image"),
     path("frontend-api/blogs/<slug:slug>/", views.blog_detail_api_view, name="api-blogs-detail"),
     # Profile/me endpoints must be declared BEFORE the generic `profile/<profile_id>/` regex
     # at the bottom, since Django URL resolution walks in order.
@@ -49,6 +50,11 @@ urlpatterns = [
     path("frontend-api/manage-trip/<int:trip_id>/cancel/", views.manage_trip_cancel_view, name="api-manage-trip-cancel"),
     path("frontend-api/manage-trip/<int:trip_id>/message/", views.manage_trip_message_view, name="api-manage-trip-message"),
     path("frontend-api/trips/<int:trip_id>/review/", views.trip_review_create_api_view, name="api-trip-review-create"),
+    # New URL shapes called by TripDetail and ApplicationManager (moved from manage-trip/ prefix)
+    path("frontend-api/trips/<int:trip_id>/booking-status/", views.manage_trip_booking_status_view, name="api-trip-booking-status"),
+    path("frontend-api/trips/<int:trip_id>/cancel/", views.manage_trip_cancel_view, name="api-trip-cancel"),
+    re_path(r"^frontend-api/trips/(?P<trip_id>\d+)/participants/(?P<user_id>\d+)/remove/$", views.trip_remove_participant_view, name="api-trip-remove-participant"),
+    path("frontend-api/trips/<int:trip_id>/broadcast/", views.manage_trip_message_view, name="api-trip-broadcast"),
     path("frontend-api/account/deactivate/", views.account_deactivate_api_view, name="api-account-deactivate"),
     path("frontend-api/account/delete/", views.account_delete_api_view, name="api-account-delete"),
     path(

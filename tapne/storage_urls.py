@@ -15,7 +15,7 @@ def should_use_fallback_file_url(resolved_url: str) -> bool:
     normalized = str(resolved_url or "").strip()
     if not normalized:
         return True
-    return not normalized.startswith("/")
+    return not _is_web_usable_url(normalized)
 
 
 def build_file_cache_key(*, file_name: str = "", updated_at: object = None) -> str:

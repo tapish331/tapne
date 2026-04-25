@@ -52,7 +52,7 @@
       }
     }
   },
-  "_note_post_spa_cutover": "The Django-rendered UI was retired. Production serves the Lovable SPA for every public route; Django owns APIs, admin, OAuth, and file-serving only. The per-app `required_files` and `member_routes` lists below describe the scaffolding skeleton used by initial setup scripts and have not all been pruned to reflect the cutover — treat them as historical. Source of truth for routes: lovable/src/App.tsx (planned) and frontend/urls.py (deployed).",
+  "_note_post_spa_cutover": "The Django-rendered UI was retired. Production serves the Lovable SPA for every public route; Django owns APIs, admin, OAuth, and file-serving only. The per-app `required_files` lists below are pruned to the post-SPA backend layout, while route metadata such as `member_routes` remains historical scaffolding for local setup context only. Source of truth for routes: lovable/src/App.tsx (planned) and frontend/urls.py (deployed).",
   "ui_shared_assets": {
     "_note": "All Django-rendered templates and shared CSS/JS were retired in the SPA cutover. See RULES.md \u00a73 'Retired' list.",
     "required_template_files": [],
@@ -66,7 +66,6 @@
         "accounts/forms.py",
         "accounts/validators.py",
         "accounts/views.py",
-        "accounts/urls.py",
         "accounts/admin.py",
         "accounts/tests.py",
         "accounts/management/__init__.py",
@@ -88,8 +87,6 @@
       "required_files": [
         "feed/apps.py",
         "feed/models.py",
-        "feed/views.py",
-        "feed/urls.py",
         "feed/admin.py",
         "feed/tests.py",
         "feed/management/__init__.py",
@@ -108,8 +105,6 @@
       "required_files": [
         "search/apps.py",
         "search/models.py",
-        "search/views.py",
-        "search/urls.py",
         "search/admin.py",
         "search/tests.py",
         "search/management/__init__.py",
@@ -162,8 +157,6 @@
         "blogs/apps.py",
         "blogs/models.py",
         "blogs/forms.py",
-        "blogs/views.py",
-        "blogs/urls.py",
         "blogs/admin.py",
         "blogs/tests.py",
         "blogs/management/__init__.py",
@@ -186,8 +179,6 @@
       "required_files": [
         "social/apps.py",
         "social/models.py",
-        "social/views.py",
-        "social/urls.py",
         "social/admin.py",
         "social/tests.py",
         "social/management/__init__.py",
@@ -213,8 +204,6 @@
       "required_files": [
         "enrollment/apps.py",
         "enrollment/models.py",
-        "enrollment/views.py",
-        "enrollment/urls.py",
         "enrollment/admin.py",
         "enrollment/tests.py",
         "enrollment/management/__init__.py",
@@ -239,8 +228,6 @@
       "required_files": [
         "interactions/apps.py",
         "interactions/models.py",
-        "interactions/views.py",
-        "interactions/urls.py",
         "interactions/admin.py",
         "interactions/tests.py",
         "interactions/management/__init__.py",
@@ -265,8 +252,6 @@
       "required_files": [
         "reviews/apps.py",
         "reviews/models.py",
-        "reviews/views.py",
-        "reviews/urls.py",
         "reviews/admin.py",
         "reviews/tests.py",
         "reviews/management/__init__.py",
@@ -290,8 +275,6 @@
       "required_files": [
         "activity/apps.py",
         "activity/models.py",
-        "activity/views.py",
-        "activity/urls.py",
         "activity/admin.py",
         "activity/tests.py",
         "activity/management/__init__.py",

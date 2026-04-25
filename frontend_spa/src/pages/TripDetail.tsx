@@ -20,10 +20,15 @@ import {
   Calendar, MapPin, IndianRupee, Users, ArrowLeft, Clock, Star,
   CheckCircle2, XCircle, Hotel, Shield, HelpCircle, Backpack,
   DollarSign, Sparkles, Heart, UserCircle, Eye, Lock, Send,
-  AlertTriangle, Loader2, MessageCircle
+  AlertTriangle, Loader2, MessageCircle, LockOpen, Ban, Settings2
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 // ─── Section nav items ───
 // Sections are built dynamically based on trip data — see visibleSections below
@@ -40,6 +45,10 @@ const TripDetail = () => {
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [askingQuestion, setAskingQuestion] = useState(false);
+  const [bookingTogglePending, setBookingTogglePending] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelPending, setCancelPending] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -93,8 +102,8 @@ const TripDetail = () => {
 
   const joinStatus = trip.join_request_status;
   const isJoined = joinStatus === "approved";
-  const isTripPast = trip.ends_at ? new Date(trip.ends_at) < new Date() : false;
-  const canReview = isAuthenticated && isJoined && isTripPast;
+  const isCompleted = trip.status === "completed";
+  const canReview = isAuthenticated && isJoined && isCompleted;
 
   // Build visible sections dynamically based on trip data
   const visibleSections = [
@@ -112,21 +121,13 @@ const TripDetail = () => {
 
   const { requireAuth } = useAuth();
 
-  const hostCanManage = isHost && !isTripPast;
-
-  const handlePrimaryAction = () => {
-    if (isHost) {
-      if (hostCanManage) {
-        navigate(`/manage-trip/${trip.id}`);
-      }
-      return;
-    }
+  const handleAction = () => {
     requireAuth(() => setBookingModalOpen(true));
   };
 
-  const ctaLabel = isHost ? (hostCanManage ? "Manage Trip" : "Trip Completed") : isJoined ? "Already Joined ✓" : isFull ? "Join Waitlist" :
+  const ctaLabel = isHost ? "Manage Trip" : isJoined ? "Already Joined ✓" : isFull ? "Join Waitlist" :
     joinStatus === "pending" ? "Application Pending" : "Book Now";
-  const ctaDisabled = isHost ? !hostCanManage : isJoined || joinStatus === "pending";
+  const ctaDisabled = isJoined || joinStatus === "pending";
 
   const fmtDate = (iso?: string) => iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
   const fmtDateFull = (iso?: string) => iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
@@ -177,17 +178,11 @@ const TripDetail = () => {
           <Button
             className="w-full text-base transition-transform hover:scale-[1.02]"
             size="lg"
-            disabled={ctaDisabled}
-            onClick={handlePrimaryAction}
+            disabled={ctaDisabled || (isCompleted && !isHost)}
+            onClick={isHost ? () => navigate(`/trips/${trip.id}/edit`) : handleAction}
           >
-            <span>{ctaLabel}</span>
+            <span>{isCompleted && !isHost ? "Trip completed" : ctaLabel}</span>
           </Button>
-
-          {isHost && !hostCanManage && (
-            <p className="mt-2 text-center text-xs text-muted-foreground">
-              Completed trips can no longer be managed.
-            </p>
-          )}
 
           <Button
             variant="outline"
@@ -216,7 +211,7 @@ const TripDetail = () => {
           <CardContent className="p-4 space-y-3">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Meet Your Hosts</p>
             <button
-              onClick={() => navigate(`/profile/${trip.host_username}`)}
+              onClick={() => navigate(`/users/${trip.host_username}`)}
               className="flex items-center gap-3 w-full text-left hover:opacity-80 transition-opacity"
             >
               <Avatar className="h-11 w-11 border-2 border-primary/20">
@@ -230,7 +225,7 @@ const TripDetail = () => {
             {(trip as any).co_hosts_profiles?.map((ch: any) => (
               <button
                 key={ch.username}
-                onClick={() => navigate(`/profile/${ch.username}`)}
+                onClick={() => navigate(`/users/${ch.username}`)}
                 className="flex items-center gap-3 w-full text-left hover:opacity-80 transition-opacity"
               >
                 <Avatar className="h-11 w-11 border-2 border-primary/20">
@@ -258,7 +253,7 @@ const TripDetail = () => {
                       { host_username: trip.host_username }
                     );
                     if (data.ok && data.thread_id) {
-                      navigate(`/inbox?thread=${data.thread_id}`);
+                      navigate(`/messages?thread=${data.thread_id}`);
                     } else {
                       toast.error(data.error || "Could not start conversation. Please try again.");
                     }
@@ -348,6 +343,12 @@ const TripDetail = () => {
 
         {/* ─── BODY ─── */}
         <div className="mx-auto max-w-6xl px-4 py-6">
+          {isCompleted && isHost && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-muted bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+              <Lock className="h-4 w-4 shrink-0" />
+              <span>This trip is completed. Actions are locked.</span>
+            </div>
+          )}
           <div className="flex gap-8">
             {/* Main Content */}
             <div className="min-w-0 flex-1 space-y-5">
@@ -603,11 +604,52 @@ const TripDetail = () => {
                 </Button>
               </Section>
 
-
-
               {/* Host Application Management */}
-              {isHost && (
-                <ApplicationManager tripId={trip.id} />
+              {isHost && !isCompleted && (
+                <>
+                  <Section id="host-actions" icon={Settings2} title="Host Controls">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={bookingTogglePending}
+                        onClick={async () => {
+                          const cfg = window.TAPNE_RUNTIME_CONFIG;
+                          if (!cfg?.api?.base) return;
+                          const next = trip.booking_status === "closed" ? "open" : "closed";
+                          setBookingTogglePending(true);
+                          try {
+                            await apiPost(`${cfg.api.base}/trips/${trip.id}/booking-status/`, { status: next });
+                            setTrip({ ...trip, booking_status: next });
+                            toast.success(next === "closed" ? "Bookings closed." : "Bookings reopened.");
+                          } catch (err: any) {
+                            toast.error(err?.error || "Could not update bookings. Please try again.");
+                          } finally {
+                            setBookingTogglePending(false);
+                          }
+                        }}
+                      >
+                        {bookingTogglePending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> :
+                          trip.booking_status === "closed" ? <LockOpen className="mr-1.5 h-4 w-4" /> : <Lock className="mr-1.5 h-4 w-4" />}
+                        {trip.booking_status === "closed" ? "Reopen Bookings" : "Close Bookings"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+                        onClick={() => setCancelOpen(true)}
+                      >
+                        <Ban className="mr-1.5 h-4 w-4" /> Cancel Trip
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {trip.booking_status === "closed"
+                        ? "Bookings are closed. Travelers cannot apply or book."
+                        : "Bookings are open. Close them to stop new applications."}
+                    </p>
+                  </Section>
+                  <ApplicationManager tripId={trip.id} />
+                </>
               )}
 
               {/* Similar Trips */}
@@ -639,11 +681,11 @@ const TripDetail = () => {
             </div>
             <Button
               size="lg"
-              disabled={ctaDisabled}
-              onClick={handlePrimaryAction}
+              disabled={ctaDisabled || (isCompleted && !isHost)}
+              onClick={isHost ? undefined : handleAction}
               className="transition-transform hover:scale-[1.02]"
             >
-              {ctaLabel}
+              {isCompleted && !isHost ? "Trip completed" : ctaLabel}
             </Button>
           </div>
         </div>
@@ -664,6 +706,54 @@ const TripDetail = () => {
             .catch(() => {});
         }
       }} />
+
+      {/* Cancel Trip dialog */}
+      <AlertDialog open={cancelOpen} onOpenChange={(o) => { if (!cancelPending) setCancelOpen(o); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              All confirmed travelers will be notified. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Reason (shared with participants)</label>
+            <Textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Why is the trip being cancelled?"
+              rows={4}
+              disabled={cancelPending}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelPending}>Keep Trip</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={cancelPending || cancelReason.trim().length === 0}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async (e) => {
+                e.preventDefault();
+                const cfg = window.TAPNE_RUNTIME_CONFIG;
+                if (!cfg?.api?.base) return;
+                setCancelPending(true);
+                try {
+                  await apiPost(`${cfg.api.base}/trips/${trip.id}/cancel/`, { reason: cancelReason.trim() });
+                  toast.success("Trip cancelled.");
+                  setCancelOpen(false);
+                  setTrip({ ...trip, status: "cancelled" });
+                } catch (err: any) {
+                  toast.error(err?.error || "Could not cancel trip. Please try again.");
+                } finally {
+                  setCancelPending(false);
+                }
+              }}
+            >
+              {cancelPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              Cancel Trip
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

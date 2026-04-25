@@ -303,7 +303,7 @@ export const DraftProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setDrafts((prev) => prev.filter((draft) => draft.id !== id));
-    navigate("/my-trips", { state: { tab: "published" } });
+    navigate("/dashboard/trips");
   }, [navigate]);
 
   return (

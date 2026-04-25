@@ -29,7 +29,7 @@ This setting is read at **Django settings load time** (via `env_bool()` in `tapn
 
 ### `TAPNE_ENABLE_DEMO_DATA`
 
-Separate flag. Controls in-memory constant fallbacks (pre-existing feature). Does not interact with `TAPNE_DEMO_CATALOG_VISIBLE`. See SKILL.md Hard Rule 5.
+Separate flag. Controls in-memory constant fallbacks (pre-existing feature). Does not interact with `TAPNE_DEMO_CATALOG_VISIBLE`. See the matching note in SKILL.md Hard Rules.
 
 ---
 
@@ -80,6 +80,17 @@ python manage.py populate_demo_catalog --skip-social
 python manage.py populate_demo_catalog --skip-activity
 ```
 
+## Image Seed Inputs
+
+Before running the catalog seed on any fresh environment, make sure the image inputs the command expects are available:
+
+- Trip hero images must be assignable to `Trip.banner_image` through Django storage. Do not leave `banner_image` blank expecting `/trips/<id>/banner/` or frontend placeholders to hide the gap.
+- Blog cover images must be written into `Blog.cover_image_url` as stable, content-relevant HTTPS URLs.
+- If a trip/blog detail route surfaces gallery media, seed those after the base trip/blog rows exist via `media.MediaAsset` + `MediaAttachment`.
+- `AccountProfile` currently has no image field, so there is no profile-avatar input to prepare yet.
+
+If these inputs are missing, stop and source them first. An image-incomplete seed is a failed seed.
+
 ---
 
 ## Flag-Flip Procedure
@@ -89,7 +100,7 @@ python manage.py populate_demo_catalog --skip-activity
 1. Set `TAPNE_DEMO_CATALOG_VISIBLE=true` in `.env`
 2. Ensure seed is complete (Gate B)
 3. Restart Django: `python manage.py runserver`
-4. Run Gate C checks (TROUBLESHOOTING.md)
+4. Run Gate C and Gate G checks (TROUBLESHOOTING.md)
 
 ### Turning demo catalog off (production cutover)
 
@@ -105,7 +116,7 @@ Only do this if you want demo data visible on the live site (e.g., for investor 
 1. Ensure seed ran against the production DB: `python manage.py populate_demo_catalog --verbose`
 2. Set `TAPNE_DEMO_CATALOG_VISIBLE=true` in Cloud Run env
 3. Deploy new revision
-4. Run Gate C checks
+4. Run Gate C and Gate G checks
 
 ---
 

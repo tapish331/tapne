@@ -33,29 +33,33 @@ the live inventory from the current source first, then diff against this file.
 | Feature flags | `tapne/settings.py` |
 | Built artifact | `artifacts/lovable-production-dist/` |
 
-## Routes (April 2026 Baseline)
+## Routes (April 2026 Baseline — updated after 03c6a9e pull)
 
-| Route path | Component |
-|---|---|
-| `/` | `Index` |
-| `/trips` | `BrowseTrips` |
-| `/trips/:id` | `TripDetail` |
-| `/create-trip` | `CreateTrip` |
-| `/my-trips` | `MyTrips` |
-| `/experiences` | `Experiences` |
-| `/experiences/create` | `ExperienceCreate` |
-| `/experiences/edit` | `ExperienceEdit` |
-| `/experiences/:slug` | `ExperienceDetail` |
-| `/blogs` | `Experiences` (alias) |
-| `/travelers` | `Travelers` |
-| `/bookmarks` | `Bookmarks` |
-| `/inbox` | `Inbox` |
-| `/manage-trip/:id` | `ManageTrip` |
-| `/login` | `Login` |
-| `/signup` | `SignUp` |
-| `/profile` | `Profile` |
-| `/profile/:userId` | `Profile` |
-| `*` | `NotFound` / `UnderConstructionPage` |
+| Route path | Component | Notes |
+|---|---|---|
+| `/` | `Index` | |
+| `/trips` | `BrowseTrips` | |
+| `/trips/new` | `CreateTrip` | was `/create-trip` |
+| `/trips/:tripId/edit` | `CreateTrip` | production router uses `:id` to match override `useParams` |
+| `/trips/:tripId` | `TripDetail` | production router uses `:id` |
+| `/stories` | `Stories` | was `/experiences` + `/blogs` |
+| `/stories/new` | `StoryCreate` | |
+| `/stories/:storyId/edit` | `StoryEdit` | |
+| `/stories/:storyId` | `StoryDetail` | |
+| `/profile` | `Profile` | own profile (auth-gated) |
+| `/profile/edit` | `ProfileEdit` | |
+| `/users/:profileId` | `Profile` | public profile view; was `/profile/:userId` |
+| `/messages` | `Messages` | was `/inbox` |
+| `/bookmarks` | `Bookmarks` | |
+| `/search` | `Search` | |
+| `/notifications` | `Notifications` | |
+| `/settings` | `Settings` | |
+| `/dashboard` | `Dashboard` | index redirects to `/dashboard/trips` |
+| `/dashboard/trips` | `DashboardTrips` | |
+| `/dashboard/stories` | `DashboardStories` | |
+| `/dashboard/reviews` | `DashboardReviews` | |
+| `/dashboard/subscriptions` | `DashboardSubscriptions` | |
+| `*` | `UnderConstructionPage` | |
 
 ## TapneRuntimeConfig.api Keys (April 2026 Baseline)
 
@@ -82,8 +86,10 @@ the live inventory from the current source first, then diff against this file.
 | `trip_chat` | `/frontend-api/trip-chat/` | - | Deferred - not yet called by any page |
 | `users_search` | `/frontend-api/users/search/` | GET | User autocomplete search |
 | `notifications` | `/frontend-api/notifications/` | GET | Navbar notification badge fetch, gated on `isAuthenticated` |
-| `trip_reviews` | `/frontend-api/trips/` | POST `/{id}/reviews/` | Base prefix |
+| `trip_reviews` | `/frontend-api/reviews/` | GET `?author=me`, GET `?recipient=me` | DashboardReviews; also base for POST `trips/{id}/reviews/` |
 | `dm_start` | `/frontend-api/dm/start/` | POST | `{ host_username } -> { ok, thread_id }` |
+| `account_deactivate` | `/frontend-api/account/deactivate/` | POST | Settings page — hides profile |
+| `account_delete` | `/frontend-api/account/delete/` | POST | Settings page — permanent deletion |
 
 ### Additional `cfg.api.base` Patterns
 
@@ -91,7 +97,13 @@ the live inventory from the current source first, then diff against this file.
 |---|---|---|---|---|
 | `/frontend-api/profile/{id}/` | GET | `Profile.tsx` | `profile_detail_api_view` | username or numeric id |
 | `/frontend-api/profile/{username}/follow/` | POST, DELETE | `Profile.tsx` | `profile_follow_api_view` | follow/unfollow |
-| `/frontend-api/hosting-requests/{id}/decision/` | POST | `ManageTrip.tsx`, `ApplicationManager.tsx` | `hosting_decision_api_view` | `{ decision }` |
+| `/frontend-api/hosting-requests/{id}/decision/` | POST | `ApplicationManager.tsx` | `hosting_decision_api_view` | `{ decision }` |
+| `/frontend-api/profile/me/followers/` | GET | `DashboardSubscriptions.tsx` | `profile_followers_api_view` | Returns `{ users: UserItem[] }` |
+| `/frontend-api/profile/me/following/` | GET | `DashboardSubscriptions.tsx` | `profile_following_api_view` | Returns `{ users: UserItem[] }` |
+| `/frontend-api/trips/{tripId}/participants/{user_id}/remove/` | POST | `ApplicationManager.tsx` | `trip_remove_participant_view` | user_id is User PK (not enrollment PK) |
+| `/frontend-api/trips/{tripId}/broadcast/` | POST | `ApplicationManager.tsx` | `manage_trip_message_view` | Message all confirmed participants |
+| `/frontend-api/trips/{tripId}/booking-status/` | POST | `TripDetail.tsx` (host controls) | `manage_trip_booking_status_view` | `{ status: "open" \| "closed" }` |
+| `/frontend-api/trips/{tripId}/cancel/` | POST | `TripDetail.tsx` (host controls) | `manage_trip_cancel_view` | `{ reason: string }` |
 
 These `cfg.api.base` URLs are easy to miss because they are not named api keys.
 

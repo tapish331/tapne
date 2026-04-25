@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from hashlib import md5
+from urllib.parse import quote
 from typing import Any, TypedDict, cast
 
 from django.conf import settings
 from django.db import models
+from django.utils.text import slugify
 
 from feed.models import BlogData, MemberFeedPreference, get_blog_by_slug, get_demo_blogs
 from tapne.features import _demo_qs_filter, demo_catalog_enabled
@@ -23,6 +25,20 @@ class BlogDetailPayload(TypedDict):
     reason: str
     source: str
     can_manage_blog: bool
+
+
+def build_demo_blog_cover_storage_name(*, slug: str, blog_id: int = 0) -> str:
+    normalized_slug = slugify(str(slug or "").strip())[:72]
+    normalized_blog_id = int(blog_id or 0)
+    storage_token = normalized_slug or (f"blog-{normalized_blog_id}" if normalized_blog_id > 0 else "blog")
+    return f"blog_covers/demo/{storage_token}.png"
+
+
+def build_demo_blog_cover_url(*, slug: str) -> str:
+    normalized_slug = str(slug or "").strip()
+    if not normalized_slug:
+        return ""
+    return f"/frontend-api/blogs/{quote(normalized_slug, safe='')}/cover-image/"
 
 
 class Blog(models.Model):
@@ -82,7 +98,11 @@ class Blog(models.Model):
         return cover_pool[index]
 
     def to_blog_data(self) -> BlogData:
-        cover_image_url = str(self.cover_image_url or "").strip() or self._default_cover_image_url()
+        cover_image_url = str(self.cover_image_url or "").strip()
+        if not cover_image_url and self.is_demo:
+            cover_image_url = build_demo_blog_cover_url(slug=self.slug)
+        if not cover_image_url:
+            cover_image_url = self._default_cover_image_url()
         tags = [str(tag or "").strip() for tag in self.tags if str(tag or "").strip()]
         return {
             "id": int(self.pk or 0),

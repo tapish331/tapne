@@ -3,14 +3,21 @@ from __future__ import annotations
 import hashlib
 import random
 from datetime import timedelta
+from io import BytesIO
+from pathlib import Path
+from typing import TypeAlias
 
+from PIL import Image, ImageDraw, ImageFont
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+from django.utils.text import slugify
 
 from accounts.models import AccountProfile
-from blogs.models import Blog
+from blogs.models import Blog, build_demo_blog_cover_storage_name, build_demo_blog_cover_url
 from enrollment.models import EnrollmentRequest
 from interactions.models import Comment, DirectMessage, DirectMessageThread
 from reviews.models import Review
@@ -18,6 +25,7 @@ from social.models import Bookmark, FollowRelation
 from trips.models import Trip
 
 User = get_user_model()
+DemoFont: TypeAlias = ImageFont.ImageFont | ImageFont.FreeTypeFont
 
 
 # ── Host personas (12) ────────────────────────────────────────────────────────
@@ -1313,11 +1321,159 @@ DM_REPLIES = [
     "Thank you so much! It's always wonderful to have repeat travelers.",
 ]
 
+TRIP_IMAGE_PALETTES = {
+    "city": ((29, 78, 216), (126, 34, 206)),
+    "culture-heritage": ((180, 83, 9), (120, 53, 15)),
+    "food-culture": ((220, 38, 38), (249, 115, 22)),
+    "trekking": ((22, 101, 52), (21, 128, 61)),
+    "coastal": ((8, 145, 178), (14, 116, 144)),
+    "desert": ((217, 119, 6), (120, 53, 15)),
+    "wildlife": ((62, 94, 24), (22, 101, 52)),
+    "road-trip": ((55, 65, 81), (15, 23, 42)),
+    "camping": ((67, 56, 202), (30, 64, 175)),
+    "wellness": ((13, 148, 136), (5, 150, 105)),
+    "adventure-sports": ((190, 24, 93), (157, 23, 77)),
+}
+
+BLOG_IMAGE_PALETTES = (
+    ((37, 99, 235), (30, 64, 175)),
+    ((8, 145, 178), (14, 116, 144)),
+    ((5, 150, 105), (4, 120, 87)),
+    ((234, 88, 12), (194, 65, 12)),
+    ((185, 28, 28), (153, 27, 27)),
+    ((109, 40, 217), (91, 33, 182)),
+)
+
 
 def _rng(seed_str: str) -> random.Random:
     """Deterministic RNG seeded from a string."""
     seed_int = int(hashlib.md5(seed_str.encode()).hexdigest(), 16)
     return random.Random(seed_int)
+
+
+def _load_font(size: int, *, bold: bool = False) -> DemoFont:
+    font_candidates = [
+        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+        "arialbd.ttf" if bold else "arial.ttf",
+    ]
+    for candidate in font_candidates:
+        try:
+            return ImageFont.truetype(candidate, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _text_width(draw: ImageDraw.ImageDraw, text: str, font: DemoFont) -> int:
+    left, _top, right, _bottom = draw.textbbox((0, 0), text, font=font)
+    return int(right - left)
+
+
+def _wrap_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    font: DemoFont,
+    max_width: int,
+    max_lines: int,
+) -> list[str]:
+    words = [part for part in str(text or "").split() if part]
+    if not words:
+        return [""]
+
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if _text_width(draw, candidate, font) <= max_width:
+            current = candidate
+            continue
+        lines.append(current)
+        current = word
+        if len(lines) == max_lines - 1:
+            break
+
+    remaining_words = words[len(" ".join(lines + [current]).split()):]
+    if remaining_words and len(lines) == max_lines - 1:
+        tail = " ".join([current] + remaining_words)
+        while tail and _text_width(draw, f"{tail}...", font) > max_width:
+            tail = tail.rsplit(" ", 1)[0]
+        current = f"{tail}..." if tail else current
+    lines.append(current)
+    return lines[:max_lines]
+
+
+def _draw_pill(
+    draw: ImageDraw.ImageDraw,
+    *,
+    x: int,
+    y: int,
+    text: str,
+    font: DemoFont,
+) -> None:
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    width = int(right - left)
+    height = int(bottom - top)
+    padding_x = 22
+    padding_y = 12
+    draw.rounded_rectangle(
+        (x, y, x + width + (padding_x * 2), y + height + (padding_y * 2)),
+        radius=24,
+        fill=(255, 255, 255, 42),
+        outline=(255, 255, 255, 76),
+        width=2,
+    )
+    draw.text((x + padding_x, y + padding_y - 2), text, font=font, fill=(255, 255, 255, 235))
+
+
+def _render_demo_cover(
+    *,
+    title: str,
+    subtitle: str,
+    eyebrow: str,
+    primary: tuple[int, int, int],
+    secondary: tuple[int, int, int],
+) -> bytes:
+    width = 1600
+    height = 900
+    base = Image.new("RGBA", (width, height), primary + (255,))
+    draw = ImageDraw.Draw(base, "RGBA")
+
+    for y in range(height):
+        blend = y / max(1, height - 1)
+        color = tuple(
+            int(primary[idx] + ((secondary[idx] - primary[idx]) * blend))
+            for idx in range(3)
+        )
+        draw.line((0, y, width, y), fill=color + (255,))
+
+    accent = tuple(min(255, channel + 28) for channel in secondary)
+    draw.ellipse((-180, -140, 720, 760), fill=accent + (70,))
+    draw.ellipse((980, 90, 1740, 920), fill=(255, 255, 255, 28))
+    draw.rectangle((0, 0, width, height), fill=(6, 10, 24, 58))
+    draw.rounded_rectangle((84, 84, 1516, 816), radius=46, outline=(255, 255, 255, 48), width=3)
+
+    eyebrow_font = _load_font(30, bold=True)
+    title_font = _load_font(76, bold=True)
+    subtitle_font = _load_font(34)
+
+    _draw_pill(draw, x=124, y=120, text=eyebrow, font=eyebrow_font)
+
+    title_lines = _wrap_text(draw, title, font=title_font, max_width=1180, max_lines=3)
+    title_y = 270
+    for line in title_lines:
+        draw.text((124, title_y), line, font=title_font, fill=(255, 255, 255, 246))
+        title_y += 92
+
+    subtitle_lines = _wrap_text(draw, subtitle, font=subtitle_font, max_width=1060, max_lines=2)
+    subtitle_y = 680
+    for line in subtitle_lines:
+        draw.text((124, subtitle_y), line, font=subtitle_font, fill=(235, 241, 255, 228))
+        subtitle_y += 46
+
+    output = BytesIO()
+    base.convert("RGB").save(output, format="PNG", optimize=True)
+    return output.getvalue()
 
 
 class Command(BaseCommand):
@@ -1358,6 +1514,8 @@ class Command(BaseCommand):
             users = self._seed_users(verbose)
             trips = self._seed_trips(users, verbose)
             blogs = self._seed_blogs(users, verbose)
+            self._seed_trip_media(verbose)
+            self._seed_blog_media(verbose)
 
             if not skip_social:
                 self._seed_follows(users, verbose)
@@ -1855,3 +2013,65 @@ class Command(BaseCommand):
 
         if verbose:
             self.stdout.write(f"  DM threads created: {created_count}")
+
+    def _seed_trip_media(self, verbose: bool) -> None:
+        updated_count = 0
+
+        for trip in Trip.objects.filter(is_demo=True).only("id", "title", "destination", "trip_type", "banner_image"):
+            trip_id = int(getattr(trip, "pk", 0) or 0)
+            title = str(getattr(trip, "title", "") or "").strip() or f"Tapne Trip {trip_id}"
+            destination = str(getattr(trip, "destination", "") or "").strip()
+            trip_type = str(getattr(trip, "trip_type", "") or "").strip()
+            primary, secondary = TRIP_IMAGE_PALETTES.get(trip_type, ((37, 99, 235), (30, 64, 175)))
+            file_name = f"trip_banners/demo/{slugify(title)[:72] or f'trip-{trip_id}'}-{trip_id}.png"
+
+            storage = trip.banner_image.storage
+            if not storage.exists(file_name):
+                content = _render_demo_cover(
+                    title=title,
+                    subtitle=destination or "Handpicked Tapne demo itinerary",
+                    eyebrow=f"Demo trip • {trip_type.replace('-', ' ') or 'travel'}",
+                    primary=primary,
+                    secondary=secondary,
+                )
+                storage.save(file_name, ContentFile(content, name=Path(file_name).name))
+
+            current_name = str(getattr(trip.banner_image, "name", "") or "").strip()
+            if current_name != file_name:
+                trip.banner_image.name = file_name
+                trip.save(update_fields=["banner_image"])
+                updated_count += 1
+
+        if verbose:
+            self.stdout.write(f"  Trip media updated: {updated_count}")
+
+    def _seed_blog_media(self, verbose: bool) -> None:
+        updated_count = 0
+
+        for blog in Blog.objects.filter(is_demo=True).only("id", "slug", "title", "location", "cover_image_url"):
+            blog_id = int(getattr(blog, "pk", 0) or 0)
+            slug = str(getattr(blog, "slug", "") or "").strip() or f"blog-{blog_id}"
+            title = str(getattr(blog, "title", "") or "").strip() or f"Tapne Blog {blog_id}"
+            location = str(getattr(blog, "location", "") or "").strip()
+            palette_index = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(BLOG_IMAGE_PALETTES)
+            primary, secondary = BLOG_IMAGE_PALETTES[palette_index]
+            file_name = build_demo_blog_cover_storage_name(slug=slug, blog_id=blog_id)
+
+            if not default_storage.exists(file_name):
+                content = _render_demo_cover(
+                    title=title,
+                    subtitle=location or "Tapne community guide",
+                    eyebrow="Demo story • editorial pick",
+                    primary=primary,
+                    secondary=secondary,
+                )
+                default_storage.save(file_name, ContentFile(content, name=Path(file_name).name))
+
+            cover_image_url = build_demo_blog_cover_url(slug=slug)
+            if str(getattr(blog, "cover_image_url", "") or "").strip() != cover_image_url:
+                blog.cover_image_url = cover_image_url
+                blog.save(update_fields=["cover_image_url"])
+                updated_count += 1
+
+        if verbose:
+            self.stdout.write(f"  Blog media updated: {updated_count}")

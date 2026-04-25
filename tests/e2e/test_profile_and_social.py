@@ -14,7 +14,7 @@ def test_follow_unfollow_persists_after_reload(session_factory: SessionFactory) 
     member = session_factory(name="profile-follow-toggle", username="sahar")
     page = member.page
 
-    page.goto("/profile/arun")
+    page.goto("/users/arun")
     page.get_by_role("heading", name="Arun N.").wait_for()
     with page.expect_response(re.compile(r"/frontend-api/profile/arun/follow/")) as follow_response:
         page.get_by_role("button", name="Follow").click()

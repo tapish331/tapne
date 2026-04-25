@@ -1,0 +1,10 @@
+{
+  "lock_format_version": 1,
+  "package_json_path": "lovable/package.json",
+  "lockfile_path": "infra/lovable-build.package-lock.json",
+  "package_json_sha256": "c99b8dbc932c960f78d47e207c474d8dbf7835828da75189a45c148b2fa2ab4a",
+  "generator_image": "node:22-slim",
+  "generator_command": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+  "npm_version": "10.9.7",
+  "generated_at_utc": "2026-04-19T21:55:38Z"
+}

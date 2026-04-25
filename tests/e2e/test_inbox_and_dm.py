@@ -21,7 +21,7 @@ def test_trip_detail_dm_start_creates_thread_visible_to_both_users(session_facto
     traveler.page.goto("/trips/101")
     traveler.page.get_by_role("heading", name="Kyoto food lanes weekend").wait_for()
     traveler.page.get_by_role("button", name="Ask a Question").click()
-    traveler.page.wait_for_url(re.compile(r".*/inbox\?thread=\d+"))
+    traveler.page.wait_for_url(re.compile(r".*/messages\?thread=\d+"))
     traveler.page.get_by_role("heading", name="Inbox").wait_for()
     composer = traveler.page.locator("input[placeholder='Type a message...']:visible")
     composer.fill(message)
@@ -31,7 +31,7 @@ def test_trip_detail_dm_start_creates_thread_visible_to_both_users(session_facto
     assert send_resp.value.ok, f"Message send failed: {send_resp.value.status}"
     _visible_message(traveler.page, message).wait_for()
 
-    host.page.goto("/inbox?dm=arun")
+    host.page.goto("/messages?dm=arun")
     host.page.get_by_role("heading", name="Inbox").wait_for()
     host.page.get_by_role("button", name=re.compile(r"Arun N\.", re.I)).first.click()
     _visible_message(host.page, message).wait_for()

@@ -34,6 +34,7 @@ SERVICE_NAME="tapne-web"
 DOMAIN="tapnetravel.com"
 WWW_DOMAIN="www.tapnetravel.com"
 GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY:-}"
+ENABLE_DEMO_CATALOG=1
 AUTO_START_DOCKER=1
 SKIP_AUTH_LOGIN=0
 SKIP_MIGRATIONS=0
@@ -63,6 +64,8 @@ while [[ $# -gt 0 ]]; do
     --domain)                         DOMAIN="$2";                       shift 2 ;;
     --www-domain)                     WWW_DOMAIN="$2";                   shift 2 ;;
     --google-maps-api-key)            GOOGLE_MAPS_API_KEY="$2";          shift 2 ;;
+    --no-demo-catalog)                ENABLE_DEMO_CATALOG=0;             shift   ;;
+    --enable-demo-catalog)            ENABLE_DEMO_CATALOG=1;             shift   ;;
     --no-auto-start-docker)           AUTO_START_DOCKER=0;               shift   ;;
     --skip-auth-login)                SKIP_AUTH_LOGIN=1;                 shift   ;;
     --skip-migrations)                SKIP_MIGRATIONS=1;                 shift   ;;
@@ -179,6 +182,7 @@ if [[ "$VERBOSE" -eq 1 ]]; then
   echo "[verbose] CanonicalHost=${CANONICAL_HOST}"
   echo "[verbose] SkipDomain=${SKIP_DOMAIN} SkipDeploy=${SKIP_DEPLOY}"
   echo "[verbose] GoogleMapsApiKeySet=$([[ -n "$GOOGLE_MAPS_API_KEY" ]] && echo true || echo false)"
+  echo "[verbose] EnableDemoCatalog=$([[ "$ENABLE_DEMO_CATALOG" -eq 1 ]] && echo true || echo false)"
 fi
 
 # ── Build shared args ─────────────────────────────────────────────────────────
@@ -230,6 +234,7 @@ DEPLOY_ARGS=(
   --cloud-run-ingress "internal-and-cloud-load-balancing"
 )
 [[ -n "$GOOGLE_MAPS_API_KEY" ]] && DEPLOY_ARGS+=(--google-maps-api-key "$GOOGLE_MAPS_API_KEY")
+[[ "$ENABLE_DEMO_CATALOG" -eq 0 ]] && DEPLOY_ARGS+=(--no-demo-catalog)
 [[ "$DISABLE_CONTAINER_SCANNING" -eq 0 ]] && DEPLOY_ARGS+=(--no-disable-container-scanning)
 [[ "$SKIP_AUTH_LOGIN" -eq 1 ]]  && DEPLOY_ARGS+=(--skip-auth-login)
 [[ "$SKIP_MIGRATIONS" -eq 1 ]]  && DEPLOY_ARGS+=(--skip-migrations)

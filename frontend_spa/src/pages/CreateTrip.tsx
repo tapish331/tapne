@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -149,7 +149,8 @@ const DragListItem = ({ value, onChange, onRemove, onEnterKey, placeholder, onDr
 const CreateTrip = () => {
   const { isAuthenticated, user, requireAuth } = useAuth();
   const [searchParams] = useSearchParams();
-  const draftIdParam = searchParams.get("draft");
+  const { id: pathId } = useParams<{ id: string }>();
+  const draftIdParam = pathId || searchParams.get("draft");
   const { getDraft, updateDraft, createDraft, publishDraft } = useDrafts();
 
   // Auth gate
@@ -171,7 +172,7 @@ const CreateTrip = () => {
       createDraft().then((id) => {
         if (id) {
           setDraftId(id);
-          window.history.replaceState({}, "", `/create-trip?draft=${id}`);
+          window.history.replaceState({}, "", `/trips/new?draft=${id}`);
         }
       });
     }
@@ -390,7 +391,7 @@ const CreateTrip = () => {
     const createdId = await createDraft();
     if (createdId) {
       setDraftId(createdId);
-      window.history.replaceState({}, "", `/create-trip?draft=${createdId}`);
+      window.history.replaceState({}, "", `/trips/new?draft=${createdId}`);
     }
     return createdId;
   }, [createDraft, isAuthenticated, resolveDraftId]);

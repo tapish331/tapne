@@ -135,6 +135,7 @@ param(
     [string]$GoogleMapsApiKey = "",
     [string]$GoogleClientId = "",
     [string]$GoogleClientSecret = "",
+    [bool]$EnableDemoCatalog = $true,
 
     [string]$SmokeBaseUrl = "",
     [string]$SmokeHealthPath = "/runtime/health/",
@@ -2228,8 +2229,8 @@ if ($null -ne $gcloudCmdCandidate) {
 }
 
 Write-Verbose (
-    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; DisableBuildAttestations={6}; DisableContainerVulnerabilityScanning={7}; SkipMigrations={8}; RunBootstrapRuntime={9}; SkipSmokeTest={10}; PrivateCloudSqlIp={11}; CloudRunConcurrency={12}; CloudRunIngress={13}; GcsSignedUrls={14}; ConfigureMonitoring={15}; EnableRedis={16}; DjangoAllowedHosts={17}; CsrfTrustedOrigins={18}; CanonicalHost={19}; SmokeBaseUrl={20}; UptimeCheckHost={21}; UptimeCheckPath={22}" -f
-    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, $EnableRedis, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $CanonicalHost, $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath
+    "Run options => ProjectId={0}; Region={1}; ServiceName={2}; ImageTag={3}; BucketName={4}; BuildAndPushImage={5}; DisableBuildAttestations={6}; DisableContainerVulnerabilityScanning={7}; SkipMigrations={8}; RunBootstrapRuntime={9}; SkipSmokeTest={10}; PrivateCloudSqlIp={11}; CloudRunConcurrency={12}; CloudRunIngress={13}; GcsSignedUrls={14}; ConfigureMonitoring={15}; EnableRedis={16}; DjangoAllowedHosts={17}; CsrfTrustedOrigins={18}; CanonicalHost={19}; SmokeBaseUrl={20}; UptimeCheckHost={21}; UptimeCheckPath={22}; EnableDemoCatalog={23}" -f
+    $ProjectId, $Region, $ServiceName, $ImageTag, $BucketName, $BuildAndPushImage, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, $SkipMigrations, $RunBootstrapRuntime, $SkipSmokeTest, $UsePrivateCloudSqlIp, $CloudRunConcurrency, $CloudRunIngress, $EnableGcsSignedUrls, $ConfigureMonitoring, $EnableRedis, ($DjangoAllowedHosts -join ","), ($CsrfTrustedOrigins -join ","), $CanonicalHost, $SmokeBaseUrl, $UptimeCheckHost, $UptimeCheckPath, $EnableDemoCatalog
 )
 
 Write-Step "Preflight checks"
@@ -2919,6 +2920,7 @@ $baseEnv = @(
     "APP_ENV=prod",
     "DEBUG=false",
     "TAPNE_ENABLE_DEMO_DATA=false",
+    ("TAPNE_DEMO_CATALOG_VISIBLE={0}" -f (ConvertTo-BoolString -Value $EnableDemoCatalog)),
     "LOVABLE_FRONTEND_REQUIRE_LIVE_DATA=true",
     "LOVABLE_FRONTEND_DIST_DIR=/app/artifacts/lovable-production-dist",
     ("WEB_CONCURRENCY={0}" -f $WebConcurrency),
@@ -3014,6 +3016,40 @@ if (-not $SkipMigrations) {
 }
 else {
     Write-Info "Skipping migrations as requested (-SkipMigrations)."
+}
+
+if ($EnableDemoCatalog) {
+    Write-Step "Deploying and executing demo catalog seed job"
+    Invoke-Required -FilePath $gcloudCli -Arguments @(
+        "run", "jobs", "deploy", "tapne-seed-demo-catalog",
+        "--project", $ProjectId,
+        "--region", $Region,
+        "--image", $imageRef,
+        "--service-account", $serviceAccountEmail,
+        "--set-cloudsql-instances", $cloudSqlConnectionName,
+        "--vpc-connector", $VpcConnector,
+        "--vpc-egress", "private-ranges-only",
+        "--set-secrets", ($jobSecretMap -join ","),
+        "--set-env-vars", $jobEnvArg,
+        "--command", "python",
+        "--args", "manage.py,populate_demo_catalog,--verbose",
+        "--tasks", "1",
+        "--max-retries", "1",
+        "--task-timeout", "1800",
+        "--quiet"
+    ) -FailureMessage "Failed deploying demo catalog seed job."
+
+    Invoke-Required -FilePath $gcloudCli -Arguments @(
+        "run", "jobs", "execute", "tapne-seed-demo-catalog",
+        "--project", $ProjectId,
+        "--region", $Region,
+        "--wait"
+    ) -FailureMessage "Demo catalog seed job execution failed."
+
+    Write-Ok "Demo catalog seed job completed."
+}
+else {
+    Write-Info "Demo catalog mode disabled (-EnableDemoCatalog:`$false); skipping demo seed job."
 }
 
 $databaseUrlCutoverApplied = $false

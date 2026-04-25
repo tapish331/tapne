@@ -5,7 +5,12 @@ import re
 import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from tests.e2e.auth import DEFAULT_DEMO_PASSWORD, login_through_modal, login_through_page
+from tests.e2e.auth import (
+    DEFAULT_DEMO_PASSWORD,
+    login_through_modal,
+    login_through_page,
+    wait_for_authenticated_state,
+)
 from tests.e2e.data import create_booking_scenario
 from tests.e2e.helpers import unique_suffix
 from tests.e2e.types import SessionFactory
@@ -16,18 +21,20 @@ def _visible_message(page, text: str):
 
 
 @pytest.mark.smoke
-def test_login_page_then_inbox_post_persists_after_reload(session_factory: SessionFactory) -> None:
-    member = session_factory(name="login-page-inbox-post")
+def test_navbar_modal_login_then_messages_post_persists_after_reload(session_factory: SessionFactory) -> None:
+    """Login via the navbar modal (replacing the retired /login page), then POST a DM
+    message and verify it survives a page reload.  This is the primary smoke-level
+    CSRF-after-login guard."""
+    member = session_factory(name="modal-login-messages-post")
     page = member.page
-    message = unique_suffix("smoke-inbox")
+    message = unique_suffix("smoke-messages")
 
-    page.goto("/login")
-    page.get_by_role("heading", name="Welcome back").wait_for()
+    page.goto("/")
+    page.get_by_role("heading", name="Explore Trips").wait_for()
     login_through_page(page, username="mei")
-    page.wait_for_url(re.compile(r".*/$"))
     page.get_by_role("heading", name="Explore Trips").wait_for()
 
-    page.goto("/inbox")
+    page.goto("/messages")
     page.get_by_role("heading", name="Inbox").wait_for()
     page.get_by_role("button", name=re.compile(r"Arun N\.", re.I)).first.click()
 
@@ -78,21 +85,31 @@ def test_modal_login_then_booking_post_persists(session_factory: SessionFactory)
 
 
 @pytest.mark.full
-def test_signup_page_creates_an_isolated_account(session_factory: SessionFactory) -> None:
-    guest = session_factory(name="signup-page")
+def test_signup_modal_creates_an_isolated_account(session_factory: SessionFactory) -> None:
+    """Signup via the modal (replacing the retired /signup page)."""
+    guest = session_factory(name="signup-modal")
     page = guest.page
     email_prefix = unique_suffix("guardrail-signup")
     email = f"{email_prefix}@example.com"
     password = "GuardrailPass!123"
 
-    page.goto("/signup")
-    page.get_by_role("heading", name="Create your account").wait_for()
-    page.get_by_placeholder("John Doe").fill("Guardrail Signup")
-    page.get_by_placeholder("you@example.com").fill(email)
-    page.get_by_placeholder("••••••••").fill(password)
-    page.get_by_role("button", name="Sign Up").click()
+    page.goto("/")
+    page.get_by_role("heading", name="Explore Trips").wait_for()
+    page.get_by_role("button", name="Login").first.click()
 
-    page.wait_for_url(re.compile(r".*/$"))
+    login_dialog = page.locator("[role='dialog']").filter(has_text="Welcome back")
+    login_dialog.wait_for()
+    login_dialog.get_by_role("button", name="Sign up").click()
+
+    signup_dialog = page.locator("[role='dialog']").filter(has_text="Create your account")
+    signup_dialog.wait_for()
+    signup_dialog.get_by_placeholder("John Doe").fill("Guardrail Signup")
+    signup_dialog.get_by_placeholder("you@example.com").fill(email)
+    signup_dialog.get_by_placeholder("••••••••").fill(password)
+    signup_dialog.get_by_role("button", name="Sign Up").click()
+    signup_dialog.wait_for(state="hidden")
+    wait_for_authenticated_state(page)
+
     page.goto("/profile")
     page.get_by_role("heading", name="Guardrail Signup").wait_for()
 
