@@ -856,15 +856,21 @@ def _guest_limited_detail(trip: TripData) -> TripData:
     return limited
 
 
+def _normalize_destination_token(value: str) -> str:
+    return " ".join(value.replace("_", " ").replace("-", " ").lower().split())
+
+
 def _trip_matches_filters(trip: TripData, filters: TripListFilters) -> bool:
-    destination_filter = filters["destination"].strip().lower()
+    destination_filter = _normalize_destination_token(filters["destination"])
     if destination_filter:
-        searchable_destination = " ".join(
-            str(value or "").lower()
-            for value in (
-                trip.get("destination"),
-                trip.get("title"),
-                trip.get("summary"),
+        searchable_destination = _normalize_destination_token(
+            " ".join(
+                str(value or "")
+                for value in (
+                    trip.get("destination"),
+                    trip.get("title"),
+                    trip.get("summary"),
+                )
             )
         )
         if destination_filter not in searchable_destination:

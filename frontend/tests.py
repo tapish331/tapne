@@ -302,6 +302,26 @@ class FrontendSessionBEndpointsTests(TestCase):
         self.assertNotIn("Goa Beach Weekend", titles)
 
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_trip_list_destination_filter_normalizes_slug_separators(self) -> None:
+        now = timezone.now()
+        Trip.objects.create(
+            host=self.alice,
+            title="Coastal escape",
+            summary="Cliffs and lemons",
+            destination="Amalfi Coast",
+            starts_at=now + timezone.timedelta(days=5),
+            is_published=True,
+        )
+        for separator_form in ("amalfi_coast", "amalfi-coast", "amalfi coast"):
+            with self.subTest(form=separator_form):
+                response = self.client.get(
+                    f"/frontend-api/trips/?destination={separator_form}"
+                )
+                self.assertEqual(response.status_code, 200)
+                titles = {trip["title"] for trip in response.json()["trips"]}
+                self.assertIn("Coastal escape", titles)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_trip_list_sort_recent_orders_by_start_date_desc(self) -> None:
         now = timezone.now()
         Trip.objects.create(
