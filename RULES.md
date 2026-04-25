@@ -120,6 +120,11 @@ the end of the session. Lovable (not Claude) then performs the edits.
   `frontend_spa`, `frontend/urls`, `frontend/views`, `csrf`, `runtime
   config`, `cloud run`, `docker`, `settings.py`, `.env`, and any absolute
   path starting with `/`. If any match — rewrite until clean.
+- **Plain text only — pastable directly into Lovable.** The prompt is
+  meant to be copy-pasted verbatim. Emit it as raw text: no markdown
+  blockquotes (no leading `>`), no code fences, no bold/italic, no
+  headings, no link syntax. Keep the CONTEXT / PROBLEM / REQUIRED CHANGE
+  / DO NOT CHANGE structure and the numbered lists, but as plain text.
 - **No prompt = no problem.** If no true Scope-1 showstopper was found, end
   the session with the explicit line
   *"No Lovable prompt needed — all gaps resolved from Scopes 2–6."*
