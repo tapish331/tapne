@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 import base64
 import binascii
 import json
@@ -69,8 +69,19 @@ PUBLIC_CACHE_SECONDS: Final[int] = 3600
 IMMUTABLE_CACHE_SECONDS: Final[int] = 31536000
 BRAND_TOKENS_MARKER: Final[str] = "frontend-brand/tokens"
 BRAND_OVERRIDES_MARKER: Final[str] = "frontend-brand/overrides"
+BRAND_ICONS_MARKER: Final[str] = "frontend-brand/root-icons"
 FRONTEND_RUNTIME_INLINE_ATTR: Final[str] = "data-tapne-runtime"
 FRONTEND_RUNTIME_INLINE_VALUE: Final[str] = "inline-config"
+FRONTEND_BRAND_ROOT_ASSET_MAP: Final[dict[str, str]] = {
+    "favicon.ico": "favicon.ico",
+    "favicon-16x16.png": "favicon-16x16.png",
+    "favicon-32x32.png": "favicon-32x32.png",
+    "apple-touch-icon.png": "apple-touch-icon.png",
+    "android-chrome-192x192.png": "android-chrome-192x192.png",
+    "android-chrome-512x512.png": "android-chrome-512x512.png",
+    "manifest.webmanifest": "site.webmanifest",
+    "site.webmanifest": "site.webmanifest",
+}
 FRONTEND_MIME_TYPE_OVERRIDES: Final[dict[str, str]] = {
     ".css": "text/css",
     ".ico": "image/x-icon",
@@ -111,6 +122,10 @@ def _frontend_dist_dir() -> Path:
 
 def _frontend_index_path() -> Path:
     return _frontend_dist_dir() / "index.html"
+
+
+def _frontend_brand_static_dir() -> Path:
+    return Path(settings.BASE_DIR) / "static" / "frontend-brand"
 
 
 def _read_frontend_index_html() -> str:
@@ -262,7 +277,7 @@ def _enrich_trip_cards(rows: list[dict[str, object]]) -> list[dict[str, object]]
     return cards
 
 
-def _enrich_blog_cards(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+def _enrich_blog_cards(rows: Iterable[Mapping[str, object]]) -> list[dict[str, object]]:
     cards = [dict(row) for row in rows]
     identity_map = _identity_map_for_usernames(
         [str(card.get("author_username", "") or "").strip() for card in cards]
@@ -534,6 +549,8 @@ def _session_user_payload(request: HttpRequest) -> dict[str, object] | None:
     profile = ensure_profile(user)
     created_trips, joined_trips = profile_trip_sections_for_member(user)
     settings_payload = build_settings_payload_for_member(user)
+    profile_identifier = str(getattr(user, "username", "") or getattr(user, "pk", "") or "").strip()
+    profile_url = f"/users/{urllib.parse.quote(profile_identifier)}" if profile_identifier else "/profile/edit"
 
     return {
         "id": int(getattr(user, "pk", 0) or 0),
@@ -550,15 +567,17 @@ def _session_user_payload(request: HttpRequest) -> dict[str, object] | None:
         "created_trips": created_trips,
         "joined_trips": joined_trips,
         "settings": settings_payload["settings"],
-        "profile_url": "/profile",
-        "public_profile_url": f"/u/{getattr(user, 'username', '')}/",
+        "profile_url": profile_url,
+        "public_profile_url": profile_url,
     }
 
 
 def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
     request_user = getattr(request, "user", None)
+    profile_identifier = str(getattr(request_user, "username", "") or getattr(request_user, "pk", "") or "").strip()
+    profile_route = f"/users/{urllib.parse.quote(profile_identifier)}" if profile_identifier else "/profile/edit"
     dm_inbox_url = reverse("frontend:api-dm-inbox")
-    if request.path.rstrip("/") == "/inbox":
+    if request.path.rstrip("/") == "/messages":
         dm_username = str(request.GET.get("dm", "") or "").strip()
         if dm_username:
             dm_inbox_url = f"{dm_inbox_url}?{urllib.parse.urlencode({'dm': dm_username})}"
@@ -602,9 +621,9 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
         },
         "routes": {
             "home": "/",
-            "trips": "/trips",
-            "stories": "/stories",
-            "profile": "/profile",
+            "trips": "/search",
+            "stories": "/search?tab=stories",
+            "profile": profile_route,
             "profile_edit": "/profile/edit",
             "trip_new": "/trips/new",
             "story_new": "/stories/new",
@@ -651,8 +670,24 @@ def _frontend_shell_html(request: HttpRequest) -> str:
     html = _read_frontend_index_html()
     tokens_href = _static_asset_url("frontend-brand/tokens.css")
     overrides_href = _static_asset_url("frontend-brand/overrides.css")
+    favicon_href = "/favicon.ico"
+    favicon_32_href = "/favicon-32x32.png"
+    favicon_16_href = "/favicon-16x16.png"
+    apple_touch_icon_href = "/apple-touch-icon.png"
+    manifest_href = "/site.webmanifest"
     runtime_href = reverse("frontend:runtime-config-js")
     runtime_payload = _frontend_json_dumps(_runtime_config_payload(request))
+
+    icon_link_pattern = re.compile(
+        r'<link\b[^>]*\brel=["\'](?:shortcut icon|icon|apple-touch-icon|manifest)["\'][^>]*>\s*',
+        re.IGNORECASE,
+    )
+    theme_color_pattern = re.compile(
+        r'<meta\b[^>]*\bname=["\']theme-color["\'][^>]*>\s*',
+        re.IGNORECASE,
+    )
+    html = icon_link_pattern.sub("", html)
+    html = theme_color_pattern.sub("", html)
 
     head_parts: list[str] = []
     if 'name="tapne-frontend-shell"' not in html:
@@ -661,6 +696,18 @@ def _frontend_shell_html(request: HttpRequest) -> str:
         head_parts.append(f'<link rel="stylesheet" href="{tokens_href}">')
     if BRAND_OVERRIDES_MARKER not in html:
         head_parts.append(f'<link rel="stylesheet" href="{overrides_href}">')
+    if BRAND_ICONS_MARKER not in html:
+        head_parts.extend(
+            [
+                f'<meta name="{BRAND_ICONS_MARKER}" content="active">',
+                f'<link rel="icon" href="{favicon_href}" sizes="any">',
+                f'<link rel="icon" type="image/png" sizes="32x32" href="{favicon_32_href}">',
+                f'<link rel="icon" type="image/png" sizes="16x16" href="{favicon_16_href}">',
+                f'<link rel="apple-touch-icon" sizes="180x180" href="{apple_touch_icon_href}">',
+                f'<link rel="manifest" href="{manifest_href}">',
+                '<meta name="theme-color" content="#14b8a6">',
+            ]
+        )
     if head_parts:
         head_injection = "\n".join(head_parts) + "\n"
         if "</head>" in html:
@@ -733,6 +780,15 @@ def frontend_asset_view(_request: HttpRequest, asset_path: str) -> FileResponse:
 @require_GET
 def frontend_root_artifact_view(_request: HttpRequest, artifact_name: str) -> FileResponse:
     path = _safe_dist_path(artifact_name)
+    return _file_response(path, immutable=False)
+
+
+@require_GET
+def frontend_brand_root_asset_view(_request: HttpRequest, asset_name: str) -> FileResponse:
+    relative_path = FRONTEND_BRAND_ROOT_ASSET_MAP.get(asset_name)
+    if relative_path is None:
+        raise Http404("Frontend brand asset not found.")
+    path = _safe_dist_path(relative_path, base_dir=_frontend_brand_static_dir())
     return _file_response(path, immutable=False)
 
 
@@ -876,6 +932,13 @@ def home_api_view(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 def trip_list_api_view(request: HttpRequest) -> JsonResponse:
+    author_filter = str(request.GET.get("author", "") or "").strip().lower()
+    recipient_filter = str(request.GET.get("recipient", "") or "").strip().lower()
+    if author_filter == "me" or recipient_filter == "me":
+        # The current Lovable dashboard uses cfg.api.trip_reviews as the base
+        # for both trip review submission and dashboard review listing.
+        return reviews_list_api_view(request)
+
     payload = build_trip_list_payload_for_user(
         request.user,
         filters={
@@ -1138,6 +1201,8 @@ def blog_detail_api_view(request: HttpRequest, slug: str) -> JsonResponse:
         blog.cover_image_url = str(payload.get("cover_image_url", blog.cover_image_url) or "").strip()
         blog.location = _normalize_string(payload.get("location", blog.location))
         blog.tags = _normalize_string_list(payload.get("tags"), max_items=12, max_length=40)
+        if "status" in payload:
+            blog.is_published = _normalize_string(payload.get("status", "")).lower() != "draft"
         blog.save()
         return JsonResponse({"ok": True, "blog": blog.to_blog_data()})
 
@@ -1152,6 +1217,8 @@ def blog_detail_api_view(request: HttpRequest, slug: str) -> JsonResponse:
 
     payload = build_blog_detail_payload_for_user(request.user, slug=slug)
     source = str(payload.get("source", "") or "").strip()
+    if source == "synthetic-fallback":
+        return _json_error("Blog not found.", status=404)
     if _live_data_required() and source != "live-db":
         return _json_error("Blog not found.", status=404)
     blog_payload = dict(payload.get("blog", {}))
@@ -2530,7 +2597,7 @@ def blog_create_api_view(request: HttpRequest) -> JsonResponse:
         cover_image_url=str(payload.get("cover_image_url", "") or "").strip(),
         location=_normalize_string(payload.get("location", "")),
         tags=_normalize_string_list(payload.get("tags"), max_items=12, max_length=40),
-        is_published=True,
+        is_published=_normalize_string(payload.get("status", "")).lower() != "draft",
     )
     blog.save()
     return JsonResponse({"ok": True, "blog": blog.to_blog_data()}, status=201)

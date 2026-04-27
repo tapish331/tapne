@@ -22,6 +22,7 @@ import { Menu, X, Bell, Sun, Moon, Inbox, Bookmark, User, LogOut, MapPin as MapP
 import { useState, useEffect, useRef } from "react";
 import CreateTripModal from "@/components/CreateTripModal";
 import { apiGet } from "@/lib/api";
+import logoSrc from "../assets/logo.png";
 
 interface ActivityItem {
   id: string;
@@ -35,29 +36,45 @@ interface ActivityItem {
   preview: string;
 }
 
+function _normalizeLegacyPath(url: string): string {
+  if (!url) return "/";
+
+  const profileMatch = url.match(/^\/u\/([^/?#]+)\/?(.*)$/);
+  if (profileMatch) {
+    return `/users/${profileMatch[1]}${profileMatch[2] || ""}`;
+  }
+
+  if (url === "/search/") return "/search";
+  if (url.startsWith("/search/?")) return `/search?${url.slice("/search/?".length)}`;
+  return url;
+}
+
 function _notifNavUrl(item: ActivityItem): string {
+  const targetUrl = _normalizeLegacyPath(item.target_url || "/");
+  const actorUrl = _normalizeLegacyPath(item.actor_url || "/");
+
   // Route to the right page based on notification type
   if (item.group === "reviews") {
     // Someone reviewed your trip — link to the trip's reviews section
-    const url = item.target_url.replace(/\/$/, "");
+    const url = targetUrl.replace(/\/$/, "");
     return `${url}#reviews`;
   }
   if (item.group === "enrollment") {
     // Enrollment decision — link to the trip page
-    return item.target_url;
+    return targetUrl;
   }
   if (item.group === "bookmarks") {
     // Someone bookmarked your trip
-    return item.target_url;
+    return targetUrl;
   }
   if (item.group === "follows") {
     // Someone started following you — open their profile
-    return item.actor_url;
+    return actorUrl;
   }
   if (item.group === "comments" || item.group === "replies") {
-    return item.target_url;
+    return targetUrl;
   }
-  return item.target_url || "/";
+  return targetUrl;
 }
 
 function _timeAgo(iso: string): string {
@@ -127,6 +144,12 @@ const Navbar = () => {
     navigate("/");
   };
 
+  const ownProfilePath = user?.username
+    ? `/users/${user.username}`
+    : user?.id
+      ? `/users/${user.id}`
+      : "/profile/edit";
+
   const unreadCount = notifications.filter((n) => !seenIds.has(n.id)).length;
 
   const markAllSeen = () => {
@@ -176,17 +199,17 @@ const Navbar = () => {
     <>
       <nav className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <Link to="/" className="text-xl font-bold tracking-tight text-primary">
-            Tapne
+          <Link to="/" className="flex items-center">
+            <img src={logoSrc} alt="Tapne" className="h-9 w-auto rounded-sm" />
           </Link>
 
           {/* Desktop */}
           <div className="hidden items-center gap-1 md:flex">
             <Button variant="ghost" size="sm" asChild>
-              <Link to="/trips">Trips</Link>
+              <Link to="/search">Trips</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild>
-              <Link to="/experiences">Experiences</Link>
+              <Link to="/search?tab=stories">Stories</Link>
             </Button>
 
             <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="h-9 w-9">
@@ -229,17 +252,20 @@ const Navbar = () => {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => navigate("/profile")}>
+                  <DropdownMenuItem onClick={() => navigate(ownProfilePath)}>
                     <User className="mr-2 h-4 w-4" /> My Profile
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/my-trips")}>
+                  <DropdownMenuItem onClick={() => navigate("/dashboard/trips")}>
                     <MapPinIcon className="mr-2 h-4 w-4" /> My Trips
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/inbox")}>
+                  <DropdownMenuItem onClick={() => navigate("/messages")}>
                     <Inbox className="mr-2 h-4 w-4" /> Inbox
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/bookmarks")}>
                     <Bookmark className="mr-2 h-4 w-4" /> Bookmarks
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                    <User className="mr-2 h-4 w-4" /> Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>
@@ -289,24 +315,27 @@ const Navbar = () => {
         {mobileOpen && (
           <div className="flex flex-col gap-1 border-t bg-card px-4 pb-4 pt-2 md:hidden">
             <Button variant="ghost" className="justify-start" asChild onClick={() => setMobileOpen(false)}>
-              <Link to="/trips">Trips</Link>
+              <Link to="/search">Trips</Link>
             </Button>
             <Button variant="ghost" className="justify-start" asChild onClick={() => setMobileOpen(false)}>
-              <Link to="/experiences">Experiences</Link>
+              <Link to="/search?tab=stories">Stories</Link>
             </Button>
             {isAuthenticated ? (
               <>
-                <Button variant="ghost" className="justify-start" onClick={() => { navigate("/profile"); setMobileOpen(false); }}>
+                <Button variant="ghost" className="justify-start" onClick={() => { navigate(ownProfilePath); setMobileOpen(false); }}>
                   <User className="mr-2 h-4 w-4" /> Profile
                 </Button>
-                <Button variant="ghost" className="justify-start" onClick={() => { navigate("/my-trips"); setMobileOpen(false); }}>
+                <Button variant="ghost" className="justify-start" onClick={() => { navigate("/dashboard/trips"); setMobileOpen(false); }}>
                   <MapPinIcon className="mr-2 h-4 w-4" /> My Trips
                 </Button>
-                <Button variant="ghost" className="justify-start" onClick={() => { navigate("/inbox"); setMobileOpen(false); }}>
+                <Button variant="ghost" className="justify-start" onClick={() => { navigate("/messages"); setMobileOpen(false); }}>
                   <Inbox className="mr-2 h-4 w-4" /> Inbox
                 </Button>
                 <Button variant="ghost" className="justify-start" onClick={() => { navigate("/bookmarks"); setMobileOpen(false); }}>
                   <Bookmark className="mr-2 h-4 w-4" /> Bookmarks
+                </Button>
+                <Button variant="ghost" className="justify-start" onClick={() => { navigate("/settings"); setMobileOpen(false); }}>
+                  <User className="mr-2 h-4 w-4" /> Settings
                 </Button>
                 <Button variant="ghost" className="justify-start text-destructive" onClick={() => { handleLogout(); setMobileOpen(false); }}>
                   <LogOut className="mr-2 h-4 w-4" /> Log Out

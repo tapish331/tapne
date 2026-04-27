@@ -302,6 +302,34 @@ class FrontendSessionBEndpointsTests(TestCase):
         self.assertNotIn("Goa Beach Weekend", titles)
 
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_trip_list_review_filters_delegate_to_reviews_payload(self) -> None:
+        alice_trip = Trip.objects.create(
+            host=self.alice,
+            title="Alice's Trip",
+            summary="Summary",
+            destination="Goa",
+            starts_at=timezone.now() + timezone.timedelta(days=30),
+            is_published=True,
+        )
+        Review.objects.create(
+            author=self.bob,
+            target_type=Review.TARGET_TRIP,
+            target_key=str(alice_trip.pk),
+            target_label="Alice's Trip",
+            rating=5,
+            body="Loved it.",
+        )
+
+        self.client.login(username="bob", password=self.password)
+        response = self.client.get("/frontend-api/trips/?author=me")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(payload["reviews"]), 1)
+        self.assertEqual(payload["reviews"][0]["trip_title"], "Alice's Trip")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_profile_endpoints_include_authors_published_stories(self) -> None:
         Blog.objects.create(
             author=self.alice,

@@ -85,7 +85,7 @@ const Index = () => {
               <p className="mt-1 text-muted-foreground">Discover community trips created by travelers.</p>
             </div>
             <Button variant="ghost" asChild className="hidden sm:flex">
-              <Link to="/trips">View all <ArrowRight className="ml-1 h-4 w-4" /></Link>
+              <Link to="/search">View all <ArrowRight className="ml-1 h-4 w-4" /></Link>
             </Button>
           </div>
 
@@ -112,7 +112,7 @@ const Index = () => {
 
           <div className="mt-6 text-center sm:hidden">
             <Button variant="outline" asChild>
-              <Link to="/trips">View All Trips</Link>
+              <Link to="/search">View All Trips</Link>
             </Button>
           </div>
         </section>
@@ -128,7 +128,7 @@ const Index = () => {
                 {destinations.map((dest) => (
                   <Link
                     key={dest.name}
-                    to={`/trips?destination=${dest.name.toLowerCase().replace(/\s+/g, "-")}`}
+                    to={`/search?destination=${encodeURIComponent(dest.name)}&tab=trips`}
                     className="group w-[220px] shrink-0 sm:w-[260px]"
                   >
                     <Card className="overflow-hidden transition-shadow hover:shadow-lg">
@@ -172,7 +172,7 @@ const Index = () => {
                   <p className="mt-1 text-muted-foreground">Stories, tips, and experiences from fellow travelers.</p>
                 </div>
                 <Button variant="ghost" asChild className="hidden sm:flex">
-                  <Link to="/experiences">View all <ArrowRight className="ml-1 h-4 w-4" /></Link>
+                  <Link to="/search?tab=stories">View all <ArrowRight className="ml-1 h-4 w-4" /></Link>
                 </Button>
               </div>
 

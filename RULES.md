@@ -93,9 +93,14 @@ the end of the session. Lovable (not Claude) then performs the edits.
 - **Describe behaviour in the rendered browser, not implementation.** Talk
   about what the user sees, what they click, and what should happen next —
   not about hooks, contexts, providers, API calls, or architecture.
+- **Use browser-facing vocabulary.** In Lovable prompts, prefer terms like
+  `rendered app`, `browser app`, `page`, `screen`, `navigation`, `button`,
+  `link`, `modal`, and `destination`. Avoid implementation labels such as
+  `frontend`, `client`, `router`, `component`, `hook`, `context`,
+  `provider`, and `API layer` unless the distinction is truly unavoidable.
 - **Showstopper test — all three must be true to include an item:**
   1. The required behaviour exists (or should exist) in the rendered
-     frontend — not just in mock or dev-only code.
+     app in the browser — not just in mock or dev-only code.
   2. It cannot be served by any change in Scopes 2–6.
   3. Its absence causes a visible, user-facing failure on a production route.
 - **Mandatory structure** (single block, ≤ 300 words total even when

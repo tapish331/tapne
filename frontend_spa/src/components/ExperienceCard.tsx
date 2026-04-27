@@ -18,7 +18,7 @@ export default function ExperienceCard({ blog }: { blog: BlogData }) {
   const coverImage = blog.cover_image_url || EXPERIENCE_FALLBACK_IMAGE;
 
   return (
-    <Link to={`/experiences/${blog.slug}`} className="block h-full">
+    <Link to={`/stories/${blog.slug}`} className="block h-full">
       <Card className="group flex h-[360px] flex-col overflow-hidden transition-shadow hover:shadow-lg">
         <div className="relative aspect-[16/10] shrink-0 overflow-hidden bg-muted">
           <img

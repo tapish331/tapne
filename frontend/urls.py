@@ -72,7 +72,12 @@ urlpatterns = [
     path("frontend-api/auth/google/callback/", views.google_oauth_callback_view, name="api-google-oauth-callback"),
     re_path(r"^assets/(?P<asset_path>.+)$", views.frontend_asset_view, name="asset"),
     re_path(
-        r"^(?P<artifact_name>(?:favicon\.ico|placeholder\.svg|manifest\.webmanifest|site\.webmanifest))$",
+        r"^(?P<asset_name>(?:favicon\.ico|favicon-16x16\.png|favicon-32x32\.png|apple-touch-icon\.png|android-chrome-192x192\.png|android-chrome-512x512\.png|manifest\.webmanifest|site\.webmanifest))$",
+        views.frontend_brand_root_asset_view,
+        name="brand-root-asset",
+    ),
+    re_path(
+        r"^(?P<artifact_name>placeholder\.svg)$",
         views.frontend_root_artifact_view,
         name="root-artifact",
     ),
@@ -88,60 +93,25 @@ urlpatterns.extend(
     [
         # ── Home ──────────────────────────────────────────────────────────────
         path("", views.frontend_entrypoint_view, name="entrypoint-home"),
-
-            # ── Trips ─────────────────────────────────────────────────────────────
-            path("trips", views.frontend_entrypoint_view, name="entrypoint-trips"),
-            path("trips/", views.frontend_entrypoint_view),
-            path("trips/new", views.frontend_entrypoint_view, name="entrypoint-trip-new"),
-            path("trips/new/", views.frontend_entrypoint_view),
-            re_path(r"^trips/(?P<trip_id>\d+)/edit/?$", views.frontend_entrypoint_view, name="entrypoint-trip-edit"),
-            re_path(r"^trips/(?P<trip_id>\d+)/?$", views.frontend_entrypoint_view, name="entrypoint-trip-detail"),
-
-            # ── Stories ───────────────────────────────────────────────────────────
-            path("stories", views.frontend_entrypoint_view, name="entrypoint-stories"),
-            path("stories/", views.frontend_entrypoint_view),
-            path("stories/new", views.frontend_entrypoint_view, name="entrypoint-story-new"),
-            path("stories/new/", views.frontend_entrypoint_view),
-            re_path(
-                r"^stories/(?P<story_id>(?!new$)[-a-zA-Z0-9_]+)/edit/?$",
-                views.frontend_entrypoint_view,
-                name="entrypoint-story-edit",
-            ),
-            re_path(
-                r"^stories/(?P<story_id>(?!new$)[-a-zA-Z0-9_]+)/?$",
-                views.frontend_entrypoint_view,
-                name="entrypoint-story-detail",
-            ),
-
-            # ── Profile / Users ───────────────────────────────────────────────────
-            path("profile", views.frontend_entrypoint_view, name="entrypoint-profile"),
-            path("profile/", views.frontend_entrypoint_view),
-            path("profile/edit", views.frontend_entrypoint_view, name="entrypoint-profile-edit"),
-            path("profile/edit/", views.frontend_entrypoint_view),
-            re_path(r"^users/(?P<profile_id>[^/]+)/?$", views.frontend_entrypoint_view, name="entrypoint-users-detail"),
-
-            # ── Messaging & utility ───────────────────────────────────────────────
-            path("messages", views.frontend_entrypoint_view, name="entrypoint-messages"),
-            path("messages/", views.frontend_entrypoint_view),
-            path("bookmarks", views.frontend_entrypoint_view, name="entrypoint-bookmarks"),
-            path("bookmarks/", views.frontend_entrypoint_view),
-            path("search", views.frontend_entrypoint_view, name="entrypoint-search"),
-            path("search/", views.frontend_entrypoint_view),
-            path("notifications", views.frontend_entrypoint_view, name="entrypoint-notifications"),
-            path("notifications/", views.frontend_entrypoint_view),
-            path("settings", views.frontend_entrypoint_view, name="entrypoint-settings"),
-            path("settings/", views.frontend_entrypoint_view),
-
-            # ── Dashboard ─────────────────────────────────────────────────────────
-            path("dashboard", views.frontend_entrypoint_view, name="entrypoint-dashboard"),
-            path("dashboard/", views.frontend_entrypoint_view),
-            path("dashboard/trips", views.frontend_entrypoint_view, name="entrypoint-dashboard-trips"),
-            path("dashboard/trips/", views.frontend_entrypoint_view),
-            path("dashboard/stories", views.frontend_entrypoint_view, name="entrypoint-dashboard-stories"),
-            path("dashboard/stories/", views.frontend_entrypoint_view),
-            path("dashboard/reviews", views.frontend_entrypoint_view, name="entrypoint-dashboard-reviews"),
-            path("dashboard/reviews/", views.frontend_entrypoint_view),
-            path("dashboard/subscriptions", views.frontend_entrypoint_view, name="entrypoint-dashboard-subscriptions"),
-            path("dashboard/subscriptions/", views.frontend_entrypoint_view),
-        ]
-    )
+        # ── Canonical SPA routes only (RULES.md §6) ─────────────────────────
+        path("search", views.frontend_entrypoint_view, name="entrypoint-search"),
+        path("trips/new", views.frontend_entrypoint_view, name="entrypoint-trip-new"),
+        path("trips/<int:trip_id>/edit", views.frontend_entrypoint_view, name="entrypoint-trip-edit"),
+        path("trips/<int:trip_id>", views.frontend_entrypoint_view, name="entrypoint-trip-detail"),
+        path("stories/new", views.frontend_entrypoint_view, name="entrypoint-story-new"),
+        path("stories/<slug:story_id>/edit", views.frontend_entrypoint_view, name="entrypoint-story-edit"),
+        path("stories/<slug:story_id>", views.frontend_entrypoint_view, name="entrypoint-story-detail"),
+        path("profile/edit", views.frontend_entrypoint_view, name="entrypoint-profile-edit"),
+        re_path(r"^users/(?P<profile_id>[^/]+)$", views.frontend_entrypoint_view, name="entrypoint-users-detail"),
+        path("bookmarks", views.frontend_entrypoint_view, name="entrypoint-bookmarks"),
+        path("messages", views.frontend_entrypoint_view, name="entrypoint-messages"),
+        path("notifications", views.frontend_entrypoint_view, name="entrypoint-notifications"),
+        path("settings", views.frontend_entrypoint_view, name="entrypoint-settings"),
+        path("dashboard", views.frontend_entrypoint_view, name="entrypoint-dashboard"),
+        path("dashboard/trips", views.frontend_entrypoint_view, name="entrypoint-dashboard-trips"),
+        path("dashboard/stories", views.frontend_entrypoint_view, name="entrypoint-dashboard-stories"),
+        path("dashboard/reviews", views.frontend_entrypoint_view, name="entrypoint-dashboard-reviews"),
+        path("dashboard/subscriptions", views.frontend_entrypoint_view, name="entrypoint-dashboard-subscriptions"),
+        path("404", views.frontend_entrypoint_view, name="entrypoint-not-found"),
+    ]
+)

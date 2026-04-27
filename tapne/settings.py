@@ -168,6 +168,11 @@ STORAGES: dict[str, dict[str, Any]] = {
     },
 }
 
+# In local DEBUG/test runs WhiteNoise should resolve project static files via
+# Django's finders so shared brand CSS is served directly without collectstatic.
+WHITENOISE_AUTOREFRESH = DEBUG
+WHITENOISE_USE_FINDERS = DEBUG
+
 storage_backend = os.getenv("STORAGE_BACKEND", "filesystem").strip().lower()
 if storage_backend == "minio":
     minio_bucket_name = os.getenv("AWS_STORAGE_BUCKET_NAME", os.getenv("MINIO_BUCKET", "tapne-local"))

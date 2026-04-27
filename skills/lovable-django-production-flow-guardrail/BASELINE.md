@@ -1,16 +1,25 @@
-# Baseline Reference
+# Baseline Reference Index
 
-This file preserves the original reference material while moving it out of the
-main operator runbook.
+This file is reference only. It is not a source of truth for routes, flow
+coverage, prompt wording, verification policy, or reporting.
 
-These tables are reference only. They are not authoritative. Always regenerate
-the live inventory from current source first, then diff against this file.
+Use [RULES.md](../../RULES.md) for all repo rules. Use
+[SKILL.md](./SKILL.md) for the workflow that regenerates the live flow matrix
+from source and translates it into persistent guardrail coverage decisions on
+every run.
 
-## Key File Map
+## Core Rule Source
+
+| Concern | Canonical source |
+|---|---|
+| Pre-flight, `lovable/` restrictions, prompt contract, scope rules, verification, route canon, reporting | [RULES.md](../../RULES.md) |
+
+## Stable File Map
 
 | Purpose | Path |
 |---|---|
 | Parent cutover contract | `skills/lovable-django-production-cutover/SKILL.md` |
+| Guardrail runbook | `skills/lovable-django-production-flow-guardrail/SKILL.md` |
 | Lovable route source | `lovable/src/App.tsx` |
 | Production route source | `frontend_spa/src/App.tsx` |
 | Runtime config + API types | `lovable/src/types/api.ts` |
@@ -21,102 +30,51 @@ the live inventory from current source first, then diff against this file.
 | Django runtime config + JSON views | `frontend/views.py` |
 | Django route map | `frontend/urls.py` |
 | Production build script | `infra/build-lovable-production-frontend.ps1` |
-| Existing browser-workflow reference | `.github/workflows/visual-audit-pr-guardrail.yml` |
-| Existing storage-state script reference | `skills/webpage-visual-perfection-audit/scripts/create_storage_state.py` |
-| Seed commands | `accounts/management/commands/bootstrap_accounts.py` and sibling `bootstrap_*` commands |
-| Test output root | `artifacts/` |
+| Existing browser workflow reference | `.github/workflows/visual-audit-pr-guardrail.yml` |
+| Current committed guardrail coverage | `tests/e2e/` |
+| Storage-state helper reference | `skills/webpage-visual-perfection-audit/scripts/create_storage_state.py` |
+| Bootstrap command directory | `accounts/management/commands/` and sibling `bootstrap_*` commands |
+| Browser artifact root | `artifacts/` |
 
-## Current Route Baseline (April 2026 — post-SPA-rebuild)
+## Live-Inventory Scan Targets
 
-| Route | Lovable component | Notes |
+Run these after the repo pre-flight described in
+[RULES.md](../../RULES.md):
+
+```powershell
+rg -n 'path="|<Route|createBrowserRouter|children:' lovable/src/App.tsx frontend_spa/src/App.tsx
+rg -n 'apiGet|apiPost|apiPatch|apiDelete|cfg\.api\.|cfg\.auth\.|requireAuth\(|navigate\(' lovable/src/pages lovable/src/contexts lovable/src/components
+rg -n 'handleSubmit|onSubmit|DropdownMenuItem|Dialog|Modal|toast\.' lovable/src/pages lovable/src/components
+rg -n 'useNavigate|useLocation|useParams' lovable/src/contexts lovable/src/pages lovable/src/components
+rg -n '@pytest.mark|def test_' tests/e2e -g '*.py'
+```
+
+Run the exact `cfg.api.base` audit from [RULES.md](../../RULES.md) Section 5 in
+addition to the scans above.
+
+Compare the extracted routes and flows against the currently committed harness
+coverage in `tests/e2e/`, not against a dated snapshot in this folder.
+
+## Stable Hotspot Index
+
+| Area | Primary files | Why it matters |
 |---|---|---|
-| `/` | `Index` | |
-| `/trips` | `BrowseTrips` | |
-| `/trips/new` | `CreateTrip` | replaces retired `/create-trip` |
-| `/trips/:tripId/edit` | `CreateTrip` | |
-| `/trips/:tripId` | `TripDetail` | host sees ApplicationManager here |
-| `/stories` | `Stories` | replaces retired `/experiences` and `/blogs` |
-| `/stories/new` | `StoryCreate` | replaces retired `/experiences/create` |
-| `/stories/:storyId/edit` | `StoryEdit` | replaces retired `/experiences/edit?slug=` |
-| `/stories/:storyId` | `StoryDetail` | replaces retired `/experiences/:slug` |
-| `/profile` | `Profile` | own profile |
-| `/profile/edit` | `ProfileEdit` | |
-| `/users/:profileId` | `Profile` | replaces retired `/profile/:userId` |
-| `/messages` | `Messages` | replaces retired `/inbox`; h2 still reads "Inbox" |
-| `/bookmarks` | `Bookmarks` | |
-| `/search` | `Search` | |
-| `/notifications` | `Notifications` | |
-| `/settings` | `Settings` | |
-| `/dashboard` | `Dashboard` (nested) | replaces retired `/my-trips` |
-| `/dashboard/trips` | `DashboardTrips` | Joined + Managed tabs |
-| `/dashboard/stories` | `DashboardStories` | |
-| `/dashboard/reviews` | `DashboardReviews` | |
-| `/dashboard/subscriptions` | `DashboardSubscriptions` | |
-| `*` | `UnderConstructionPage` | production catch-all |
+| Route parity | `lovable/src/App.tsx`, `frontend_spa/src/App.tsx`, `frontend/urls.py`, `tapne/urls.py` | Planned-vs-deployed route truth comes from live source plus `RULES.md` Section 6 |
+| Flow extraction | `lovable/src/pages/**`, `lovable/src/contexts/**`, `lovable/src/components/**` | Entry actions, mutations, and visible success signals live here |
+| Runtime-config and API coupling | `lovable/src/types/api.ts`, `lovable/src/lib/api.ts`, `frontend/views.py`, `frontend/urls.py` | Named API keys and direct interpolations can drift independently |
+| Messaging and host-management flows | `lovable/src/types/messaging.ts`, trip/detail and message surfaces, Django payload builders/views | These flows often span multiple actors and are easy to under-cover |
+| Auth, CSRF, and draft state | `lovable/src/contexts/AuthContext.tsx`, `lovable/src/contexts/DraftContext.tsx`, `lovable/src/lib/api.ts` | Modal login, live auth state, and persisted draft behavior need real-browser proof |
+| Current harness inventory | `tests/e2e/`, `.github/workflows/visual-audit-pr-guardrail.yml` | Use existing helpers and workflow shape before adding new surface area |
+| Seed data and storage state | `bootstrap_*` commands, storage-state helper script, `artifacts/auth/` | Stable reruns depend on deterministic data and per-user session material |
+| Build artifact and Django serving | `infra/build-lovable-production-frontend.ps1`, Django entrypoint/runtime-config views | The guardrail only counts against Django serving the built production SPA |
 
-### Retired routes (do not add back to frontend/urls.py)
+## What This File Must Not Become
 
-`/create-trip`, `/my-trips`, `/manage-trip/:id`, `/inbox`, `/experiences/*`,
-`/blogs`, `/travel-hosts`, `/login` (modal only), `/signup` (modal only),
-`/profile/:userId` (replaced by `/users/:profileId`)
+Do not add:
 
-## Current Minimum Flow Baseline (April 2026)
-
-| Flow id | Route | Primary action | Coverage tier |
-|---|---|---|---|
-| `guest_home_shell` | `/` | initial render | `automated_smoke` |
-| `guest_trip_catalog` | `/trips` | list render with live data | `automated_smoke` |
-| `guest_trip_detail` | `/trips/:id` | detail render with live data | `automated_smoke` |
-| `auth_navbar_modal_login_then_post` | `/` → modal | login via navbar modal, POST DM | `automated_smoke` |
-| `draft_create_publish` | `/trips/new` → `/dashboard/trips` | create, save, publish trip | `automated_smoke` |
-| `modal_login_booking_post` | `/trips/:id` → modal | modal login then book | `automated_full` |
-| `signup_modal` | `/` → modal signup | create isolated account | `automated_full` |
-| `story_create_edit` | `/stories/new` → `/stories/:slug/edit` | create and edit story | `automated_full` |
-| `story_delete` | `/stories/:slug` | delete story button | `automated_full` |
-| `inbox_send_message` | `/messages` | send DM | `automated_smoke` (via login test) |
-| `trip_detail_dm_start` | `/trips/:id` → `/messages?thread=` | Ask a Question → thread | `automated_full` |
-| `manage_trip_application_approve` | `/trips/:id` ApplicationManager | approve pending application | `automated_full` |
-| `manage_trip_booking_status` | `/trips/:id` Host Controls | Close / Reopen Bookings | `automated_full` |
-| `manage_trip_cancel` | `/trips/:id` Host Controls | Cancel Trip dialog | `automated_full` |
-| `manage_trip_remove_participant` | `/trips/:id` ApplicationManager | Remove Participant confirm | `automated_full` |
-| `manage_trip_message_all` | `/trips/:id` ApplicationManager | Message All dialog | `automated_full` |
-| `bookmark_toggle` | `/trips/:id` | save / unsave trip | `automated_full` |
-| `profile_follow_toggle` | `/users/:profileId` | follow / unfollow | `automated_full` |
-| `trip_review_submit` | `/trips/:id` review modal | submit review | `automated_full` |
-
-## Known cfg.api.base Interpolations (RULES.md §3 invariant)
-
-These bypass named api keys.  `api.base = "/frontend-api"` so they resolve
-correctly today, but any rename of the base path would silently break them.
-Fix path is a Lovable prompt (Scope 1).
-
-| File | Usage |
-|---|---|
-| `lovable/src/pages/Profile.tsx:118` | `${cfg.api.base}/profile/${profileId}/` |
-| `lovable/src/pages/Profile.tsx:340` | `${cfg.api.base}/profile/${p.username}/follow/` |
-| `lovable/src/components/ApplicationManager.tsx:57` | `${cfg.api.base}/hosting-requests/${reqId}/decision/` |
-| `lovable/src/components/ApplicationManager.tsx:70` | `${cfg.api.base}/trips/${tripId}/participants/${uid}/remove/` |
-| `lovable/src/components/ApplicationManager.tsx:87` | `${cfg.api.base}/trips/${tripId}/broadcast/` |
-| `lovable/src/pages/TripDetail.tsx:620` | `${cfg.api.base}/trips/${trip.id}/booking-status/` |
-| `lovable/src/pages/TripDetail.tsx:738` | `${cfg.api.base}/trips/${trip.id}/cancel/` |
-| `lovable/src/pages/dashboard/DashboardSubscriptions.tsx:50-51` | `${cfg.api.base}/profile/me/followers/` and `.../following/` |
-
-## Baseline Data Sources For Seeded Flows
-
-| Flow family | Bootstrap command(s) |
-|---|---|
-| auth/session | `bootstrap_accounts` |
-| home/trips | `bootstrap_feed`, `bootstrap_trips` |
-| blogs/stories | `bootstrap_blogs` |
-| bookmarks/follows/profile | `bootstrap_social` |
-| host inbox/manage trip | `bootstrap_enrollment` |
-| DMs/inbox | `bootstrap_interactions` |
-| reviews/activity | `bootstrap_reviews`, `bootstrap_activity` |
-| settings/runtime/media | `bootstrap_settings`, `bootstrap_runtime`, `bootstrap_media` |
-
-## Baseline CI Shape
-
-| Lane | Command | Purpose |
-|---|---|---|
-| PR smoke | `pytest -m smoke tests/e2e` | fast guardrail for core user journeys |
-| Manual/full | `pytest tests/e2e` | broader regression sweep |
+- dated route snapshots
+- dated flow snapshots
+- exact `cfg.api.base` line-number inventories
+- copied verification policy from `RULES.md`
+- Lovable prompt templates or wording
+- scope decisions derived from stale history instead of current source

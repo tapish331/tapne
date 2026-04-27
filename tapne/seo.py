@@ -17,8 +17,6 @@ DEFAULT_META_DESCRIPTION = "tapne: host trips, write blogs, and grow audiences."
 # dynamically from the database in `_collect_sitemap_entries`.
 SITEMAP_STATIC_PATHS: tuple[str, ...] = (
     "/",
-    "/trips",
-    "/stories",
     "/search",
 )
 

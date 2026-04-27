@@ -1,111 +1,77 @@
 # Deploy
 
-This file preserves the original deployment intent while moving it out of the
-main operator runbook.
+This file covers repo-specific Scope 4 mechanics only. It is not the source of
+deployment policy.
 
-Use this file only after the cutover itself is passing:
+Use [RULES.md](../../RULES.md) for:
 
-- `git -C lovable pull --ff-only` succeeded
-- `git -C lovable status` is clean
-- the production build passes
-- live shell verification passes
-- real browser verification passes
+- scope classification: Section 4
+- deployment invariants and verification requirements: Section 5
+- reporting and close-out: Section 7
 
-## Goal
+Use this file only after the non-deployment cutover work is already green under
+those rules.
 
-Update the Cloud Run workflow only where needed, then deploy.
+## 1. Confirm the workflow builds a fresh SPA artifact first
 
-## 1. Confirm The Workflow Builds A Fresh Lovable Artifact
+Inspect:
 
-`setup-faithful-local.ps1` builds the Docker image but does not guarantee a fresh
-Lovable production artifact unless `run-cloud-run-workflow.ps1` invokes
-`build-lovable-production-frontend.ps1` first.
+- [infra/run-cloud-run-workflow.ps1](../../infra/run-cloud-run-workflow.ps1)
+- [infra/build-lovable-production-frontend.ps1](../../infra/build-lovable-production-frontend.ps1)
 
-Check whether the workflow already builds the artifact before image build.
+The repo-specific requirement is that `run-cloud-run-workflow.ps1` invokes the
+Lovable production build before any Docker image build step.
 
-If the pre-step is missing, modify `run-cloud-run-workflow.ps1` like this:
-
-1. Add:
+If the pre-step is missing, wire it in using the existing workflow style:
 
 ```powershell
 $buildScript = Join-Path $scriptDirectory "build-lovable-production-frontend.ps1"
-```
-
-2. Add:
-
-```powershell
 $buildArgs = @("-RepoRoot", $repoRoot)
 if ($isVerbose) { $buildArgs += "-Verbose" }
-```
-
-3. Insert the first workflow step:
-
-```powershell
 Invoke-ScriptStep -StepName "1/6 build-lovable-production-frontend" -PowerShellExe $powerShellExe -ScriptPath $buildScript -Arguments $buildArgs
 ```
 
-4. Renumber the remaining workflow steps accordingly.
+Then renumber later steps to match the workflow.
 
-## 2. Fix SPA-Era Smoke Paths If Needed
+## 2. Confirm SPA-era smoke path overrides exist
 
-`deploy-cloud-run.ps1` old template defaults:
+Inspect the deploy argument assembly in:
 
-- `-SmokeCssPath /static/css/tapne.css`
-- `-SmokeJsPath /static/js/tapne-ui.js`
+- [infra/run-cloud-run-workflow.ps1](../../infra/run-cloud-run-workflow.ps1)
+- [infra/deploy-cloud-run.ps1](../../infra/deploy-cloud-run.ps1)
 
-These do not fit the Lovable SPA build.
-
-Check whether `$deployArgs` already overrides them with valid SPA-era paths.
-
-If missing, add:
+This repo's production-SPA workflow expects smoke-path overrides for the shell
+route and a backend-owned route. If they are missing from the workflow args, add:
 
 ```powershell
 "-SmokeCssPath", "/",
 "-SmokeJsPath", "/sitemap.xml",
 ```
 
-Why:
+## 3. Check env wiring in the existing workflow style
 
-- `/` proves the SPA shell is served
-- `/sitemap.xml` proves backend-owned routes are still reachable
+If the cutover introduced a new deploy-time value, inspect the env-loading logic
+in `run-cloud-run-workflow.ps1` and follow the existing `Get-DotEnvValue`
+pattern. Use [RULES.md](../../RULES.md) Section 5 for which secrets/settings
+must be present; this file does not redefine that list.
 
-## 3. Check Required Secrets And Env Wiring
+## 4. Execute the workflow
 
-If the cutover introduced new settings or secrets, make sure the workflow passes
-them through to the deployed service.
-
-Always verify these existing values:
-
-| Django setting | Secret Manager name | `.env` key | Required for |
-|---|---|---|---|
-| `GOOGLE_CLIENT_ID` | `tapne-google-client-id` | `GOOGLE_CLIENT_ID` | Google OAuth login button |
-| `GOOGLE_CLIENT_SECRET` | `tapne-google-client-secret` | `GOOGLE_CLIENT_SECRET` | Google OAuth callback |
-| `BASE_URL` | env-derived | derived from `CANONICAL_HOST` | OAuth redirect URI |
-
-If a new value must flow from `.env` through the workflow, follow the existing
-`Get-DotEnvValue` pattern in `run-cloud-run-workflow.ps1`.
-
-## 4. Execute The Workflow
-
-Once the workflow is correct and the cutover gates are already green, run:
+When the cutover and deployment gates from [RULES.md](../../RULES.md) are
+already satisfied, run:
 
 ```powershell
 pwsh -File infra/run-cloud-run-workflow.ps1 -Verbose
 ```
 
-Report:
+Capture:
 
 - exit code
 - deployed service URL
-- which deployment sub-steps required changes
+- which workflow files changed, if any
 
-## Deployment Stop Rules
+## 5. Close out through the repo contract
 
-Do not deploy if any of these are still failing:
-
-- `lovable/` is not clean after pull
-- the build dirties `lovable/`
-- mock logic leaked into the production bundle
-- live shell checks fail
-- browser checks fail
-- a known user-visible failure still needs a Lovable prompt
+- Report deployment work using [RULES.md](../../RULES.md) Section 7.
+- Run the `lovable/` exit gate from [RULES.md](../../RULES.md) Section 2 before
+  treating the session as complete.

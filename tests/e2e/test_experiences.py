@@ -28,8 +28,8 @@ def test_create_and_edit_story(session_factory: SessionFactory) -> None:
     location = "Guardrail Valley"
 
     # ── Create ────────────────────────────────────────────────────────────────
-    page.goto("/stories")
-    page.get_by_role("heading", name="Stories").wait_for()
+    page.goto("/search?tab=stories")
+    page.get_by_role("heading", name="Search").wait_for()
     page.get_by_role("button", name="Write").click()
 
     page.wait_for_url(re.compile(r".*/stories/new/?$"))
@@ -108,9 +108,9 @@ def test_story_delete_removes_story(session_factory: SessionFactory) -> None:
         page.get_by_role("button", name="Delete").click()
     assert delete_resp.value.ok, f"Story delete failed: HTTP {delete_resp.value.status}"
 
-    # Successful delete navigates back to /stories.
-    page.wait_for_url(re.compile(r".*/stories/?$"))
-    page.get_by_role("heading", name="Stories").wait_for()
+    # Successful delete navigates back to the canonical story-search view.
+    page.wait_for_url(re.compile(r".*/search\?tab=stories$"))
+    page.get_by_role("heading", name="Search").wait_for()
 
     # Verify the story is gone — the detail page should render "Story not found".
     page.goto(f"/stories/{slug}")

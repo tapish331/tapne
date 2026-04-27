@@ -40,7 +40,7 @@ class LoginForm(AuthenticationForm):
 
 
 class ProfileEditForm(forms.ModelForm):
-    email = forms.EmailField(required=True, max_length=254)
+    email = forms.EmailField(required=False, max_length=254)
     first_name = forms.CharField(max_length=150, required=False)
     last_name = forms.CharField(max_length=150, required=False)
 
@@ -58,7 +58,10 @@ class ProfileEditForm(forms.ModelForm):
         self.fields["last_name"].initial = self.user.last_name
 
     def clean_email(self) -> str:
-        submitted_email = self.cleaned_data["email"].strip()
+        current_email = str(getattr(self.user, "email", "") or "").strip()
+        submitted_email = str(self.cleaned_data.get("email", "") or "").strip()
+        if not submitted_email or submitted_email.casefold() == current_email.casefold():
+            return current_email.lower()
         try:
             normalized = validate_email(submitted_email, check_deliverability=False).normalized
         except EmailNotValidError as exc:

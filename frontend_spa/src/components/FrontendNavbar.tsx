@@ -24,6 +24,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { apiGet, apiUrl } from "@frontend/lib/api";
 import { useAuth } from "@frontend/context/AuthContext";
+import logoSrc from "../assets/logo.png";
 
 type ActivityItem = {
   id: string;
@@ -79,8 +80,8 @@ export default function FrontendNavbar() {
   return (
     <nav className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-        <Link to="/" className="text-xl font-bold tracking-tight text-primary">
-          Tapne
+        <Link to="/" className="flex items-center">
+          <img src={logoSrc} alt="Tapne" className="h-9 w-auto rounded-sm" />
         </Link>
 
         <div className="hidden items-center gap-1 md:flex">

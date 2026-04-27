@@ -32,7 +32,7 @@ interface AuthContextType {
   login: (identifier: string, password: string) => Promise<boolean>;
   signup: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  updateProfile: (updates: Partial<User>) => void;
+  updateProfile: (updates: Partial<User>) => Promise<any>;
   lastAuthError: string;
   requireAuth: (onSuccess?: () => void) => void;
   loginModalOpen: boolean;
@@ -46,6 +46,14 @@ function _refreshCsrf(token: string) {
   if (token && window.TAPNE_RUNTIME_CONFIG?.csrf) {
     (window.TAPNE_RUNTIME_CONFIG as any).csrf.token = token;
   }
+}
+
+function _clearRuntimeSessionSnapshot() {
+  if (!window.TAPNE_RUNTIME_CONFIG?.session) {
+    return;
+  }
+  (window.TAPNE_RUNTIME_CONFIG as any).session.authenticated = false;
+  (window.TAPNE_RUNTIME_CONFIG as any).session.user = null;
 }
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
@@ -127,27 +135,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const logout = useCallback(async () => {
+    // Clear local auth state before the network round trip so post-logout
+    // redirects do not briefly mount authenticated-only fetches.
+    store.logout();
+    _clearRuntimeSessionSnapshot();
     try {
       const cfg = window.TAPNE_RUNTIME_CONFIG;
       await apiPost(cfg.api.logout, {});
     } catch {}
-    store.logout();
   }, []);
 
   const updateProfile = useCallback(async (updates: Partial<User>) => {
     try {
       const cfg = window.TAPNE_RUNTIME_CONFIG;
-      const payload: Record<string, string> = {};
+      const payload: Record<string, unknown> = {};
       if (updates.name !== undefined) payload.display_name = updates.name;
       if (updates.bio !== undefined) payload.bio = updates.bio;
       if (updates.location !== undefined) payload.location = updates.location;
       if (updates.website !== undefined) payload.website = updates.website;
-      const data = await apiPatch<{ profile: any }>(cfg.api.profile_me, payload);
+      if (updates.avatar !== undefined) payload.avatar_url = updates.avatar;
+      if (updates.travel_tags !== undefined) payload.travel_tags = updates.travel_tags;
+      const data = await apiPatch<{ profile?: any; member_profile?: any }>(cfg.api.profile_me, payload);
+      const profile = data.profile || data.member_profile || {};
       store.updateUser({
-        ...updates,
-        name: data.profile?.display_name || updates.name || store.user?.name,
+        name: profile.display_name ?? updates.name ?? store.user?.name,
+        bio: profile.bio ?? updates.bio ?? store.user?.bio,
+        location: profile.location ?? updates.location ?? store.user?.location,
+        website: profile.website ?? updates.website ?? store.user?.website,
+        avatar: profile.avatar_url ?? updates.avatar ?? store.user?.avatar,
+        travel_tags: profile.travel_tags ?? updates.travel_tags ?? store.user?.travel_tags,
       });
-    } catch {}
+      return profile;
+    } catch (err: any) {
+      setLastAuthError(err?.message || "Could not update profile");
+      return null;
+    }
   }, []);
 
   const requireAuth = useCallback(

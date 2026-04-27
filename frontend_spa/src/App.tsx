@@ -9,13 +9,11 @@ import { DraftProvider } from "@/contexts/DraftContext";
 import LoginModal from "@/components/LoginModal";
 import ScrollToTop from "@/components/ScrollToTop";
 
-// All user-facing pages come from the Lovable source (@/ = lovable/src/).
-// Never import page components from @frontend/pages except UnderConstructionPage.
+// All user-facing pages come from the Lovable source (@/ = lovable/src/),
+// with explicit production overrides wired through vite.production.config.ts.
 import Index from "@/pages/Index";
-import BrowseTrips from "@/pages/BrowseTrips";
 import TripDetail from "@/pages/TripDetail";
 import CreateTrip from "@/pages/CreateTrip";
-import Stories from "@/pages/Stories";
 import StoryDetail from "@/pages/StoryDetail";
 import StoryCreate from "@/pages/StoryCreate";
 import StoryEdit from "@/pages/StoryEdit";
@@ -31,7 +29,7 @@ import DashboardTrips from "@/pages/dashboard/DashboardTrips";
 import DashboardStories from "@/pages/dashboard/DashboardStories";
 import DashboardReviews from "@/pages/dashboard/DashboardReviews";
 import DashboardSubscriptions from "@/pages/dashboard/DashboardSubscriptions";
-import UnderConstructionPage from "@frontend/pages/UnderConstructionPage";
+import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
@@ -76,39 +74,35 @@ const RootLayout = () => (
   </DraftProvider>
 );
 
-// Route list mirrors lovable/src/App.tsx exactly.
-// Permitted deviations from Lovable:
-//   1. * catch-all → UnderConstructionPage (not NotFound)
-//   2. /trips/:id and /trips/:id/edit use `:id` (not `:tripId`) so the
-//      frontend_spa TripDetail override's `const { id } = useParams()` resolves
-//      correctly. The URL shape is identical — only the param name differs.
+// Route list mirrors the canonical route map in RULES.md §6. The only
+// intentional deviation from lovable/src/App.tsx is the trip param name:
+// `/trips/:id` keeps the active TripDetail override aligned with its
+// `const { id } = useParams()` implementation.
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
       { path: "/", element: <Index /> },
 
-      // Trips
-      { path: "/trips", element: <BrowseTrips /> },
+      // Search and trips
+      { path: "/search", element: <Search /> },
       { path: "/trips/new", element: <CreateTrip /> },
       { path: "/trips/:id/edit", element: <CreateTrip /> },
       { path: "/trips/:id", element: <TripDetail /> },
 
       // Stories
-      { path: "/stories", element: <Stories /> },
       { path: "/stories/new", element: <StoryCreate /> },
       { path: "/stories/:storyId/edit", element: <StoryEdit /> },
       { path: "/stories/:storyId", element: <StoryDetail /> },
 
       // Profile / Users
-      { path: "/profile", element: <Profile /> },
       { path: "/profile/edit", element: <ProfileEdit /> },
       { path: "/users/:profileId", element: <Profile /> },
 
       // Messaging & utility
       { path: "/messages", element: <Messages /> },
       { path: "/bookmarks", element: <Bookmarks /> },
-      { path: "/search", element: <Search /> },
+      { path: "/404", element: <NotFound /> },
       { path: "/notifications", element: <Notifications /> },
       { path: "/settings", element: <Settings /> },
 
@@ -125,7 +119,7 @@ const router = createBrowserRouter([
         ],
       },
 
-      { path: "*", element: <UnderConstructionPage /> },
+      { path: "*", element: <NotFound /> },
     ],
   },
 ]);

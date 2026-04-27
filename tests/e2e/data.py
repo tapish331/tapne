@@ -53,7 +53,7 @@ def ensure_member(
     from accounts.models import ensure_profile
 
     UserModel = get_user_model()
-    email = f"{username}@tapne.local"
+    email = f"{username}@example.com"
     user, _created = UserModel.objects.get_or_create(  # type: ignore[call-arg]
         username=username,
         defaults={

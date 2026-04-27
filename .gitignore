@@ -1,4 +1,5 @@
-.env
+.env*
+!.env.example
 .tapne-placeholder-generated
 __pycache__/
 *.py[cod]
@@ -13,6 +14,7 @@ artifacts/
 test_settings.sqlite3
 output/
 tmp/
+*.storage-state.json
 
 # macOS filesystem metadata
 .DS_Store

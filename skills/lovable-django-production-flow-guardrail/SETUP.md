@@ -1,10 +1,9 @@
 # Build, Seed, And Auth Setup
 
-This file preserves the original Step 4 and Step 4b requirements while moving
-them out of the main operator runbook.
-
-Use this file after the flow matrix is classified and before implementing or
-verifying the persistent harness.
+Use [RULES.md](../../RULES.md) for repo-wide policy: pre-flight,
+`lovable/` restrictions, scope decisions, verification gates, and close-out.
+Use this file only for guardrail-specific build, seed, and auth/session
+mechanics.
 
 ## 1. Build The Production Artifact First
 
@@ -50,48 +49,52 @@ python manage.py bootstrap_runtime --verbose --create-missing-members
 If a needed flow still lacks seed data after the canonical chain:
 
 1. first extend or correct the relevant Django bootstrap command
-2. only if that is inappropriate, add a narrowly scoped test seed helper outside `lovable/`
+2. only if that is inappropriate, add a narrowly scoped test seed helper
+   outside `lovable/`
 
 Do not hide missing seed coverage inside the test body with ad hoc DB writes
 unless the flow genuinely requires ephemeral test-only records.
 
 ## 3. Auth And Multi-User Session Strategy
 
-Full end-to-end coverage requires authenticated state. Manage it like this:
+Manage authenticated state like this:
 
-1. **Do not use signup as the primary setup path for the whole suite.**
-   Signup is itself one flow to test, but it is too brittle and stateful to
-   become the root dependency for every other authenticated test.
-2. **Use seeded demo users as the stable base for most authenticated flows.**
-   `bootstrap_accounts` creates canonical demo users and resets their passwords
-   when asked. Current seeded users are:
-   - `mei`
-   - `arun`
-   - `sahar`
-   Default password from `bootstrap_accounts` is `TapneDemoPass!123` unless
-   overridden.
-3. **Create one Playwright storage-state file per user/role through the real login UI.**
-   Preferred examples:
-   - `artifacts/auth/mei-storage-state.json`
-   - `artifacts/auth/arun-storage-state.json`
-   - `artifacts/auth/sahar-storage-state.json`
-4. **Use separate browser contexts for multi-user interaction tests.**
-   Never reuse one authenticated context to impersonate multiple users. Open
-   independent contexts from different storage-state files so DM, follow,
-   booking, and host/traveler interactions are exercised as true two-user or
-   multi-user flows.
-5. **Use signup only as an isolated disposable-flow test.**
-   The signup test should create a fresh user, verify the session/authenticated
-   UI state, and then stop. Do not make later tests depend on the newly created
-   account unless that account is scoped to the same test and cleaned up or
-   uniquely namespaced.
-6. **Prefer login reuse after one verified real login path per user.**
-   The suite should prove that real UI login works, then reuse storage state for
-   speed and determinism in the rest of the authenticated coverage.
+1. Do not use signup as the primary setup path for the whole suite.
+2. Use seeded demo users as the stable base for most authenticated flows.
+3. Create one Playwright storage-state file per user/role through the real
+   login UI.
+4. Use separate browser contexts for multi-user interaction tests.
+5. Use signup only as an isolated disposable-flow test.
+6. Prefer login reuse after one verified real login path per user.
+
+`bootstrap_accounts` creates canonical demo users and resets their passwords
+when asked. Current seeded users are:
+
+- `mei`
+- `arun`
+- `sahar`
+
+Default password from `bootstrap_accounts` is `TapneDemoPass!123` unless
+overridden.
+
+Preferred storage-state examples:
+
+- `artifacts/auth/mei-storage-state.json`
+- `artifacts/auth/arun-storage-state.json`
+- `artifacts/auth/sahar-storage-state.json`
+
+Never reuse one authenticated context to impersonate multiple users. Open
+independent contexts from different storage-state files so DM, follow, booking,
+and host/traveler interactions are exercised as true multi-user flows.
 
 ## 4. Implementation Rules For Session Material
 
-- If the existing storage-state helper only supports one account, extend it or add a thin wrapper outside `lovable/` so multiple users can be created deterministically.
-- If role distinctions matter, document which seeded user is the host and which is the traveler for each automated flow.
-- If a flow requires two interacting authenticated users, the test must open at least two contexts and verify the interaction from both sides when the UX makes both sides visible.
+- If the existing storage-state helper only supports one account, extend it or
+  add a thin wrapper outside `lovable/` so multiple users can be created
+  deterministically.
+- If role distinctions matter, document which seeded user is the host and which
+  is the traveler for each automated flow.
+- If a flow requires two interacting authenticated users, the test must open at
+  least two contexts and verify the interaction from both sides when the UX
+  makes both sides visible.
 - Storage-state JSON belongs under `artifacts/auth/` and is not source.

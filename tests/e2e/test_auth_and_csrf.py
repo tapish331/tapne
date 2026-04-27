@@ -40,7 +40,9 @@ def test_navbar_modal_login_then_messages_post_persists_after_reload(session_fac
 
     composer = page.locator("input[placeholder='Type a message...']:visible")
     composer.fill(message)
-    composer.press("Enter")
+    with page.expect_response(re.compile(r"/frontend-api/dm/inbox/\d+/messages/")) as send_response:
+        composer.press("Enter")
+    assert send_response.value.ok, f"Message send failed: HTTP {send_response.value.status}"
     _visible_message(page, message).wait_for()
 
     page.reload()
@@ -110,7 +112,21 @@ def test_signup_modal_creates_an_isolated_account(session_factory: SessionFactor
     signup_dialog.wait_for(state="hidden")
     wait_for_authenticated_state(page)
 
-    page.goto("/profile")
+    username = page.evaluate(
+        """
+        () => {
+          try {
+            const raw = window.localStorage.getItem("auth-storage");
+            return JSON.parse(raw || "{}")?.state?.user?.username || "";
+          } catch {
+            return "";
+          }
+        }
+        """
+    )
+    assert username
+
+    page.goto(f"/users/{username}")
     page.get_by_role("heading", name="Guardrail Signup").wait_for()
 
     guest.audit.assert_clean(ignore_requests=["/frontend-api/home/", "/frontend-api/activity/"])

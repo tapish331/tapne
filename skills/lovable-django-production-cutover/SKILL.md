@@ -1,57 +1,61 @@
 ---
 name: lovable-django-production-cutover
 description: >
-  Executes the Tapne Lovable-to-Django production cutover with the same intent as
-  the original skill: refresh lovable/ in place, extract the current frontend
-  contract from source, connect every route/API/mock dependency to Django, fix all
-  Django-side gaps that are fixable outside lovable/, verify the production build
-  and real browser behavior, write one Lovable prompt only for true frontend
-  showstoppers, and deploy when the cutover includes deployment.
+  Run Tapne's Lovable-to-Django production cutover workflow by deriving the live
+  route, API, runtime-config, and mock contract from source, mapping each
+  dependency to Django and frontend_spa, fixing non-Lovable integration gaps,
+  and producing one consolidated Lovable prompt only for true Scope 1
+  showstoppers. Use when working on Tapne cutovers, SPA/Django contract audits,
+  or related deployment follow-through governed by RULES.md.
 ---
 
 # Lovable to Django Production Cutover
 
-This split is structural only. The operational intent of the original skill MUST
-NOT CHANGE.
+[RULES.md](../../RULES.md) is the canonical rules document for this repo. If any
+instruction here conflicts with it, follow `RULES.md` and treat this skill as
+stale. This skill is a cutover workflow, not a second rules source.
 
-Use this file as the operator runbook. The companion docs are normative parts of
-the skill, not optional notes:
+Companion docs:
 
-- [BASELINE.md](./BASELINE.md): reference tables and file map
-- [TROUBLESHOOTING.md](./TROUBLESHOOTING.md): gap protocol, recurring failures, verification gates
-- [DEPLOY.md](./DEPLOY.md): Cloud Run workflow and deployment rules
+- [BASELINE.md](./BASELINE.md): stable file map, scan targets, and hotspot index
+- [TROUBLESHOOTING.md](./TROUBLESHOOTING.md): recurring cutover-specific failure patterns
+- [DEPLOY.md](./DEPLOY.md): repo-specific Scope 4 workflow mechanics
 
-## Hard Rules
+## Rule Anchors
 
-1. The only allowed in-place change under `lovable/` is `git -C lovable pull --ff-only`.
-2. After that pull completes, `git -C lovable status` must be clean before any further step runs.
-3. Do not patch, create, rename, delete, install, build, or normalize line endings anywhere under `lovable/`.
-4. Current source is authoritative every run. `BASELINE.md` is reference only.
-5. If a gap can be fixed outside `lovable/`, fix it now. Do not defer it into a Lovable prompt.
-6. Do not deploy until the production build, live shell checks, and real browser checks all pass.
-7. Write exactly one Lovable prompt only when the rendered production behavior is broken and cannot be corrected from Django, runtime config, or `frontend_spa/`.
+| Concern | Canonical source |
+|---|---|
+| Pre-flight | [RULES.md](../../RULES.md) Section 1 |
+| `lovable/` read-only + exit gate | [RULES.md](../../RULES.md) Section 2 |
+| Lovable prompt contract | [RULES.md](../../RULES.md) Section 2b |
+| Scope classification | [RULES.md](../../RULES.md) Section 4 |
+| Scope 2/3/4 invariants + verification gate | [RULES.md](../../RULES.md) Section 5 |
+| Canonical route audit | [RULES.md](../../RULES.md) Section 6 |
+| Start/end reporting | [RULES.md](../../RULES.md) Section 7 |
 
-## Step 1 - Refresh Repos And Require A Clean Lovable Worktree
+Do not restate or override those sections here. Use them directly during the
+run.
 
-Run:
+## Execution Sequence
 
-```powershell
-git pull
-git rev-parse HEAD
-git -C lovable pull --ff-only
-git -C lovable rev-parse HEAD
-git -C lovable status
-```
+### 1. Classify the work first
 
-Stop immediately if `git -C lovable status` is not clean. Report:
+- Classify the task with [RULES.md](../../RULES.md) Section 4 before touching
+  files.
+- If the request spans multiple scopes, split it before editing anything.
+- This skill usually operates in Scope 3, with optional Scope 4 follow-through
+  when deployment is part of the same task.
 
-- Django repo SHA after pull
-- Lovable SHA after pull
-- any dirty paths if the run is blocked
+### 2. Run the exact repo pre-flight
 
-## Step 2 - Extract The Current Frontend Contract From Source
+- Use [RULES.md](../../RULES.md) Section 1 exactly as written.
+- Report the pre-flight and start-of-task header using
+  [RULES.md](../../RULES.md) Section 7.
+- Do not define an alternate pre-flight in this skill.
 
-Read these files in full first:
+### 3. Rebuild the live contract from source
+
+Read these files in full before deciding what is missing:
 
 - [lovable/src/App.tsx](../../lovable/src/App.tsx)
 - [lovable/src/types/api.ts](../../lovable/src/types/api.ts)
@@ -66,188 +70,97 @@ Read these files in full first:
 - [frontend_spa/src/App.tsx](../../frontend_spa/src/App.tsx)
 - [frontend_spa/src/lib/api.ts](../../frontend_spa/src/lib/api.ts)
 - [frontend_spa/vite.production.config.ts](../../frontend_spa/vite.production.config.ts)
+- [frontend/urls.py](../../frontend/urls.py)
+- [frontend/views.py](../../frontend/views.py)
+- [tapne/urls.py](../../tapne/urls.py)
 
-Then scan:
-
-```bash
-grep -rn "from \"@/types/" lovable/src/pages lovable/src/contexts lovable/src/components --include="*.ts" --include="*.tsx" | grep -v "api\|messaging" | sort -u
-grep -rn "apiGet\|apiPost\|apiPatch\|apiDelete\|cfg\.api\.\|cfg\.auth\." lovable/src/pages lovable/src/contexts lovable/src/components --include="*.ts" --include="*.tsx"
-grep -rn "cfg\.api\.base" lovable/src/pages lovable/src/contexts lovable/src/components --include="*.ts" --include="*.tsx"
-```
-
-Any extra type file found by the `@/types/` scan must also be read in full.
-
-Produce four fresh tables from the current source:
-
-1. Route parity: `lovable/src/App.tsx` vs `frontend_spa/src/App.tsx`
-2. `TapneRuntimeConfig.api` keys and URL/method usage
-3. Distinct frontend API call sites and URL shapes
-4. Django URL -> view map from `frontend/urls.py`
-
-Also produce a fresh mock diff summary from current source:
-
-- every URL pattern handled by `resolveMockRequest()` in `devMock.ts`
-- every hardcoded value in `devMock.ts` that simulates a server response
-- every shape-bearing fixture in `mockData.ts`
-- new mock patterns vs baseline
-- removed mock patterns vs baseline
-
-After that, write a diff summary against `BASELINE.md`:
-
-- new routes
-- new api keys
-- new api call patterns
-- new Django endpoints
-- removed baseline items
-
-If all diffs are none, say so explicitly.
-
-## Step 3 - Connect Every Route, API Call, And Mock Dependency To Django
-
-Read [frontend/urls.py](../../frontend/urls.py) and [frontend/views.py](../../frontend/views.py) in full.
-
-For every extracted frontend dependency:
-
-1. Resolve the concrete URL shape the frontend calls.
-2. Find the matching Django URL and view.
-3. If it exists and matches, mark it confirmed.
-4. If it is missing or wrong, fix it now outside `lovable/`.
-
-This includes:
-
-- named `cfg.api.*` calls
-- `cfg.api.base` interpolated URLs
-- SPA entrypoint URLs in `frontend/urls.py`
-- matching routes in `frontend_spa/src/App.tsx`
-- `_runtime_config_payload()` coverage for every `TapneRuntimeConfig.api` key
-- mock replacement coverage for every pattern found in `devMock.ts` and `mockData.ts`
-
-Decision rules for new items:
-
-- new route -> matching route in `frontend_spa/src/App.tsx` and matching SPA entrypoint URL in `frontend/urls.py`
-- new `TapneRuntimeConfig.api` key -> matching `_runtime_config_payload()` entry and matching Django URL/view
-- new call against an existing key at a new URL shape -> new Django URL/view
-- new call found in a context or component -> treat it exactly like a page-level call
-
-Also audit auth-gates and unauthenticated behavior for every page or context that
-makes API calls:
-
-- verify whether the frontend guards behind `isAuthenticated` or `requireAuth()`
-- verify what happens if the call still fires unauthenticated
-- verify Django returns `_member_only_error()` before any protected DB work
-- explicitly check `CreateTrip.tsx`, `DraftContext.tsx`, and `Inbox.tsx`
-
-Also verify backend-owned routes are not shadowed by the SPA catch-all:
-
-- `/admin/`
-- `/health/`
-- `/runtime/`
-- `/uploads/`
-- `/search/`
-- `/accounts/login/`
-- `/accounts/signup/`
-- `/trips/` when the Lovable frontend is disabled
-- `/sitemap.xml`
-- `/robots.txt`
-- `/google*.html`
-- `/assets/...`
-- `/u/<username>/`
-- root-level static artifacts
-
-If you hit a recurring failure pattern, use [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
-
-## Step 4 - Verify Contracts, Build, Live Shell, And Real Browser Behavior
-
-### 4a. Response shape verification
-
-For every TypeScript interface the frontend expects from Django:
-
-1. Read the interface field by field.
-2. Read the actual Django view or builder that returns it.
-3. Confirm every required field name exists exactly as declared.
-4. Confirm nested arrays and nested objects also match.
-
-Tapne uses snake_case throughout. Do not allow camelCase drift.
-
-Use the interface map and baseline expectations in [BASELINE.md](./BASELINE.md). Use the failure catalog in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) when shapes or auth/runtime behavior drift.
-
-### 4b. Production build
-
-Run:
+Then run these live-inventory scans:
 
 ```powershell
-pwsh -File infra/build-lovable-production-frontend.ps1
+rg -n 'from "@/types/' lovable/src/pages lovable/src/contexts lovable/src/components -g '*.ts' -g '*.tsx'
+rg -n 'apiGet|apiPost|apiPatch|apiDelete|cfg\.api\.|cfg\.auth\.' lovable/src/pages lovable/src/contexts lovable/src/components -g '*.ts' -g '*.tsx'
+rg -n 'path="|<Route|createBrowserRouter|children:' lovable/src/App.tsx frontend_spa/src/App.tsx
+rg -n 'resolveMockRequest|__devmock__|mockData' lovable/src/lib/devMock.ts lovable/src/data/mockData.ts
 ```
 
-The build must:
+Also run the exact `cfg.api.base` audit required by
+[RULES.md](../../RULES.md) Section 5.
 
-- exit 0
-- create `artifacts/lovable-production-dist/index.html`
-- keep `git -C lovable status --short` unchanged across the build
-- exclude real mock handler execution from the production bundle
-- verify the `@/lib/devMock` and `@/data/mockData` aliases still match the current Lovable import paths
+Any extra `@/types/*` file discovered by the scan becomes part of the live
+contract and must be read before proceeding.
 
-### 4c. Live shell verification
+### 4. Derive the live inventory
 
-Start Django locally and verify:
+Produce a fresh inventory from current source only:
 
-- every SPA-owned route returns the frontend shell with injected runtime config
-- every Django API endpoint returns JSON in the expected shape
-- backend-owned routes remain backend-owned
+- canonical route audit:
+  compare [RULES.md](../../RULES.md) Section 6 against `lovable/src/App.tsx`,
+  `frontend_spa/src/App.tsx`, `frontend/urls.py`, and `tapne/urls.py`
+- runtime-config API surface:
+  every `TapneRuntimeConfig.api` key plus where the frontend uses it
+- direct API call inventory:
+  named `cfg.api.*` calls plus `cfg.api.base` interpolations
+- Django URL/view inventory:
+  actual URL patterns and owning views in `frontend/urls.py` and
+  `frontend/views.py`
+- mock inventory:
+  request patterns and shape-bearing fixtures in `devMock.ts` and
+  `mockData.ts`
 
-### 4d. Real browser verification
+Treat the live source plus [RULES.md](../../RULES.md) Section 6 as route truth.
+Do not reintroduce or preserve a route merely because it appears in stale
+history or older snapshots.
 
-Before any deploy, use a real browser against the local Django server and prove:
+### 5. Map every dependency to Django or `frontend_spa`
 
-- `/` renders visible content
-- no blank shell / empty `#root`
-- no `pageerror`
-- no `console.error`
-- no router/provider crash
-- JS assets are served with a JavaScript MIME type: `text/javascript` or `application/javascript`
-- the app does not crash with errors such as `useNavigate() may be used only in the context of a <Router> component` or `useAuth must be used within AuthProvider`
+For each route, API call, runtime-config key, and mock dependency:
 
-Do not deploy on HTTP-200-only evidence. Use [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for the exact browser and incident gates.
+1. Resolve the concrete frontend expectation from live source.
+2. Check it against the canonical route map in
+   [RULES.md](../../RULES.md) Section 6.
+3. Find the matching Django URL/view or `frontend_spa` production mapping.
+4. If it is valid and present, mark it confirmed.
+5. If it is missing, stale, or mismatched, fix it in the correct non-Lovable
+   scope.
 
-## Step 5 - Decide Whether A Lovable Prompt Is Required
+During this pass, pay special attention to:
 
-Write a Lovable prompt only if all three are true:
+- `cfg.api.base` interpolations that bypass named API-key audits
+- `messaging.ts` shapes, not just `api.ts`
+- auth-sensitive contexts and pages that depend on live auth state
+- CSRF behavior after modal login
+- providers or contexts using router hooks
+- mock-only behavior that still lacks a Django-backed equivalent
 
-1. the required behavior exists in the rendered production frontend
-2. the issue cannot be corrected from Django, runtime config, or `frontend_spa/`
-3. the mismatch causes a visible user-facing failure
+Use [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for recurring failure patterns,
+not as an alternate rules document.
 
-If required, write exactly one prompt in this format:
+### 6. Verify using the canonical gates
 
-```text
-CONTEXT: ...
-PROBLEM: ...
-REQUIRED CHANGE: ...
-DO NOT CHANGE: ...
-```
+- Apply [RULES.md](../../RULES.md) Section 5 for response-shape audits,
+  integration invariants, and browser verification.
+- Use [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) only to narrow likely causes
+  when a gate fails.
+- Do not invent a weaker acceptance path based on HTTP 200, shell presence, or
+  partial rendering.
 
-Keep it under 200 words. Do not mention Django internals or paths outside `lovable/`.
+### 7. Decide whether a Lovable prompt is needed
 
-## Step 6 - Deploy When The Cutover Includes Deployment
+- Use [RULES.md](../../RULES.md) Section 2b exactly as written.
+- Emit one consolidated prompt only for true Scope 1 showstoppers.
+- If no Scope 1 showstopper remains, use the exact no-prompt line from
+  [RULES.md](../../RULES.md) Section 2b.
 
-If the task includes deployment, follow [DEPLOY.md](./DEPLOY.md) exactly.
+### 8. Handle deployment only when the task includes Scope 4
 
-At minimum, confirm:
+- If deployment is part of the task, follow [DEPLOY.md](./DEPLOY.md) for the
+  repo-specific workflow mechanics.
+- The deployment rules, invariants, and reporting still come from
+  [RULES.md](../../RULES.md) Sections 5 and 7.
 
-- the workflow builds a fresh Lovable production artifact before image build
-- smoke test paths are valid for the SPA-era deployment
-- any newly required secrets or env vars are wired through the workflow
-- the Cloud Run workflow is executed only after Steps 1-5 pass
+### 9. Close out using the repo contract
 
-## Reporting When Done
-
-Report:
-
-1. Django SHA and Lovable SHA after pull
-2. Step 2 diff summary
-3. how each new item was connected or fixed
-4. build artifact result
-5. live shell verification result
-6. real browser verification result
-7. Lovable prompt text, or `No Lovable prompt needed`
-8. deployment result and any workflow changes, if deployment was part of the run
+- Use the exact end-of-task reporting contract in
+  [RULES.md](../../RULES.md) Section 7.
+- Run the `lovable/` exit gate from [RULES.md](../../RULES.md) Section 2 before
+  considering the session done.
