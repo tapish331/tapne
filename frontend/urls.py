@@ -16,6 +16,7 @@ urlpatterns = [
     path("frontend-api/auth/verify-otp/", views.verify_otp_api_view, name="api-auth-verify-otp"),
     path("frontend-api/users/search/", views.user_search_api_view, name="api-users-search"),
     path("frontend-api/home/", views.home_api_view, name="api-home"),
+    path("frontend-api/search/", views.search_api_view, name="api-search"),
     path("frontend-api/trips/", views.trip_list_api_view, name="api-trips-list"),
     path("frontend-api/trips/<int:trip_id>/", views.trip_detail_api_view, name="api-trips-detail"),
     path("frontend-api/trips/drafts/", views.trip_draft_create_api_view, name="api-trip-draft-create"),

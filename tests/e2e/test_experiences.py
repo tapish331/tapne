@@ -107,7 +107,9 @@ def test_story_delete_removes_story(session_factory: SessionFactory) -> None:
     assert delete_resp.value.ok, f"Story delete failed: HTTP {delete_resp.value.status}"
 
     # Successful delete navigates back to the canonical story-search view.
-    page.wait_for_url(re.compile(r".*/search\?tab=stories$"))
+    # The SPA's stories-browse URL uses ?intent=stories (matches App.tsx
+    # /stories redirect and Search.tsx, which reads searchParams.get("intent")).
+    page.wait_for_url(re.compile(r".*/search\?intent=stories$"))
     page.get_by_role("heading", name="Search").wait_for()
 
     # Verify the story is gone — the detail page should render "Story not found".

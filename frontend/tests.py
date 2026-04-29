@@ -13,6 +13,7 @@ from django.utils import timezone
 import frontend.urls as frontend_urls
 import tapne.urls as tapne_urls
 from blogs.models import Blog
+from accounts.models import ensure_profile
 from frontend.views import frontend_entrypoint_view
 from interactions.models import DirectMessage, DirectMessageThread
 from reviews.models import Review
@@ -20,6 +21,11 @@ from social.models import FollowRelation
 from trips.models import Trip
 
 UserModel = get_user_model()
+
+
+def _set_profile_fields(profile: object, **values: object) -> None:
+    for field_name, value in values.items():
+        setattr(profile, field_name, value)
 
 
 class FrontendApiTests(TestCase):
@@ -56,6 +62,7 @@ class FrontendApiTests(TestCase):
         self.assertFalse(payload["authenticated"])
         self.assertIn("runtime", payload)
         self.assertEqual(payload["runtime"]["api"]["base"], "/frontend-api")
+        self.assertEqual(payload["runtime"]["api"]["search"], "/frontend-api/search/")
 
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_json_login_endpoint_authenticates_member(self) -> None:
@@ -543,6 +550,234 @@ class FrontendSessionBEndpointsTests(TestCase):
     def test_blog_list_author_me_requires_authentication(self) -> None:
         response = self.client.get("/frontend-api/blogs/?author=me")
         self.assertEqual(response.status_code, 401)
+
+
+class UnifiedSearchApiTests(TestCase):
+    def setUp(self) -> None:
+        self.password = "UnifiedSearchPass!123456"
+        self.kyoto_host = UserModel.objects.create_user(
+            username="kyoto_host",
+            email="kyoto@example.com",
+            password=self.password,
+        )
+        self.goa_host = UserModel.objects.create_user(
+            username="goa_host",
+            email="goa@example.com",
+            password=self.password,
+        )
+        self.food_scout = UserModel.objects.create_user(
+            username="food_scout",
+            email="food@example.com",
+            password=self.password,
+        )
+        self.quiet_reader = UserModel.objects.create_user(
+            username="quiet_reader",
+            email="reader@example.com",
+            password=self.password,
+        )
+
+        kyoto_profile = ensure_profile(self.kyoto_host)
+        _set_profile_fields(
+            kyoto_profile,
+            display_name="Kyoto Host",
+            bio="Kyoto food guide and host.",
+            location="Kyoto",
+            travel_tags=["Food", "Culture"],
+        )
+        kyoto_profile.save(update_fields=["display_name", "bio", "location", "travel_tags", "updated_at"])
+
+        goa_profile = ensure_profile(self.goa_host)
+        _set_profile_fields(
+            goa_profile,
+            display_name="Goa Host",
+            bio="Beach route builder.",
+            location="Goa",
+            travel_tags=["Beach", "Chill"],
+        )
+        goa_profile.save(update_fields=["display_name", "bio", "location", "travel_tags", "updated_at"])
+
+        food_profile = ensure_profile(self.food_scout)
+        _set_profile_fields(
+            food_profile,
+            display_name="Food Scout",
+            bio="Finds food-first itineraries.",
+            location="Kyoto",
+            travel_tags=["Food"],
+        )
+        food_profile.save(update_fields=["display_name", "bio", "location", "travel_tags", "updated_at"])
+
+        reader_profile = ensure_profile(self.quiet_reader)
+        _set_profile_fields(
+            reader_profile,
+            display_name="Quiet Reader",
+            bio="Reads travel stories.",
+            location="Delhi",
+            travel_tags=["Stories"],
+        )
+        reader_profile.save(update_fields=["display_name", "bio", "location", "travel_tags", "updated_at"])
+
+        now = timezone.now()
+        Trip.objects.create(
+            host=self.kyoto_host,
+            title="Kyoto Food Walk",
+            summary="Markets and tea houses.",
+            destination="Kyoto, Japan",
+            starts_at=now + timezone.timedelta(days=5),
+            is_published=True,
+            trip_type="food-culture",
+            budget_tier="mid",
+            difficulty_level="easy",
+            traffic_score=90,
+        )
+        Trip.objects.create(
+            host=self.goa_host,
+            title="Goa Beach Escape",
+            summary="Sunrise swims.",
+            destination="Goa, India",
+            starts_at=now + timezone.timedelta(days=9),
+            is_published=True,
+            trip_type="coastal",
+            budget_tier="budget",
+            difficulty_level="easy",
+            traffic_score=70,
+        )
+
+        Blog.objects.create(
+            author=self.kyoto_host,
+            slug="kyoto-streets",
+            title="Kyoto Street Notes",
+            excerpt="Tea counters and alley food spots.",
+            body="Kyoto story body.",
+            location="Kyoto",
+            tags=["Food", "Culture"],
+            is_published=True,
+            reads=120,
+        )
+        Blog.objects.create(
+            author=self.goa_host,
+            slug="goa-sunrise",
+            title="Goa Sunrise Notes",
+            excerpt="Beach mornings.",
+            body="Goa story body.",
+            location="Goa",
+            tags=["Beach"],
+            is_published=True,
+            reads=80,
+        )
+
+        FollowRelation.objects.create(follower=self.food_scout, following=self.kyoto_host)
+        FollowRelation.objects.create(follower=self.quiet_reader, following=self.kyoto_host)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_search_api_all_returns_mixed_results_and_counts(self) -> None:
+        response = self.client.get("/frontend-api/search/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["intent"], "all")
+        self.assertEqual(payload["page_size"], 12)
+        self.assertEqual(payload["available_sorts"], [{"value": "recommended", "label": "Recommended"}])
+        self.assertEqual(
+            payload["counts"]["all"],
+            payload["counts"]["trips"] + payload["counts"]["destinations"] + payload["counts"]["stories"] + payload["counts"]["people"],
+        )
+        kinds = {row["result_kind"] for row in payload["results"]}
+        self.assertTrue({"trip", "destination", "story", "person"}.issubset(kinds))
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_search_api_legacy_tab_maps_to_story_intent(self) -> None:
+        response = self.client.get("/frontend-api/search/?q=kyoto&tab=stories")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["intent"], "stories")
+        self.assertTrue(payload["meta"]["legacy_tab_mapped"])
+        self.assertEqual({row["result_kind"] for row in payload["results"]}, {"story"})
+        self.assertEqual(payload["results"][0]["slug"], "kyoto-streets")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_search_api_trips_supports_filters_and_best_match(self) -> None:
+        response = self.client.get(
+            "/frontend-api/search/?intent=trips&q=kyoto&destination=kyoto&trip_type=food-culture&budget=mid&difficulty=easy&sort=best_match"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["intent"], "trips")
+        self.assertEqual(payload["total_results"], 1)
+        self.assertEqual(payload["applied_filters"]["destination"], "kyoto")
+        self.assertEqual(payload["applied_filters"]["trip_type"], "food-culture")
+        self.assertEqual(payload["results"][0]["title"], "Kyoto Food Walk")
+        self.assertEqual(payload["results"][0]["result_kind"], "trip")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_search_api_trips_pagination_reports_total_and_showing_range(self) -> None:
+        for index in range(11):
+            Trip.objects.create(
+                host=self.kyoto_host,
+                title=f"Kyoto Extra Trip {index + 1}",
+                summary="More Kyoto inventory.",
+                destination="Kyoto, Japan",
+                starts_at=timezone.now() + timezone.timedelta(days=30 + index),
+                trip_type="food-culture",
+                budget_tier="mid",
+                difficulty_level="easy",
+                traffic_score=40 - index,
+            )
+
+        response = self.client.get("/frontend-api/search/?intent=trips&page=2")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["intent"], "trips")
+        self.assertEqual(payload["total_results"], 13)
+        self.assertEqual(payload["showing_from"], 13)
+        self.assertEqual(payload["showing_to"], 13)
+        self.assertEqual(len(payload["results"]), 1)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_search_api_destinations_include_canonical_trip_clickthrough(self) -> None:
+        response = self.client.get("/frontend-api/search/?intent=destinations&q=kyoto")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["intent"], "destinations")
+        self.assertGreaterEqual(payload["total_results"], 1)
+        row = payload["results"][0]
+        self.assertEqual(row["result_kind"], "destination")
+        self.assertEqual(row["name"], "Kyoto")
+        self.assertEqual(
+            row["target_url"],
+            "/search?q=Kyoto&intent=trips&destination=Kyoto&page=1&sort=best_match",
+        )
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_search_api_legacy_destination_query_is_canonicalized_to_trips_query(self) -> None:
+        response = self.client.get("/frontend-api/search/?destination=Kyoto")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["intent"], "trips")
+        self.assertEqual(payload["query"], "Kyoto")
+        self.assertTrue(payload["meta"]["legacy_destination_query_mapped"])
+        self.assertEqual(payload["meta"]["canonical_params"]["q"], "Kyoto")
+        self.assertEqual(payload["meta"]["canonical_params"]["destination"], "Kyoto")
+        self.assertEqual(payload["meta"]["canonical_params"]["sort"], "best_match")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_search_api_people_filters_travel_tag_and_hosted_only(self) -> None:
+        response = self.client.get("/frontend-api/search/?intent=people&travel_tag=Food&hosted_only=true")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["intent"], "people")
+        self.assertEqual(payload["applied_filters"]["travel_tag"], "Food")
+        self.assertTrue(payload["applied_filters"]["hosted_only"])
+        usernames = {row["username"] for row in payload["results"]}
+        self.assertIn("kyoto_host", usernames)
+        self.assertNotIn("food_scout", usernames)
+        self.assertEqual(payload["results"][0]["url"], "/u/kyoto_host/")
 
 
 class FrontendShellTests(TestCase):

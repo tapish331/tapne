@@ -98,13 +98,62 @@ the end of the session. Lovable (not Claude) then performs the edits.
   `link`, `modal`, and `destination`. Avoid implementation labels such as
   `frontend`, `client`, `router`, `component`, `hook`, `context`,
   `provider`, and `API layer` unless the distinction is truly unavoidable.
+- **Completeness over forced brevity.** The prompt must include every
+  non-negotiable user-visible requirement needed for Lovable to complete the
+  job in one pass. If the task involves multiple states or views, spell out
+  the default state, visible modes, tabs, or intents, filters, sort choices,
+  pagination/count rules, click-through outcomes, preserved query state,
+  empty states, and any desktop/mobile placement rules that materially affect
+  behaviour. Do not omit a required behaviour just to stay terse.
+- **First-prompt sufficiency is the default.** Treat the first Lovable prompt
+  for a page or flow as an acceptance-spec intended to close the Scope-1 work
+  in one pass. Do not send a prompt while material browser-visible ambiguity
+  remains on the core flow. If the visible contract is not yet explicit enough
+  to make follow-up prompts rare, keep analysing and expand the first prompt
+  instead of planning to iterate.
+- **Entry-path uniformity means state uniformity, not just route cleanup.** If
+  the task involves unifying navigation, browse entry, or equivalent user
+  intents, the prompt must cover all visible entry surfaces that can express
+  that intent — including nav items, CTAs, shortcuts, content cards, tiles,
+  rows, and result cards — and must define the required landing state, not
+  just the route path. Where uniformity matters, spell out the canonical
+  browser-visible landing state, including query state, selected mode, tab, or
+  intent, active chips or pills, and filter cues that the user should see on
+  arrival.
+- **Name the reference flow when exact equivalence matters.** If a prompt
+  requires two or more entry paths to land in the same experience, identify
+  the authoritative reference flow and explicitly list the browser-visible
+  arrival-state fields that must match it. Where relevant, name the exact
+  fields rather than relying on phrases like "same behavior" or "same state" —
+  for example route/query state, selected mode, tab, or intent, visible search
+  text, default sort or ranking state, active chips or pills, filter cues,
+  counts, and framing text.
+- **Follow-up prompts must restate retained behaviour on coupled flows.** If
+  a follow-up Lovable prompt touches a multi-state or tightly coupled page,
+  flow, or surface, restate the full retained behavioural contract — not just
+  the newly observed delta symptoms — unless the required change is truly
+  isolated to one element or one state.
+- **Follow-up prompts are the exception, not the workflow.** Needing a
+  follow-up prompt on the same page or flow should be rare and treated as a
+  prompt-quality miss unless new facts only became knowable after real browser
+  verification. Before emitting any follow-up prompt, assume the burden is on
+  the prompt writer to show why the first prompt could not reasonably have
+  carried the missing requirement.
+- **Functional strictness, visual freedom.** The prompt must be strict about
+  browser-visible requirements and loose about aesthetic execution. State the
+  hard constraints clearly, but do not micromanage pixels, spacing,
+  typography, or animation unless the user explicitly requires it. Unless the
+  user says otherwise, prompts should leave room for Lovable to maximize
+  beauty, clarity, distinctiveness, traffic growth, and retention within the
+  stated behavioural constraints.
 - **Showstopper test — all three must be true to include an item:**
   1. The required behaviour exists (or should exist) in the rendered
      app in the browser — not just in mock or dev-only code.
   2. It cannot be served by any change in Scopes 2–6.
   3. Its absence causes a visible, user-facing failure on a production route.
-- **Mandatory structure** (single block, ≤ 300 words total even when
-  consolidated):
+- **Mandatory structure** (single block; prefer ≤ 300 words, but allow up to
+  550 when needed to preserve functional completeness for a single page or
+  flow overhaul):
 
   ```
   CONTEXT: <one paragraph describing what the user sees today in the browser,
@@ -114,6 +163,9 @@ the end of the session. Lovable (not Claude) then performs the edits.
     2. ...
   REQUIRED CHANGE:
     1. <concrete browser-visible change, matching PROBLEM item 1>
+    2. ...
+  SUCCESS CRITERIA:
+    1. <observable pass/fail checks Lovable must satisfy in the browser>
     2. ...
   DO NOT CHANGE:
     - <list Lovable behaviours/components that must remain untouched to
@@ -128,8 +180,9 @@ the end of the session. Lovable (not Claude) then performs the edits.
 - **Plain text only — pastable directly into Lovable.** The prompt is
   meant to be copy-pasted verbatim. Emit it as raw text: no markdown
   blockquotes (no leading `>`), no code fences, no bold/italic, no
-  headings, no link syntax. Keep the CONTEXT / PROBLEM / REQUIRED CHANGE
-  / DO NOT CHANGE structure and the numbered lists, but as plain text.
+  headings, no link syntax. Keep the CONTEXT / PROBLEM / REQUIRED CHANGE /
+  SUCCESS CRITERIA / DO NOT CHANGE structure and the numbered lists, but as
+  plain text.
 - **No prompt = no problem.** If no true Scope-1 showstopper was found, end
   the session with the explicit line
   *"No Lovable prompt needed — all gaps resolved from Scopes 2–6."*
@@ -284,15 +337,19 @@ HTTP 200 + injected runtime config is **not enough** to close a task. For
 every changed route:
 
 1. Start the Django server.
-2. Open the route in a real browser via Playwright (or equivalent).
-3. Wait for hydration / network-idle.
-4. Confirm all of the following:
+2. If `lovable/` was pulled or changed in the session, rebuild
+   `artifacts/lovable-production-dist` from the checked-out Lovable source
+   before browser verification. Do not assume a `git -C lovable pull`
+   changes what Django serves until the production artifact is rebuilt.
+3. Open the route in a real browser via Playwright (or equivalent).
+4. Wait for hydration / network-idle.
+5. Confirm all of the following:
    - `#root` contains rendered content (not blank).
    - Zero `pageerror` events during initial render.
    - Zero `console.error` messages during initial render.
    - The JS bundle is served with a JavaScript MIME type
      (`text/javascript` / `application/javascript`), never `text/plain`.
-5. If any check fails, the task is not done.
+6. If any check fails, the task is not done.
 
 ---
 

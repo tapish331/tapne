@@ -54,6 +54,7 @@ from interactions.models import (
     send_dm_message,
 )
 from reviews.models import submit_review
+from search.models import build_search_page_payload_for_user
 from settings_app.models import build_settings_payload_for_member
 from social.models import Bookmark, build_bookmarks_payload_for_member, resolve_bookmark_target
 from trips.models import (
@@ -600,6 +601,7 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "signup": reverse("frontend:api-auth-signup"),
             "logout": reverse("frontend:api-auth-logout"),
             "home": reverse("frontend:api-home"),
+            "search": reverse("frontend:api-search"),
             "trips": reverse("frontend:api-trips-list"),
             "blogs": reverse("frontend:api-blogs-list"),
             "my_trips": reverse("frontend:api-my-trips"),
@@ -933,6 +935,21 @@ def home_api_view(request: HttpRequest) -> JsonResponse:
     response_payload["testimonials"] = []
 
     return JsonResponse({"ok": True, **response_payload})
+
+
+@require_GET
+def search_api_view(request: HttpRequest) -> JsonResponse:
+    payload = build_search_page_payload_for_user(
+        request.user,
+        query=request.GET.get("q", ""),
+        intent=request.GET.get("intent", ""),
+        raw_tab=request.GET.get("tab", ""),
+        page=request.GET.get("page", 1),
+        page_size=request.GET.get("page_size", 12),
+        sort=request.GET.get("sort", ""),
+        raw_filters=request.GET,
+    )
+    return JsonResponse({"ok": True, **payload}, encoder=DjangoJSONEncoder)
 
 
 @require_GET

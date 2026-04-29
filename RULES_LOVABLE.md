@@ -68,14 +68,22 @@ When working from a user prompt:
 - Prefer renaming a retired route to an existing canonical route over adding a
   new page.
 - Prefer updating all affected visible navigation surfaces in one pass.
+- Treat the first prompt for a page or flow as a one-pass acceptance contract,
+  not as a starting point for iterative cleanup.
 - Describe intended changes in terms of what the user clicks, what opens now,
   and what should open instead.
 - Preserve the current product structure unless the user explicitly asks for a
   redesign.
 - Do not reintroduce retired paths after removing them.
+- If the prompt names retained behaviours, a reference flow, or arrival-state
+  fields that must match, satisfy that whole visible contract together rather
+  than taking the narrowest local reading of one symptom or one link.
 
 If one task mentions multiple visible route problems, solve them as one
 coherent navigation cleanup rather than as isolated one-off edits.
+If a prompt asks for equivalent entry paths to behave the same, do not stop at
+matching only the destination page or route if the browser-visible arrival
+state still differs.
 
 ---
 
@@ -183,7 +191,7 @@ Two standing cleanup rules apply to all Lovable route work:
 ### Navigation consistency
 
 When route cleanup touches one navigation surface, update every equivalent
-visible surface in the same session:
+visible entry surface in the same session:
 
 - Desktop navbar
 - Mobile navbar
@@ -191,6 +199,10 @@ visible surface in the same session:
 - Hero CTAs
 - Section CTAs
 - Dropdown shortcuts
+- Content cards
+- Tiles
+- Rows
+- Result cards
 - Empty states
 - Cancel buttons
 - Back buttons
@@ -200,6 +212,28 @@ visible surface in the same session:
 
 The same user intent should land on the same canonical destination across all
 of these surfaces.
+- Route cleanup is not complete if equivalent entry paths reach the same
+  canonical page under materially different browser-visible landing states
+  without an intentional product reason.
+- When the task is about unifying entry paths or equivalent intents, align not
+  only the canonical route but also the arrival state the user sees there,
+  including query state, selected mode, tab, or intent, and any active chips,
+  pills, or filter cues that establish context on load.
+- When exact equivalence is required, use one authoritative entry flow as the
+  reference and make the other entry paths match its browser-visible arrival
+  state, not just its page destination. Match the visible state fields the task
+  depends on, such as route/query state, selected mode, tab, or intent, search
+  text, default sort or ranking state, active chips or pills, filter cues,
+  counts, and framing text, unless the task explicitly preserves a difference.
+
+### Frontend build integrity
+
+- If Lovable changes `package.json`, dependency versions, or any install-affecting
+  frontend package metadata, it must keep `package-lock.json` in sync so
+  `npm ci` succeeds without fallback.
+- Do not leave the frontend in a state where builds depend on `npm install`
+  fallback because the lockfile is stale.
+- If the task does not change dependency metadata, avoid gratuitous lockfile churn.
 
 ### Auth and access
 
