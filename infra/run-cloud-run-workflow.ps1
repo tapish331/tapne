@@ -4,18 +4,20 @@
 
 .DESCRIPTION
   Runs these scripts sequentially and stops on first failure:
-    1) infra/setup-faithful-local.ps1
-    2) infra/check-cloud-run-web-image.ps1
-    3) infra/push-web-image-to-artifact.ps1
-    4) infra/setup-custom-domain.ps1
-    5) infra/deploy-cloud-run.ps1
+    1) infra/build-lovable-production-frontend.ps1
+    2) infra/setup-faithful-local.ps1
+    3) infra/check-cloud-run-web-image.ps1
+    4) infra/push-web-image-to-artifact.ps1
+    5) infra/setup-custom-domain.ps1
+    6) infra/deploy-cloud-run.ps1
 
   This orchestrator keeps one shared image tag across check/push/deploy and
   avoids duplicate builds by:
-    - building once during setup-faithful-local
+    - building the Django-served Lovable artifact once before any Docker/image step
+    - building the Docker image once during setup-faithful-local
     - running check-cloud-run-web-image with --no-build
     - running push-web-image-to-artifact with -NoBuild
-    - setting deploy to -BuildAndPushImage:$false so step 3 is the single push step
+    - setting deploy to -BuildAndPushImage:$false so step 4 is the single push step
 
 .EXAMPLE
   pwsh -File infra/run-cloud-run-workflow.ps1 -Verbose
@@ -197,6 +199,60 @@ function Get-DotEnvValue {
     return ""
 }
 
+function Resolve-ArtifactHttpPath {
+    param([Parameter(Mandatory = $true)][string]$Value)
+
+    $trimmed = $Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmed)) {
+        throw "Artifact asset path is empty."
+    }
+
+    if ($trimmed -match '^[a-z][a-z0-9+\-.]*://') {
+        $trimmed = ([System.Uri]$trimmed).PathAndQuery
+    }
+
+    if (-not $trimmed.StartsWith("/")) {
+        $trimmed = "/" + $trimmed.TrimStart(".", "/")
+    }
+
+    return $trimmed
+}
+
+function Get-FrontendSmokeAssetPaths {
+    param([Parameter(Mandatory = $true)][string]$ArtifactIndexPath)
+
+    if (-not (Test-Path -LiteralPath $ArtifactIndexPath -PathType Leaf)) {
+        throw ("Frontend artifact index.html was not found: {0}" -f $ArtifactIndexPath)
+    }
+
+    $indexHtml = Get-Content -LiteralPath $ArtifactIndexPath -Raw
+    $cssPattern = '<link\b(?=[^>]*\brel=(["''])stylesheet\1)(?=[^>]*\bhref=(["''])(?<href>[^"''>]+)\2)[^>]*>'
+    $jsPattern = '<script\b(?=[^>]*\btype=(["''])module\1)(?=[^>]*\bsrc=(["''])(?<src>[^"''>]+)\2)[^>]*>'
+
+    $cssMatch = [System.Text.RegularExpressions.Regex]::Match(
+        $indexHtml,
+        $cssPattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+    if (-not $cssMatch.Success) {
+        throw ("Could not find a stylesheet href in {0}" -f $ArtifactIndexPath)
+    }
+
+    $jsMatch = [System.Text.RegularExpressions.Regex]::Match(
+        $indexHtml,
+        $jsPattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+    if (-not $jsMatch.Success) {
+        throw ("Could not find a module script src in {0}" -f $ArtifactIndexPath)
+    }
+
+    return [PSCustomObject]@{
+        CssPath = Resolve-ArtifactHttpPath -Value $cssMatch.Groups["href"].Value
+        JsPath  = Resolve-ArtifactHttpPath -Value $jsMatch.Groups["src"].Value
+    }
+}
+
 function Invoke-ScriptStep {
     param(
         [string]$StepName,
@@ -305,6 +361,7 @@ if ([string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_SECRET)) {
 
 $localImageRef = "{0}:{1}" -f $ImageName, $ImageTag
 $artifactImageRef = "{0}-docker.pkg.dev/{1}/{2}/{3}:{4}" -f $Region, $ProjectId, $Repository, $ImageName, $ImageTag
+$frontendArtifactIndexPath = Join-Path $repoRoot "artifacts\lovable-production-dist\index.html"
 
 $buildScript = Join-Path $scriptDirectory "build-lovable-production-frontend.ps1"
 $setupScript = Join-Path $scriptDirectory "setup-faithful-local.ps1"
@@ -369,38 +426,6 @@ if ($isVerbose) {
     $domainArgs += "-Verbose"
 }
 
-$deployArgs = @(
-    "-ProjectId", $ProjectId,
-    "-Region", $Region,
-    "-Repository", $Repository,
-    "-ImageName", $ImageName,
-    "-ImageTag", $ImageTag,
-    "-ServiceName", $ServiceName,
-    "-BuildAndPushImage", $false,
-    "-DisableContainerVulnerabilityScanning", $DisableContainerVulnerabilityScanning,
-    "-CloudRunIngress", "internal-and-cloud-load-balancing",
-    "-DjangoAllowedHosts", $djangoAllowedHosts,
-    "-CsrfTrustedOrigins", $csrfTrustedOrigins,
-    "-CanonicalHost", $canonicalHost,
-    "-SmokeBaseUrl", ("https://{0}" -f $canonicalHost),
-    "-UptimeCheckHost", $canonicalHost,
-    "-EnableDemoCatalog", $EnableDemoCatalog,
-    "-SmokeCssPath", "/",
-    "-SmokeJsPath", "/sitemap.xml"
-)
-if ($SkipAuthLogin) {
-    $deployArgs += "-SkipAuthLogin"
-}
-if ($SkipMigrations) {
-    $deployArgs += "-SkipMigrations"
-}
-if ($SkipSmokeTest) {
-    $deployArgs += "-SkipSmokeTest"
-}
-if ($isVerbose) {
-    $deployArgs += "-Verbose"
-}
-
 Write-Verbose (
     "Run options => ProjectId={0}; Region={1}; Repository={2}; Image={3}; Tag={4}; Service={5}; Domains={6}; RepoRoot={7}; SkipAuthLogin={8}; SkipMigrations={9}; SkipSmokeTest={10}; AutoStartDocker={11}; DisableBuildAttestations={12}; DisableContainerVulnerabilityScanning={13}; GoogleMapsApiKeySet={14}; EnableDemoCatalog={15}" -f
     $ProjectId, $Region, $Repository, $ImageName, $ImageTag, $ServiceName, ($domains -join ","), $repoRoot, $SkipAuthLogin, $SkipMigrations, $SkipSmokeTest, $EnableAutoStartDocker, $DisableBuildAttestations, $DisableContainerVulnerabilityScanning, (-not [string]::IsNullOrWhiteSpace($resolvedGoogleMapsApiKey)), $EnableDemoCatalog
@@ -409,6 +434,41 @@ Write-Verbose (
 $startTime = Get-Date
 try {
     Invoke-ScriptStep -StepName "1/6 build-lovable-production-frontend" -PowerShellExe $powerShellExe -ScriptPath $buildScript -Arguments $buildArgs
+    $smokeAssetPaths = Get-FrontendSmokeAssetPaths -ArtifactIndexPath $frontendArtifactIndexPath
+    Write-Verbose ("Resolved frontend smoke asset paths => CSS={0}; JS={1}" -f $smokeAssetPaths.CssPath, $smokeAssetPaths.JsPath)
+
+    $deployArgs = @(
+        "-ProjectId", $ProjectId,
+        "-Region", $Region,
+        "-Repository", $Repository,
+        "-ImageName", $ImageName,
+        "-ImageTag", $ImageTag,
+        "-ServiceName", $ServiceName,
+        "-BuildAndPushImage", $false,
+        "-DisableContainerVulnerabilityScanning", $DisableContainerVulnerabilityScanning,
+        "-CloudRunIngress", "internal-and-cloud-load-balancing",
+        "-DjangoAllowedHosts", $djangoAllowedHosts,
+        "-CsrfTrustedOrigins", $csrfTrustedOrigins,
+        "-CanonicalHost", $canonicalHost,
+        "-SmokeBaseUrl", ("https://{0}" -f $canonicalHost),
+        "-UptimeCheckHost", $canonicalHost,
+        "-EnableDemoCatalog", $EnableDemoCatalog,
+        "-SmokeCssPath", $smokeAssetPaths.CssPath,
+        "-SmokeJsPath", $smokeAssetPaths.JsPath
+    )
+    if ($SkipAuthLogin) {
+        $deployArgs += "-SkipAuthLogin"
+    }
+    if ($SkipMigrations) {
+        $deployArgs += "-SkipMigrations"
+    }
+    if ($SkipSmokeTest) {
+        $deployArgs += "-SkipSmokeTest"
+    }
+    if ($isVerbose) {
+        $deployArgs += "-Verbose"
+    }
+
     Invoke-ScriptStep -StepName "2/6 setup-faithful-local" -PowerShellExe $powerShellExe -ScriptPath $setupScript -Arguments $setupArgs
     Invoke-ScriptStep -StepName "3/6 check-cloud-run-web-image" -PowerShellExe $powerShellExe -ScriptPath $checkScript -Arguments $checkArgs
     Invoke-ScriptStep -StepName "4/6 push-web-image-to-artifact" -PowerShellExe $powerShellExe -ScriptPath $pushScript -Arguments $pushArgs

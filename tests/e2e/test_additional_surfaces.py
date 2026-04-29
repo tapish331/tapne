@@ -32,7 +32,7 @@ def test_search_route_returns_guest_results_without_client_errors(session_factor
 
     page.goto("/search?q=Kyoto")
     page.get_by_role("heading", name="Search").wait_for()
-    assert page.get_by_placeholder("Search trips, stories, people…").input_value() == "Kyoto"
+    assert page.get_by_role("main").get_by_placeholder("Search trips, stories, people…").input_value() == "Kyoto"
     page.get_by_text("Kyoto food lanes weekend").wait_for()
 
     guest.audit.assert_clean()

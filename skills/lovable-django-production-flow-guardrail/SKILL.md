@@ -5,9 +5,10 @@ description: >
   regenerating a live flow matrix from current source, classifying flows into
   automated_smoke, automated_full, or blocked_by_lovable_showstopper, wiring
   deterministic Python Playwright plus pytest coverage and CI outside
-  `skills/`, and proving it against Django serving the built production SPA.
+  `skills/`, and proving it against Django serving the built production SPA
+  sourced solely from `lovable/` with no shadow SPA layer.
   Use when adding or repairing persistent real-browser regression coverage for
-  Tapne production flows after Lovable, Django, frontend_spa, auth,
+  Tapne production flows after Lovable, Django, auth,
   runtime-config, or CI changes governed by RULES.md.
 ---
 
@@ -70,21 +71,34 @@ Before planning or editing persistent harness code, read these files in full:
 - [lovable/src/lib/api.ts](../../lovable/src/lib/api.ts)
 - [lovable/src/contexts/AuthContext.tsx](../../lovable/src/contexts/AuthContext.tsx)
 - [lovable/src/contexts/DraftContext.tsx](../../lovable/src/contexts/DraftContext.tsx)
-- [frontend_spa/src/App.tsx](../../frontend_spa/src/App.tsx)
 - [frontend/views.py](../../frontend/views.py)
 - [frontend/urls.py](../../frontend/urls.py)
+- [tapne/urls.py](../../tapne/urls.py)
 - [infra/build-lovable-production-frontend.ps1](../../infra/build-lovable-production-frontend.ps1)
+- [infra/build-lovable-production-frontend.sh](../../infra/build-lovable-production-frontend.sh)
+- [infra/Dockerfile.web](../../infra/Dockerfile.web)
+- [tests/e2e/conftest.py](../../tests/e2e/conftest.py)
+- [tests/e2e/server.py](../../tests/e2e/server.py)
+- [tests/e2e/auth.py](../../tests/e2e/auth.py)
+- [tests/e2e/helpers.py](../../tests/e2e/helpers.py)
+- [tests/e2e/data.py](../../tests/e2e/data.py)
+- [tests/e2e/requirements.txt](../../tests/e2e/requirements.txt)
+- [pytest.ini](../../pytest.ini)
+- [.github/workflows/production-flow-guardrail.yml](../../.github/workflows/production-flow-guardrail.yml)
 - [.github/workflows/visual-audit-pr-guardrail.yml](../../.github/workflows/visual-audit-pr-guardrail.yml)
 - [skills/webpage-visual-perfection-audit/scripts/create_storage_state.py](../../skills/webpage-visual-perfection-audit/scripts/create_storage_state.py)
 
 Then write a short inherited-contract summary covering:
 
 - current SPA routes
+- whether `frontend_spa/` is gone and no shadow frontend alias/build path remains
 - current runtime-config/api-key surface
 - current auth model (`AuthContext`, modal or full-page login, CSRF behavior)
 - current draft model (`DraftContext`, create/save/publish flow)
+- current local browser harness bootstrap (`tests/e2e/conftest.py`, `tests/e2e/server.py`, `DEBUG=true` serving assumptions)
 - current messaging and host-management flows
 - existing build/CI patterns already present in the repo
+- current primary smoke/full marker wiring
 
 Use [BASELINE.md](./BASELINE.md) only as a stable index after the live
 inventory is regenerated.
@@ -96,11 +110,13 @@ Nothing in this step is pre-answered. Read the actual current files every run.
 Read the current route and flow sources in full, then run these scans:
 
 ```powershell
-rg -n 'path="|<Route|createBrowserRouter|children:' lovable/src/App.tsx frontend_spa/src/App.tsx
+rg -n 'path="|<Route|createBrowserRouter|children:' lovable/src/App.tsx
 rg -n 'apiGet|apiPost|apiPatch|apiDelete|cfg\.api\.|cfg\.auth\.|requireAuth\(|navigate\(' lovable/src/pages lovable/src/contexts lovable/src/components
 rg -n 'handleSubmit|onSubmit|DropdownMenuItem|Dialog|Modal|toast\.' lovable/src/pages lovable/src/components
 rg -n 'useNavigate|useLocation|useParams' lovable/src/contexts lovable/src/pages lovable/src/components
 rg -n '@pytest.mark|def test_' tests/e2e -g '*.py'
+Test-Path frontend_spa
+rg -n 'frontend_spa|@frontend/' -S
 ```
 
 Also run the exact `cfg.api.base` audit required by
@@ -110,15 +126,15 @@ Produce four fresh tables from current source:
 
 #### 3a. Route Parity Table
 
-One row per route in `lovable/src/App.tsx`, compared to
-`frontend_spa/src/App.tsx`.
+One row per route in `lovable/src/App.tsx`, compared to the deployed SPA shell
+coverage in `frontend/urls.py` and `tapne/urls.py`.
 
 Columns:
 
 - route
 - Lovable component
-- production router component
-- parity status (`match`, `missing_in_frontend_spa`, `extra_in_frontend_spa`)
+- deployed shell coverage
+- parity status (`match`, `missing_in_django_shell`, `extra_in_django_shell`)
 
 #### 3b. Flow Matrix
 
@@ -148,11 +164,13 @@ Mandatory rows to inspect if present in current source:
 - login modal submit
 - any flow using `requireAuth(...)`
 - draft create/save/publish
+- apply-only or invite-only trip CTA submit
+- traveler pending-application state after reload
 - DM start from trip detail or profile
 - inbox send message
 - follow/unfollow
 - bookmark/unbookmark
-- manage-trip mutations
+- host application approve/remove/message mutations on trip detail
 - any POST/PATCH/DELETE immediately after modal login
 
 #### 3d. Data/Setup Map
@@ -189,7 +207,7 @@ Every extracted current flow must land in exactly one bucket:
 - `automated_full`: fully automated real-browser end-to-end coverage that also
   remains available locally and optionally in manual or scheduled CI
 - `blocked_by_lovable_showstopper`: impossible to automate correctly from
-  Django and `frontend_spa` alone
+  Django and the built production SPA alone
 
 Important:
 
@@ -214,7 +232,9 @@ the current canonical route map:
    `/profile/edit`, succeeds and persists across reload.
 6. One message, social, or host-management flow from current source, such as
    `/messages`, a trip-detail CTA, or `/dashboard/*`, succeeds and persists
-   across reload.
+   across reload. Prefer an apply-only trip detail CTA when current source
+   exposes application trips, because it catches modal auth, an immediate
+   authenticated POST, and a reload-persisted pending state in one flow.
 
 Minimum required `automated_full` coverage when the corresponding UI exists in
 current source:
@@ -224,6 +244,9 @@ current source:
 - DM start from a non-message surface and land on the correct `/messages`
   thread
 - inbox send message in `/messages`
+- direct booking flow for an open trip when current source exposes it
+- apply-to-join submit flow with pending state after reload when current source
+  exposes application trips
 - host-management decision/removal/cancel/message variants exposed by current
   source
 - story create/edit/delete flows when current source exposes them
@@ -259,6 +282,10 @@ At minimum, run:
 pwsh -File infra/build-lovable-production-frontend.ps1
 ```
 
+Treat the guardrail as stale if `Test-Path frontend_spa` returns `True` or
+`rg -n 'frontend_spa|@frontend/' -S` finds a live match in the active build
+path.
+
 ### 6. Implement or update the persistent harness
 
 Follow [HARNESS.md](./HARNESS.md) exactly. Persistent automation created by this
@@ -269,6 +296,8 @@ The harness must preserve these guardrail-specific invariants:
 
 - Python `pytest` plus Playwright, not a Node-based browser runner
 - Django serves the built production artifact during test execution
+- `tests/e2e/server.py` owns the deterministic Django server environment used by
+  the suite
 - `artifacts/e2e/` holds traces, screenshots, HTML snapshots, request logs,
   and similar outputs
 - flow helpers stay centralized rather than duplicated across tests
@@ -284,14 +313,16 @@ Follow the CI rules in [HARNESS.md](./HARNESS.md). The resulting workflow under
 - install browser binaries
 - build the production frontend
 - migrate and seed data
-- start Django with `--noreload`
-- wait for health
+- execute the harness-managed Django server/bootstrap path and wait for health
 - create or refresh the needed storage-state files
 - run all `automated_smoke` coverage on every PR
 - upload `artifacts/e2e/` on failure and preferably on success as well
 
 If the repo already has one browser-automation workflow, reuse its setup logic
-where sensible instead of forking it.
+where sensible instead of forking it. In the current repo, update
+`.github/workflows/production-flow-guardrail.yml` first and treat
+`.github/workflows/visual-audit-pr-guardrail.yml` as a secondary setup
+reference.
 
 ### 8. Run the mandatory local proof
 
@@ -305,9 +336,12 @@ pwsh -File infra/build-lovable-production-frontend.ps1
 python manage.py migrate --noinput
 # run the smallest complete bootstrap set for the classified smoke suite,
 # or the canonical chain from SETUP.md when that is simpler
-python manage.py runserver 127.0.0.1:8000 --noreload
 pytest -m smoke tests/e2e
 ```
+
+`tests/e2e/conftest.py` starts Django automatically unless
+`E2E_USE_EXISTING_SERVER=1` is set. Only run `python manage.py runserver ...`
+manually when you are intentionally reproducing an existing-server issue.
 
 If auth flows are covered, also generate or refresh the required storage-state
 files under `artifacts/auth/` as part of the proof. If multi-user flows are
@@ -328,9 +362,8 @@ Do not declare the task done until all of the following are true:
 Use [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for the guardrail-specific
 triage order.
 
-For every failing automated flow, first make the best Django-side,
-`frontend_spa`, build, seed, or harness correction available outside
-`lovable/`. Only escalate to a Lovable prompt when the failure is genuinely
+For every failing automated flow, first make the best Django-side, build,
+seed, or harness correction available outside `lovable/`. Only escalate to a Lovable prompt when the failure is genuinely
 trapped inside `lovable/`.
 
 Use these canonical sources for the final decision:

@@ -16,11 +16,13 @@ those rules.
 
 Inspect:
 
+- [infra/build-lovable-production-frontend.sh](../../infra/build-lovable-production-frontend.sh)
 - [infra/run-cloud-run-workflow.ps1](../../infra/run-cloud-run-workflow.ps1)
 - [infra/build-lovable-production-frontend.ps1](../../infra/build-lovable-production-frontend.ps1)
 
 The repo-specific requirement is that `run-cloud-run-workflow.ps1` invokes the
-Lovable production build before any Docker image build step.
+Lovable production build before any Docker image build step, and that the build
+comes from a temp-copied `lovable/` workspace with no `frontend_spa` overlay.
 
 If the pre-step is missing, wire it in using the existing workflow style:
 
@@ -55,7 +57,19 @@ in `run-cloud-run-workflow.ps1` and follow the existing `Get-DotEnvValue`
 pattern. Use [RULES.md](../../RULES.md) Section 5 for which secrets/settings
 must be present; this file does not redefine that list.
 
-## 4. Execute the workflow
+## 4. Confirm no shadow frontend build path remains
+
+Inspect:
+
+- [infra/Dockerfile.web](../../infra/Dockerfile.web)
+- [infra/build-lovable-production-frontend.ps1](../../infra/build-lovable-production-frontend.ps1)
+- [infra/build-lovable-production-frontend.sh](../../infra/build-lovable-production-frontend.sh)
+
+The repo-specific requirement is that deployment no longer references
+`frontend_spa/`, `@frontend/`, or external overlay lockfiles/scripts. If any of
+those appear in the active deploy/build path, the cutover is incomplete.
+
+## 5. Execute the workflow
 
 When the cutover and deployment gates from [RULES.md](../../RULES.md) are
 already satisfied, run:
@@ -70,7 +84,7 @@ Capture:
 - deployed service URL
 - which workflow files changed, if any
 
-## 5. Close out through the repo contract
+## 6. Close out through the repo contract
 
 - Report deployment work using [RULES.md](../../RULES.md) Section 7.
 - Run the `lovable/` exit gate from [RULES.md](../../RULES.md) Section 2 before

@@ -48,7 +48,7 @@ def resolve_runserver_target(base_url: str) -> str:
 
 def build_server_env() -> dict[str, str]:
     env = os.environ.copy()
-    env.setdefault("DEBUG", "true")
+    env["DEBUG"] = "true"
     env.setdefault("SECRET_KEY", "local-e2e-secret")
     env.setdefault("DATABASE_URL", "sqlite:///test_settings.sqlite3")
     env.setdefault("REDIS_ENABLED", "false")

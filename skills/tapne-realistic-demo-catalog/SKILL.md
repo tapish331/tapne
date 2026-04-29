@@ -2,7 +2,7 @@
 
 Seed a realistic, maximum-traffic Tapne marketplace with ~70 demo users, ~70 trips, ~35 blogs, and ~1,300 social/activity records — all tagged `is_demo=True` — plus relevant trip/blog imagery so public demo surfaces never fall back to default images or placeholders.
 
-**Scope boundary:** This skill operates exclusively on the Django backend (DB + Python). It never reads, writes, or modifies anything inside `lovable/` or `frontend_spa/`.
+**Scope boundary:** This skill operates exclusively on the Django backend (DB + Python). It never reads, writes, or modifies anything inside `lovable/`.
 
 ---
 
@@ -132,7 +132,7 @@ If `git status` shows any modified or untracked files, this skill has violated i
 
 ## Hard Rules
 
-1. **Never modify anything inside `lovable/` or `frontend_spa/`.** This skill is backend-only. All seeding is done via Django management commands and ORM writes. If any implementation step requires editing a file under `lovable/` or `frontend_spa/`, it is out of scope — stop and raise it separately. Step 8 enforces this at the end of every run.
+1. **Never modify anything inside `lovable/`.** This skill is backend-only. All seeding is done via Django management commands and ORM writes. If any implementation step requires editing a file under `lovable/`, it is out of scope — stop and raise it separately. Step 8 enforces this at the end of every run.
 
 2. **Never run `populate_demo_catalog` without running migrations first.** The command writes to `is_demo` columns that don't exist pre-migration.
 

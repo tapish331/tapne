@@ -428,6 +428,104 @@ function Resolve-HostName {
     return $resolved
 }
 
+function Get-WebExceptionStatusCode {
+    param([System.Exception]$Exception)
+
+    if ($null -eq $Exception) {
+        return $null
+    }
+
+    if ($Exception.PSObject.Properties.Match("Response").Count -eq 0 -or $null -eq $Exception.Response) {
+        return $null
+    }
+
+    $statusCode = $Exception.Response.StatusCode
+    if ($null -eq $statusCode) {
+        return $null
+    }
+
+    return [int]$statusCode
+}
+
+function Invoke-SmokeRequest {
+    param(
+        [string]$Uri,
+        [ValidateSet("Get", "Head")]
+        [string]$Method = "Get",
+        [int]$TimeoutSec = 30
+    )
+
+    try {
+        return Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method $Method -TimeoutSec $TimeoutSec
+    }
+    catch {
+        if ($Method -eq "Head") {
+            $statusCode = Get-WebExceptionStatusCode -Exception $_.Exception
+            if ($statusCode -in @(405, 501)) {
+                Write-Verbose ("HEAD not supported for {0}; retrying with GET." -f $Uri)
+                return Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -TimeoutSec $TimeoutSec
+            }
+        }
+
+        throw
+    }
+}
+
+function Get-ResponseContentType {
+    param([Parameter(Mandatory = $true)]$Response)
+
+    if ($null -eq $Response) {
+        return ""
+    }
+
+    if ($Response.PSObject.Properties.Match("Headers").Count -gt 0 -and $null -ne $Response.Headers) {
+        $headerValue = $Response.Headers["Content-Type"]
+        if (-not [string]::IsNullOrWhiteSpace([string]$headerValue)) {
+            return [string]$headerValue
+        }
+
+        $headerValue = $Response.Headers.'Content-Type'
+        if (-not [string]::IsNullOrWhiteSpace([string]$headerValue)) {
+            return [string]$headerValue
+        }
+    }
+
+    if (
+        $Response.PSObject.Properties.Match("BaseResponse").Count -gt 0 -and
+        $null -ne $Response.BaseResponse -and
+        $Response.BaseResponse.PSObject.Properties.Match("Content").Count -gt 0 -and
+        $null -ne $Response.BaseResponse.Content -and
+        $Response.BaseResponse.Content.Headers.ContentType
+    ) {
+        return [string]$Response.BaseResponse.Content.Headers.ContentType
+    }
+
+    return ""
+}
+
+function Assert-SmokeContentType {
+    param(
+        [Parameter(Mandatory = $true)]$Response,
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string[]]$ExpectedSubstrings
+    )
+
+    $contentType = Get-ResponseContentType -Response $Response
+    if ([string]::IsNullOrWhiteSpace($contentType)) {
+        throw ("{0} smoke check did not return a Content-Type header: {1}" -f $Label, $Uri)
+    }
+
+    $normalized = $contentType.ToLowerInvariant()
+    foreach ($candidate in $ExpectedSubstrings) {
+        if ($normalized.Contains($candidate.ToLowerInvariant())) {
+            return $contentType
+        }
+    }
+
+    throw ("{0} smoke check returned unexpected Content-Type '{1}': {2}" -f $Label, $contentType, $Uri)
+}
+
 function Test-CommandExists {
     param([string]$CommandName)
     return [bool](Get-Command $CommandName -ErrorAction SilentlyContinue)
@@ -3220,8 +3318,8 @@ if (-not $SkipSmokeTest) {
         throw ("Health check failed: {0}" -f $healthUrl)
     }
 
-    $cssResponse = Invoke-WebRequest -UseBasicParsing -Uri $cssUrl -Method Head -TimeoutSec 30
-    $jsResponse = Invoke-WebRequest -UseBasicParsing -Uri $jsUrl -Method Head -TimeoutSec 30
+    $cssResponse = Invoke-SmokeRequest -Uri $cssUrl -Method Head -TimeoutSec 30
+    $jsResponse = Invoke-SmokeRequest -Uri $jsUrl -Method Head -TimeoutSec 30
     if ($cssResponse.StatusCode -ne 200) {
         throw ("Static CSS check failed ({0}): {1}" -f $cssResponse.StatusCode, $cssUrl)
     }
@@ -3229,7 +3327,10 @@ if (-not $SkipSmokeTest) {
         throw ("Static JS check failed ({0}): {1}" -f $jsResponse.StatusCode, $jsUrl)
     }
 
-    Write-Ok ("Smoke tests passed: {0}; {1}; {2}" -f $healthUrl, $cssUrl, $jsUrl)
+    $cssContentType = Assert-SmokeContentType -Response $cssResponse -Uri $cssUrl -Label "Static CSS" -ExpectedSubstrings @("text/css", "css")
+    $jsContentType = Assert-SmokeContentType -Response $jsResponse -Uri $jsUrl -Label "Static JS" -ExpectedSubstrings @("javascript", "ecmascript")
+
+    Write-Ok ("Smoke tests passed: {0}; {1} [{2}]; {3} [{4}]" -f $healthUrl, $cssUrl, $cssContentType, $jsUrl, $jsContentType)
 }
 else {
     Write-Info "Skipping smoke tests as requested (-SkipSmokeTest)."

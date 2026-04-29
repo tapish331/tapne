@@ -287,6 +287,17 @@ function Assert-RequiredEnvKeys {
     Write-Ok ".env contains all required keys."
 }
 
+function Assert-FrontendArtifactReady {
+    param([string]$ProjectRoot)
+
+    $artifactIndexPath = Join-Path $ProjectRoot "artifacts\lovable-production-dist\index.html"
+    if (-not (Test-Path -Path $artifactIndexPath -PathType Leaf)) {
+        throw ("Missing built frontend artifact: {0}`nRun infra/build-lovable-production-frontend.ps1 before building the web image." -f $artifactIndexPath)
+    }
+
+    Write-Ok "Built frontend artifact is present."
+}
+
 function Set-TextFileIfMissing {
     param(
         [string]$Path,
@@ -857,6 +868,11 @@ else {
 Write-Step "Preparing environment file"
 Initialize-EnvFile -EnvFilePath $envFilePath -EnvTemplatePath $envTemplatePath -Force:$ForceEnv
 Assert-RequiredEnvKeys -EnvFilePath $envFilePath -RequiredKeys $config.required_env_keys
+
+if (-not $GenerateOnly -and -not $InfraOnly -and -not $NoBuild) {
+    Write-Step "Checking built frontend artifact"
+    Assert-FrontendArtifactReady -ProjectRoot $projectRoot
+}
 
 if ($GenerateOnly) {
     Write-Ok "GenerateOnly mode complete. No containers were started."

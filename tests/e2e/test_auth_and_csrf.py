@@ -11,7 +11,7 @@ from tests.e2e.auth import (
     login_through_page,
     wait_for_authenticated_state,
 )
-from tests.e2e.data import create_booking_scenario
+from tests.e2e.data import create_booking_scenario, create_trip, ensure_member, unique_username
 from tests.e2e.helpers import unique_suffix
 from tests.e2e.types import SessionFactory
 
@@ -78,6 +78,45 @@ def test_modal_login_then_booking_post_persists(session_factory: SessionFactory)
     page.get_by_role("button", name="Confirm & Pay").click()
 
     page.locator("h3:visible").filter(has_text="Booking Confirmed!").wait_for()
+    page.get_by_role("button", name="Done").click()
+
+    page.reload()
+    page.get_by_role("button", name="Application Pending").wait_for()
+
+    guest.audit.assert_clean()
+
+
+@pytest.mark.full
+def test_modal_login_then_apply_post_persists(session_factory: SessionFactory) -> None:
+    traveler_username = unique_username("modal-login-apply")
+    ensure_member(username=traveler_username, display_name="Apply Traveler")
+    title = unique_suffix("Guardrail Apply")
+    trip_id = create_trip(host_username="mei", title=title, access_type="apply")
+    guest = session_factory(name="modal-login-apply")
+    page = guest.page
+    application_heading = page.get_by_role("heading", name="Apply to Join")
+
+    page.goto(f"/trips/{trip_id}")
+    page.get_by_role("heading", name=title).wait_for()
+    page.get_by_role("button", name="Apply to Join").first.click()
+    login_through_modal(page, username=traveler_username, password=DEFAULT_DEMO_PASSWORD)
+    try:
+        application_heading.wait_for(timeout=2_000)
+    except PlaywrightTimeoutError:
+        page.get_by_role("button", name="Apply to Join").first.click()
+        application_heading.wait_for()
+
+    page.get_by_placeholder("Your full name").fill("Apply Traveler")
+    page.get_by_placeholder("you@email.com").fill(f"{traveler_username}@example.com")
+    page.get_by_placeholder("+91 98765...").fill("9876543210")
+    page.get_by_placeholder("25").fill("25")
+    page.get_by_role("button", name="Review & Submit").click()
+
+    with page.expect_response(re.compile(r"/frontend-api/trips/\d+/join-request/")) as apply_response:
+        page.get_by_role("button", name="Submit Application").click()
+    assert apply_response.value.ok, f"Application submit failed: HTTP {apply_response.value.status}"
+
+    page.locator("h3:visible").filter(has_text="Application Submitted!").wait_for()
     page.get_by_role("button", name="Done").click()
 
     page.reload()

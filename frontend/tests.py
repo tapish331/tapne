@@ -14,6 +14,7 @@ import frontend.urls as frontend_urls
 import tapne.urls as tapne_urls
 from blogs.models import Blog
 from frontend.views import frontend_entrypoint_view
+from interactions.models import DirectMessage, DirectMessageThread
 from reviews.models import Review
 from social.models import FollowRelation
 from trips.models import Trip
@@ -271,6 +272,33 @@ class FrontendSessionBEndpointsTests(TestCase):
     def test_reviews_endpoint_requires_authentication(self) -> None:
         response = self.client.get("/frontend-api/reviews/?author=me")
         self.assertEqual(response.status_code, 401)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_dm_inbox_endpoint_returns_most_recent_messages_for_long_threads(self) -> None:
+        thread = DirectMessageThread.objects.create(member_one=self.alice, member_two=self.bob)
+        for index in range(54):
+            sender = self.alice if index % 2 == 0 else self.bob
+            DirectMessage.objects.create(
+                thread=thread,
+                sender=sender,
+                body=f"msg {index:02d}",
+            )
+
+        self.client.login(username="alice", password=self.password)
+        response = self.client.get("/frontend-api/dm/inbox/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(payload["threads"]), 1)
+
+        thread_row = payload["threads"][0]
+        bodies = [row["body"] for row in thread_row["messages"]]
+        self.assertEqual(len(bodies), 50)
+        self.assertEqual(bodies[0], "msg 04")
+        self.assertEqual(bodies[-1], "msg 53")
+        self.assertEqual(thread_row["last_message"], "msg 53")
+        self.assertNotIn("msg 00", bodies)
 
     # -- Trip list ?q / ?sort ------------------------------------------------
 

@@ -82,7 +82,7 @@ the end of the session. Lovable (not Claude) then performs the edits.
   no access to deployment, and no knowledge of either. The prompt must NOT
   reference any of the following (non-exhaustive):
   - Django, Python, views, URL patterns, URL routes, middleware
-  - `frontend-api`, `frontend/urls.py`, `frontend/views.py`, `frontend_spa/`
+  - `frontend-api`, `frontend/urls.py`, `frontend/views.py`
   - `_runtime_config_payload`, runtime-config injection, SPA entrypoint
   - CSRF plumbing, cookie names, `csrf.cookie_name`, `csrf.token`
   - `DjangoJSONEncoder`, snake_case vs camelCase debates
@@ -122,7 +122,7 @@ the end of the session. Lovable (not Claude) then performs the edits.
 
 - **Pre-send self-review gate.** Before surfacing the prompt to the user,
   scan it for these forbidden tokens: `django`, `python`, `frontend-api`,
-  `frontend_spa`, `frontend/urls`, `frontend/views`, `csrf`, `runtime
+  `frontend/urls`, `frontend/views`, `csrf`, `runtime
   config`, `cloud run`, `docker`, `settings.py`, `.env`, and any absolute
   path starting with `/`. If any match — rewrite until clean.
 - **Plain text only — pastable directly into Lovable.** The prompt is
@@ -198,7 +198,7 @@ classification in the first line of your reply so the user can redirect.
 |---|---|---|
 | 1 | **Lovable frontend** | `lovable/**` — read-only; only change via a Lovable prompt (Section 2b) |
 | 2 | **Django backend** | `*/models.py`, `*/views.py` (non-SPA), `*/urls.py` (non-SPA), `*/forms.py`, `*/admin.py`, `*/management/**`, payload builders, JSON endpoints in `frontend/views.py`, API routes in `frontend/urls.py`, migrations |
-| 3 | **Frontend–backend integration** | `frontend_spa/**`, SPA entrypoint + runtime-config injection in `frontend/views.py`, SPA shell routes in `frontend/urls.py`, `lovable/src/types/*.ts` contracts (read-only — diff only), `_runtime_config_payload()`, CSRF plumbing, response-shape alignment, Vite alias overrides |
+| 3 | **Frontend–backend integration** | SPA entrypoint + runtime-config injection in `frontend/views.py`, SPA shell routes in `frontend/urls.py`, `lovable/src/types/*.ts` contracts (read-only — diff only), `_runtime_config_payload()`, CSRF plumbing, response-shape alignment |
 | 4 | **Deployment** | `infra/**`, `Dockerfile*`, `docker-compose*.yml`, Cloud Run YAML, build scripts, artifact pipeline, deploy workflow |
 | 5 | **Config** | `.env*`, `tapne/settings.py` flags, feature toggles, secret wiring, `.claude/settings*.json`, Django `manage.py` plumbing |
 | 6 | **Auxiliary** | `skills/**`, `RULES.md`, `CLAUDE.md`, `README*`, docs, memory, comments-only edits |
@@ -239,10 +239,9 @@ classification in the first line of your reply so the user can redirect.
 - Any React context calling `useNavigate` / `useLocation` / `useParams` must
   be rendered **inside** `RootLayout`, never wrapping `<RouterProvider>`.
   Applies in particular to `DraftProvider`.
-- Vite aliases `@/lib/devMock` → `frontend_spa/src/lib/devMockStub.ts` and
-  `@/data/mockData` → `frontend_spa/src/data/mockDataStub.ts` must match the
-  exact import strings used in Lovable. If Lovable renames the import path,
-  update `frontend_spa/vite.production.config.ts` in the same session.
+- Do not reintroduce a second SPA source tree or alias-based production
+  override layer. `lovable/` is the sole frontend source of truth; Scope 3 may
+  only adapt Django runtime/config contracts to match it.
 - Auth-data loads in contexts must depend on a live `useAuth().isAuthenticated`,
   not the frozen `cfg.session.authenticated` bootstrap snapshot.
 
@@ -306,7 +305,7 @@ Two standing cleanup rules run on every substantive session.
 | Route | Visibility | Description |
 |---|---|---|
 | `/` | public | Homepage |
-| `/search` | public | Global search (trips, stories, users) |
+| `/search` | public | Global search (trips, destinations, stories, users) |
 | `/trips/:tripId` | public | Trip detail |
 | `/trips/new` | private | Create trip (supports `?mode=preview`) |
 | `/trips/:tripId/edit` | private | Edit trip (supports `?mode=preview`) |

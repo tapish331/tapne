@@ -13,6 +13,7 @@ def test_create_and_edit_story(session_factory: SessionFactory) -> None:
     """Create, then edit a story through the production Stories UI.
 
     The old /experiences/* routes were replaced by /stories/* in Lovable.
+    Story creation now starts from the canonical /stories/new route.
     The story-delete UI was also removed from Lovable (no delete button exists
     on StoryDetail or StoryEdit); that flow is blocked_by_lovable_showstopper
     and tracked in the comment at the bottom of this file.
@@ -28,10 +29,7 @@ def test_create_and_edit_story(session_factory: SessionFactory) -> None:
     location = "Guardrail Valley"
 
     # ── Create ────────────────────────────────────────────────────────────────
-    page.goto("/search?tab=stories")
-    page.get_by_role("heading", name="Search").wait_for()
-    page.get_by_role("button", name="Write").click()
-
+    page.goto("/stories/new")
     page.wait_for_url(re.compile(r".*/stories/new/?$"))
     page.get_by_role("heading", name="Write a story").wait_for()
     page.get_by_placeholder("Your story title").fill(title)

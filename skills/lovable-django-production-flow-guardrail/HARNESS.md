@@ -17,17 +17,22 @@ Preferred default layout:
 
 ```text
 tests/e2e/
+  __init__.py
   conftest.py
+  data.py
   helpers.py
   server.py
   auth.py
+  types.py
   test_public_smoke.py
   test_auth_and_csrf.py
+  test_additional_surfaces.py
   test_trip_drafts.py
   test_inbox_and_dm.py
   test_manage_trip.py
   test_profile_and_social.py
-  test_stories.py
+  test_reviews.py
+  test_experiences.py
 ```
 
 ## 2. Required Implementation Choices
@@ -35,13 +40,16 @@ tests/e2e/
 - Use Python `pytest` plus Playwright, not a Node-based browser runner.
 - Start Django externally or in a fixture, but always serve the built
   production artifact through Django.
+- Prefer the repo's current fixture structure in `tests/e2e/conftest.py` and
+  `tests/e2e/server.py` instead of inventing per-test server startup logic.
 - Use `artifacts/e2e/` for screenshots, traces, HTML snapshots, request logs,
   and storage state.
 - Keep flow helpers centralized; do not duplicate login, bootstrap, or wait
   logic across test files.
 - If you need markers, define at least `smoke` and `full`.
-- If you need a storage-state bootstrap, reuse or adapt the pattern from
-  `skills/webpage-visual-perfection-audit/scripts/create_storage_state.py`.
+- Prefer `tests/e2e/auth.py` for storage-state creation and modal-login
+  helpers. Reuse the visual-audit storage-state script only when a separate CLI
+  workflow is genuinely needed.
 - Provide explicit helpers for guest, named-auth, and multi-user concurrent
   contexts.
 - Keep signup-flow helpers separate from seeded-login helpers so the suite
@@ -49,6 +57,9 @@ tests/e2e/
 - Encode the full browser verification gate from
   [RULES.md](../../RULES.md) Section 5 in shared helpers or assertions rather
   than copying a weaker local checklist into each test file.
+- Keep browser-audit assertions centralized in shared helpers so console
+  errors, page errors, failed fetches, and bad XHR responses are captured
+  consistently.
 
 ## 3. Test Design Rules
 
@@ -76,12 +87,11 @@ Add or update a workflow under `.github/workflows/` for this harness.
 Required CI behavior:
 
 - install Python deps from `requirements.txt`
-- install skill or test deps needed for Playwright and `pytest`
+- install browser-test deps from `tests/e2e/requirements.txt` when present
 - install browser binaries
 - build the production frontend
 - migrate and seed data
-- start Django with `--noreload`
-- wait for health
+- run the existing guardrail server/bootstrap path and wait for health
 - create storage state if authenticated flows are in the suite
 - create or refresh one storage state per seeded user needed by the suite
 - run all `automated_smoke` coverage on every PR
@@ -98,5 +108,7 @@ Recommended shape:
   every PR
 
 If the repo has only one browser-automation workflow, do not fork the setup
-logic unnecessarily. Reuse patterns from
-`.github/workflows/visual-audit-pr-guardrail.yml` where sensible.
+logic unnecessarily. Update
+`.github/workflows/production-flow-guardrail.yml` first, and reuse patterns
+from `.github/workflows/visual-audit-pr-guardrail.yml` only where they still
+fit the production-flow harness.

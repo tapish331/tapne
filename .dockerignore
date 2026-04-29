@@ -37,8 +37,11 @@ coverage.xml
 *.sqlite3
 db.sqlite3
 staticfiles/
-artifacts/
+artifacts/*
+!artifacts/lovable-production-dist/
+!artifacts/lovable-production-dist/**
 mediafiles/
+output/
 
 # Local skill/audit assets not needed in runtime image
 skills/

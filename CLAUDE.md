@@ -41,7 +41,7 @@ python manage.py bootstrap_accounts --verbose
 ```bash
 cd lovable/
 npm run dev        # Dev server
-npm run build      # Production build → artifacts/lovable-production-dist/
+npm run build      # Vite build → lovable/dist/ (repo builder emits artifacts/lovable-production-dist/)
 npm run lint       # ESLint
 npm test           # Vitest
 npm run test:watch # Watch mode
@@ -61,11 +61,11 @@ infra/deploy-cloud-run.ps1
 
 ### Frontend
 
-All user-facing UI originates in the Lovable React SPA ([lovable/](lovable/)), customised via `frontend_spa/src/` through TypeScript path aliases (`@frontend/*` → `frontend_spa/src/*`). The SPA is built into `artifacts/lovable-production-dist/` and served by [frontend_entrypoint_view](frontend/views.py) for every SPA route declared in [frontend/urls.py](frontend/urls.py). A global catch-all in [tapne/urls.py](tapne/urls.py) routes any otherwise-unmatched URL to the same shell.
+All user-facing UI originates in the Lovable React SPA ([lovable/](lovable/)). The production builder stages a temporary copy of `lovable/`, builds it into `artifacts/lovable-production-dist/`, and Django serves that artifact through [frontend_entrypoint_view](frontend/views.py) for every SPA route declared in [frontend/urls.py](frontend/urls.py). A global catch-all in [tapne/urls.py](tapne/urls.py) routes any otherwise-unmatched URL to the same shell.
 
 There is **no Django-rendered UI fallback**. The legacy `LOVABLE_FRONTEND_ENABLED` toggle, `templates/pages/**`, `templates/partials/**`, `templates/base.html`, `static/css/tapne.css`, `static/js/tapne-ui.js`, and the Django `else:` branch in `tapne/urls.py` were all removed in the SPA cutover. Django owns data, APIs, admin, and OAuth — not visual output.
 
-Planned client routes live in [lovable/src/App.tsx](lovable/src/App.tsx); the deployed SPA entrypoints must mirror them in [frontend/urls.py](frontend/urls.py) (see RULES.md §6 drift rules).
+Planned client routes live in [lovable/src/App.tsx](lovable/src/App.tsx); the deployed SPA shell entrypoints must mirror them in [frontend/urls.py](frontend/urls.py) (see RULES.md §6 drift rules).
 
 ### Django Apps
 

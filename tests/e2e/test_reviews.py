@@ -11,8 +11,7 @@ from tests.e2e.types import SessionFactory
 def test_trip_review_submit_succeeds(session_factory: SessionFactory) -> None:
     """Submit a trip review through the ReviewModal on the trip detail page.
 
-    Covers the new flow introduced in frontend_spa/src/components/ReviewModal.tsx
-    and frontend_spa/src/pages/TripDetail.tsx: a "Write a Review" button opens a
+    Covers the Lovable trip detail review flow: a "Write a Review" button opens a
     multi-step modal that POSTs to /frontend-api/trips/{id}/reviews/.
 
     The backend is idempotent (creates or updates), so re-runs are safe.

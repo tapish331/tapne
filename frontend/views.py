@@ -576,11 +576,16 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
     request_user = getattr(request, "user", None)
     profile_identifier = str(getattr(request_user, "username", "") or getattr(request_user, "pk", "") or "").strip()
     profile_route = f"/users/{urllib.parse.quote(profile_identifier)}" if profile_identifier else "/profile/edit"
-    dm_inbox_url = reverse("frontend:api-dm-inbox")
-    if request.path.rstrip("/") == "/messages":
+    if request.path.rstrip("/") == "/messages" and bool(getattr(request_user, "is_authenticated", False)):
         dm_username = str(request.GET.get("dm", "") or "").strip()
-        if dm_username:
-            dm_inbox_url = f"{dm_inbox_url}?{urllib.parse.urlencode({'dm': dm_username})}"
+        viewer_username = str(getattr(request_user, "username", "") or "").strip()
+        if dm_username and dm_username != viewer_username:
+            other_user = UserModel.objects.filter(username=dm_username).first()
+            if other_user is not None:
+                get_or_create_dm_thread_for_members(
+                    member=request_user,
+                    other_member=other_user,
+                )
     return {
         "app_name": "tapne",
         "generated_at": now().isoformat(),
@@ -603,7 +608,7 @@ def _runtime_config_payload(request: HttpRequest) -> dict[str, object]:
             "activity": reverse("frontend:api-activity"),
             "settings": reverse("frontend:api-settings"),
             "hosting_inbox": reverse("frontend:api-hosting-inbox"),
-            "dm_inbox": dm_inbox_url,
+            "dm_inbox": reverse("frontend:api-dm-inbox"),
             "trip_drafts": reverse("frontend:api-trip-draft-create"),
             "manage_trip": "/frontend-api/manage-trip/",
             "messages": "/frontend-api/messages/",
@@ -1590,12 +1595,13 @@ def dm_inbox_api_view(request: HttpRequest) -> JsonResponse:
         peer_display_name = str(peer_profile.effective_display_name)
 
         # Load messages; senders are always one of the two participants so no extra queries.
-        message_rows = list(
+        # Return the most recent window while preserving chronological render order.
+        message_rows = list(reversed(list(
             DirectMessage.objects
             .select_related("sender")
             .filter(thread_id=thread.pk)
-            .order_by("created_at", "pk")[:50]
-        )
+            .order_by("-created_at", "-pk")[:50]
+        )))
 
         messages: list[dict[str, object]] = []
         last_message = ""

@@ -55,7 +55,7 @@ route rules, scope boundaries, and prompt/reporting contract.
   the shell loads, then the app throws router/provider errors such as
   `useNavigate()` outside router context.
 - Where to inspect:
-  `frontend_spa/src/App.tsx`, `lovable/src/contexts/DraftContext.tsx`, and any
+  `lovable/src/App.tsx`, `lovable/src/contexts/DraftContext.tsx`, and any
   provider using `useNavigate`, `useLocation`, or `useParams`.
 - Likely fix scope:
   Scope 3.
@@ -119,3 +119,36 @@ route rules, scope boundaries, and prompt/reporting contract.
   Scope 3.
 - Relevant rules:
   [RULES.md](../../RULES.md) Sections 4, 5, and 6.
+
+## Brand CSS served as HTML during local browser audits
+
+- Symptom:
+  browser audits fail with stylesheet MIME-type errors for
+  `/static/frontend-brand/tokens.css` or `/static/frontend-brand/overrides.css`,
+  and Django logs show those URLs returning the SPA shell HTML size instead of
+  CSS bytes.
+- Where to inspect:
+  `tests/e2e/server.py`, `tapne/settings.py`, `tapne/urls.py`, and the local
+  runserver environment actually used by the browser audit.
+- Likely fix scope:
+  Scope 3 for local serving/runtime wiring.
+- Relevant rules:
+  [RULES.md](../../RULES.md) Sections 4, 5, and 6.
+
+## Application flow only partially cut over
+
+- Symptom:
+  an apply-only trip opens the right modal, but the traveler flow still misses
+  one or more of: application-specific questions, successful submit state,
+  post-submit pending-state UI, or reload persistence.
+- Where to inspect:
+  `lovable/src/pages/TripDetail.tsx`,
+  `lovable/src/components/ApplicationModal.tsx`,
+  `lovable/src/pages/CreateTrip.tsx`,
+  `lovable/src/types/api.ts`, and the trip detail/manage-trip payload builders
+  in `frontend/views.py`.
+- Likely fix scope:
+  Scope 1 when the rendered modal/flow is incomplete; Scope 3 when the payload
+  contract omits fields the rendered flow depends on.
+- Relevant rules:
+  [RULES.md](../../RULES.md) Sections 2b, 4, 5, and 6.

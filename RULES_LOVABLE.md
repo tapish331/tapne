@@ -87,9 +87,12 @@ The SPA owns what the user sees.
 
 - Guests can browse public surfaces, but protected actions should open the
   shared auth modal.
+- Guest navigation to a private route should open the shared auth modal and
+  keep the visitor on their previous page (or homepage on cold load). The
+  private page should not render behind the modal.
 - Members can create, manage, message, bookmark, review, and edit from the
   existing canonical surfaces.
-- Search is the browsing hub for trips, stories, and users.
+- Search is the browsing hub for trips, destinations, stories, and users.
 - The dashboard is the management hub for member-owned surfaces.
 - Public profile viewing and profile editing are separate destinations.
 
@@ -124,7 +127,7 @@ Two standing cleanup rules apply to all Lovable route work:
 | Route | Visibility | Description |
 |---|---|---|
 | `/` | public | Homepage |
-| `/search` | public | Global search (trips, stories, users) |
+| `/search` | public | Global search (trips, destinations, stories, users) |
 | `/trips/:tripId` | public | Trip detail |
 | `/trips/new` | private | Create trip (supports `?mode=preview`) |
 | `/trips/:tripId/edit` | private | Edit trip (supports `?mode=preview`) |

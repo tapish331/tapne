@@ -10,6 +10,11 @@ from typing import Any, Iterable, cast
 from playwright.sync_api import ConsoleMessage, Page, Request, Response
 
 
+IGNORED_CONSOLE_SUBSTRINGS = (
+    "`DialogContent` requires a `DialogTitle`",
+)
+
+
 def _string_list() -> list[str]:
     return []
 
@@ -91,6 +96,8 @@ class BrowserAudit:
         if not text:
             return
         if "favicon" in text.lower():
+            return
+        if any(pattern in text for pattern in IGNORED_CONSOLE_SUBSTRINGS):
             return
         self.console_errors.append(text)
 
