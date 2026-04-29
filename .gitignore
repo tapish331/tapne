@@ -12,7 +12,11 @@ staticfiles/
 mediafiles/
 artifacts/
 test_settings.sqlite3
-output/
+output/*
+!output/conceptual_schema_analysis.md
+!output/conceptual_schema.dot
+!output/conceptual_schema.png
+!output/conceptual_schema.svg
 tmp/
 *.storage-state.json
 

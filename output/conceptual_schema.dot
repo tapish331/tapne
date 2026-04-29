@@ -1,0 +1,330 @@
+digraph TapneConceptualSchema {
+  graph [
+    label="Tapne Conceptual Schema",
+    labelloc=t,
+    fontsize=28,
+    fontname="Segoe UI Semibold",
+    bgcolor="white",
+    rankdir=LR,
+    splines=true,
+    overlap=false,
+    nodesep=0.45,
+    ranksep=0.9,
+    pad=0.35,
+    compound=true,
+    newrank=true
+  ];
+
+  node [shape=plain, fontname="Segoe UI"];
+  edge [fontname="Segoe UI", color="#5E6B84", penwidth=1.5, arrowsize=0.8];
+
+  User [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#3056D3" BGCOLOR="#F5F9FF">
+      <TR><TD BGCOLOR="#3056D3" ALIGN="LEFT"><FONT COLOR="white"><B>User / Member</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT">Django auth identity</TD></TR>
+      <TR><TD ALIGN="LEFT">Central actor: host, author, traveler, follower</TD></TR>
+      <TR><TD ALIGN="LEFT">Drives most write paths</TD></TR>
+    </TABLE>
+  >];
+
+  subgraph cluster_identity {
+    label="Identity and Personalization";
+    color="#BFD4FF";
+    style="rounded,filled";
+    fillcolor="#F7FAFF";
+
+    AccountProfile [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#5B8DEF" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DCE8FF" ALIGN="LEFT"><B>AccountProfile</B></TD></TR>
+        <TR><TD ALIGN="LEFT">public identity details</TD></TR>
+        <TR><TD ALIGN="LEFT">display_name, bio, location</TD></TR>
+        <TR><TD ALIGN="LEFT">avatar, website, travel_tags</TD></TR>
+      </TABLE>
+    >];
+
+    MemberSettings [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#5B8DEF" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DCE8FF" ALIGN="LEFT"><B>MemberSettings</B></TD></TR>
+        <TR><TD ALIGN="LEFT">privacy + notification preferences</TD></TR>
+        <TR><TD ALIGN="LEFT">email_updates, dm_privacy</TD></TR>
+        <TR><TD ALIGN="LEFT">theme, search_visibility, digest</TD></TR>
+      </TABLE>
+    >];
+
+    MemberFeedPreference [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#5B8DEF" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DCE8FF" ALIGN="LEFT"><B>MemberFeedPreference</B></TD></TR>
+        <TR><TD ALIGN="LEFT">lightweight personalization state</TD></TR>
+        <TR><TD ALIGN="LEFT">followed_usernames</TD></TR>
+        <TR><TD ALIGN="LEFT">interest_keywords</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_content {
+    label="Marketplace Content";
+    color="#FFD7A0";
+    style="rounded,filled";
+    fillcolor="#FFF9F1";
+
+    Trip [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#E59A2E" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#FFE8C2" ALIGN="LEFT"><B>Trip</B></TD></TR>
+        <TR><TD ALIGN="LEFT">primary marketplace aggregate</TD></TR>
+        <TR><TD ALIGN="LEFT">schedule, pricing, itinerary, policies</TD></TR>
+        <TR><TD ALIGN="LEFT">status: draft / published / completed</TD></TR>
+        <TR><TD ALIGN="LEFT">host-owned, review-prompt aware</TD></TR>
+      </TABLE>
+    >];
+
+    Blog [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#E59A2E" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#FFE8C2" ALIGN="LEFT"><B>Blog</B></TD></TR>
+        <TR><TD ALIGN="LEFT">secondary content aggregate</TD></TR>
+        <TR><TD ALIGN="LEFT">slug, title, body, tags, location</TD></TR>
+        <TR><TD ALIGN="LEFT">reads + reviews_count signals</TD></TR>
+      </TABLE>
+    >];
+
+    EnrollmentRequest [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#E59A2E" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#FFE8C2" ALIGN="LEFT"><B>EnrollmentRequest</B></TD></TR>
+        <TR><TD ALIGN="LEFT">traveler joins hosted trip</TD></TR>
+        <TR><TD ALIGN="LEFT">status lifecycle: pending / approved / denied</TD></TR>
+        <TR><TD ALIGN="LEFT">reviewed_by + reviewed_at</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_engagement {
+    label="Social, Trust, and Messaging";
+    color="#D9C7FF";
+    style="rounded,filled";
+    fillcolor="#FBF9FF";
+
+    FollowRelation [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>FollowRelation</B></TD></TR>
+        <TR><TD ALIGN="LEFT">directed user-to-user edge</TD></TR>
+        <TR><TD ALIGN="LEFT">unique, no self-follow</TD></TR>
+      </TABLE>
+    >];
+
+    Bookmark [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>Bookmark</B></TD></TR>
+        <TR><TD ALIGN="LEFT">saved item record</TD></TR>
+        <TR><TD ALIGN="LEFT">polymorphic target_type + target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">Trip | Blog | User</TD></TR>
+      </TABLE>
+    >];
+
+    Comment [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>Comment</B></TD></TR>
+        <TR><TD ALIGN="LEFT">public discussion row</TD></TR>
+        <TR><TD ALIGN="LEFT">polymorphic target_type + target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">optional parent for one-level replies</TD></TR>
+      </TABLE>
+    >];
+
+    Review [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>Review</B></TD></TR>
+        <TR><TD ALIGN="LEFT">public rating + feedback</TD></TR>
+        <TR><TD ALIGN="LEFT">polymorphic target_type + target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">Trip | Blog</TD></TR>
+      </TABLE>
+    >];
+
+    DirectMessageThread [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>DirectMessageThread</B></TD></TR>
+        <TR><TD ALIGN="LEFT">one-to-one member thread</TD></TR>
+        <TR><TD ALIGN="LEFT">canonical ordered member pair</TD></TR>
+      </TABLE>
+    >];
+
+    DirectMessage [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>DirectMessage</B></TD></TR>
+        <TR><TD ALIGN="LEFT">message row inside a thread</TD></TR>
+        <TR><TD ALIGN="LEFT">sender must be a participant</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_media {
+    label="Media and Attachments";
+    color="#B7E4D3";
+    style="rounded,filled";
+    fillcolor="#F3FCF8";
+
+    MediaAsset [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#1B8A5A" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DDF7EB" ALIGN="LEFT"><B>MediaAsset</B></TD></TR>
+        <TR><TD ALIGN="LEFT">stored upload file</TD></TR>
+        <TR><TD ALIGN="LEFT">file metadata, checksum, dimensions</TD></TR>
+        <TR><TD ALIGN="LEFT">owned by a member</TD></TR>
+      </TABLE>
+    >];
+
+    MediaAttachment [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#1B8A5A" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DDF7EB" ALIGN="LEFT"><B>MediaAttachment</B></TD></TR>
+        <TR><TD ALIGN="LEFT">asset-to-domain mapping</TD></TR>
+        <TR><TD ALIGN="LEFT">polymorphic target_type + target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">Trip | Blog | Review</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_ops {
+    label="Operational Support";
+    color="#CBD5E1";
+    style="rounded,filled";
+    fillcolor="#F8FAFC";
+
+    RuntimeIdempotencyRecord [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#475467" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#E9EEF5" ALIGN="LEFT"><B>RuntimeIdempotencyRecord</B></TD></TR>
+        <TR><TD ALIGN="LEFT">durable idempotency ledger</TD></TR>
+        <TR><TD ALIGN="LEFT">scope + key + owner + response snapshot</TD></TR>
+      </TABLE>
+    >];
+
+    RuntimeCounter [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#475467" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#E9EEF5" ALIGN="LEFT"><B>RuntimeCounter</B></TD></TR>
+        <TR><TD ALIGN="LEFT">persisted snapshot of fast counters</TD></TR>
+        <TR><TD ALIGN="LEFT">cache / rate-limit / queue support</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_readmodels {
+    label="Derived Read Models (Computed, Not Separate Write Tables)";
+    color="#DDE4EE";
+    style="rounded,dashed";
+
+    HomeFeed [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#667085" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F2F4F7" ALIGN="LEFT"><B>Home Feed</B></TD></TR>
+        <TR><TD ALIGN="LEFT">guest trending vs member-personalized</TD></TR>
+      </TABLE>
+    >];
+
+    SearchProjection [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#667085" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F2F4F7" ALIGN="LEFT"><B>Search Projection</B></TD></TR>
+        <TR><TD ALIGN="LEFT">trips, destinations, stories, people</TD></TR>
+      </TABLE>
+    >];
+
+    ActivityStream [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#667085" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F2F4F7" ALIGN="LEFT"><B>Activity Stream</B></TD></TR>
+        <TR><TD ALIGN="LEFT">assembled from social + content events</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_target_patterns {
+    label="Polymorphic Target Patterns";
+    color="#E5E7EB";
+    style="rounded,dashed";
+
+    ContentTarget [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#667085" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F8FAFC" ALIGN="LEFT"><B>ContentTarget</B></TD></TR>
+        <TR><TD ALIGN="LEFT">Trip | Blog</TD></TR>
+        <TR><TD ALIGN="LEFT">used by Comment and Review</TD></TR>
+      </TABLE>
+    >];
+
+    BookmarkTarget [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#667085" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F8FAFC" ALIGN="LEFT"><B>BookmarkTarget</B></TD></TR>
+        <TR><TD ALIGN="LEFT">Trip | Blog | User</TD></TR>
+      </TABLE>
+    >];
+
+    MediaTarget [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#667085" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F8FAFC" ALIGN="LEFT"><B>MediaTarget</B></TD></TR>
+        <TR><TD ALIGN="LEFT">Trip | Blog | Review</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  Legend [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#98A2B3" BGCOLOR="#FFFFFF">
+      <TR><TD BGCOLOR="#F2F4F7" ALIGN="LEFT"><B>Legend</B></TD></TR>
+      <TR><TD ALIGN="LEFT">Solid edge = direct ownership / foreign-key style relation</TD></TR>
+      <TR><TD ALIGN="LEFT">Dashed edge = derived dependency or polymorphic target pattern</TD></TR>
+    </TABLE>
+  >];
+
+  { rank=same; Trip; Blog; }
+  { rank=same; FollowRelation; Bookmark; Comment; Review; }
+  { rank=same; MediaAsset; MediaAttachment; }
+  { rank=same; HomeFeed; SearchProjection; ActivityStream; }
+
+  User -> AccountProfile [label="1:1 public profile", color="#3056D3"];
+  User -> MemberSettings [label="1:1 private settings", color="#3056D3"];
+  User -> MemberFeedPreference [label="1:1 ranking preferences", color="#3056D3"];
+
+  User -> Trip [label="hosts many trips", color="#A86500"];
+  User -> Blog [label="authors many blogs", color="#A86500"];
+  Trip -> EnrollmentRequest [label="receives join requests", color="#A86500"];
+  User -> EnrollmentRequest [label="submits / reviews", color="#A86500"];
+
+  User -> FollowRelation [label="follower role", color="#7C3AED"];
+  FollowRelation -> User [label="following role", color="#7C3AED"];
+  User -> Bookmark [label="saves items", color="#7C3AED"];
+  User -> Comment [label="writes comments", color="#7C3AED"];
+  Comment -> Comment [label="optional parent reply", color="#7C3AED"];
+  User -> Review [label="authors reviews", color="#7C3AED"];
+  User -> DirectMessageThread [label="participant", color="#7C3AED"];
+  DirectMessageThread -> DirectMessage [label="contains messages", color="#7C3AED"];
+  User -> DirectMessage [label="sends", color="#7C3AED", constraint=false];
+
+  User -> MediaAsset [label="owns uploaded files", color="#1B8A5A"];
+  MediaAsset -> MediaAttachment [label="attached to targets", color="#1B8A5A"];
+
+  User -> RuntimeIdempotencyRecord [label="optional owner", color="#475467"];
+
+  Comment -> ContentTarget [style=dashed, color="#98A2B3", fontcolor="#667085", label="target_type + target_key", constraint=false];
+  Review -> ContentTarget [style=dashed, color="#98A2B3", fontcolor="#667085", label="target_type + target_key", constraint=false];
+  Bookmark -> BookmarkTarget [style=dashed, color="#98A2B3", fontcolor="#667085", label="target_type + target_key", constraint=false];
+  MediaAttachment -> MediaTarget [style=dashed, color="#98A2B3", fontcolor="#667085", label="target_type + target_key", constraint=false];
+
+  ContentTarget -> Trip [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+  ContentTarget -> Blog [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+  BookmarkTarget -> Trip [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+  BookmarkTarget -> Blog [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+  BookmarkTarget -> User [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+  MediaTarget -> Trip [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+  MediaTarget -> Blog [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+  MediaTarget -> Review [style=dashed, color="#C0C7D1", arrowhead=none, constraint=false];
+
+  MemberFeedPreference -> HomeFeed [style=dashed, color="#98A2B3", label="ranking signals", constraint=false];
+  FollowRelation -> HomeFeed [style=dashed, color="#98A2B3", label="follow graph", constraint=false];
+  Trip -> HomeFeed [style=dashed, color="#98A2B3", label="trip candidates", constraint=false];
+  Blog -> HomeFeed [style=dashed, color="#98A2B3", label="blog candidates", constraint=false];
+  AccountProfile -> HomeFeed [style=dashed, color="#98A2B3", label="profile candidates", constraint=false];
+
+  MemberFeedPreference -> SearchProjection [style=dashed, color="#98A2B3", label="personalization", constraint=false];
+  Trip -> SearchProjection [style=dashed, color="#98A2B3", label="trip + destination indexing", constraint=false];
+  Blog -> SearchProjection [style=dashed, color="#98A2B3", label="story indexing", constraint=false];
+  AccountProfile -> SearchProjection [style=dashed, color="#98A2B3", label="people indexing", constraint=false];
+
+  FollowRelation -> ActivityStream [style=dashed, color="#98A2B3", label="follow events", constraint=false];
+  EnrollmentRequest -> ActivityStream [style=dashed, color="#98A2B3", label="approval events", constraint=false];
+  Comment -> ActivityStream [style=dashed, color="#98A2B3", label="comment/reply events", constraint=false];
+  Bookmark -> ActivityStream [style=dashed, color="#98A2B3", label="bookmark events", constraint=false];
+  Review -> ActivityStream [style=dashed, color="#98A2B3", label="review events", constraint=false];
+  Trip -> ActivityStream [style=dashed, color="#98A2B3", label="review-prompt events", constraint=false];
+
+  User -> Legend [style=invis];
+}
