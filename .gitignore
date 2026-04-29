@@ -17,6 +17,10 @@ output/*
 !output/conceptual_schema.dot
 !output/conceptual_schema.png
 !output/conceptual_schema.svg
+!output/logical_schema_analysis.md
+!output/logical_schema.dot
+!output/logical_schema.png
+!output/logical_schema.svg
 tmp/
 *.storage-state.json
 

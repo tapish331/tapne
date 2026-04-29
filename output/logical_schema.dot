@@ -1,0 +1,349 @@
+digraph TapneLogicalSchema {
+  graph [
+    label="Tapne Logical Schema",
+    labelloc=t,
+    fontsize=28,
+    fontname="Segoe UI Semibold",
+    bgcolor="white",
+    rankdir=LR,
+    splines=true,
+    overlap=false,
+    nodesep=0.45,
+    ranksep=0.95,
+    pad=0.35,
+    compound=true,
+    newrank=true
+  ];
+
+  node [shape=plain, fontname="Consolas"];
+  edge [fontname="Segoe UI", color="#667085", penwidth=1.4, arrowsize=0.75];
+
+  subgraph cluster_identity {
+    label="Identity and Preference";
+    color="#BFD4FF";
+    style="rounded,filled";
+    fillcolor="#F7FAFF";
+
+    auth_user [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#3056D3" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#3056D3" ALIGN="LEFT"><FONT COLOR="white"><B>auth_user</B></FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> username</TD></TR>
+        <TR><TD ALIGN="LEFT">email, password, first_name, last_name</TD></TR>
+        <TR><TD ALIGN="LEFT">is_active, is_staff, is_superuser</TD></TR>
+        <TR><TD ALIGN="LEFT">last_login, date_joined</TD></TR>
+      </TABLE>
+    >];
+
+    accounts_accountprofile [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#5B8DEF" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DCE8FF" ALIGN="LEFT"><B>accounts_accountprofile</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK UQ</B> user_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT">display_name, bio, location, website</TD></TR>
+        <TR><TD ALIGN="LEFT">avatar_url, travel_tags JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">is_demo, created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    settings_app_membersettings [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#5B8DEF" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DCE8FF" ALIGN="LEFT"><B>settings_app_membersettings</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK UQ</B> member_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT">email_updates, profile_visibility, dm_privacy</TD></TR>
+        <TR><TD ALIGN="LEFT">theme_preference, search_visibility, digest_enabled</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    feed_memberfeedpreference [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#5B8DEF" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DCE8FF" ALIGN="LEFT"><B>feed_memberfeedpreference</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK UQ</B> user_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT">followed_usernames JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">interest_keywords JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_content {
+    label="Content and Conversion";
+    color="#FFD7A0";
+    style="rounded,filled";
+    fillcolor="#FFF9F1";
+
+    trips_trip [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#C97600" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F6C677" ALIGN="LEFT"><B>trips_trip</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> host_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT">title, summary, description, destination</TD></TR>
+        <TR><TD ALIGN="LEFT">starts_at, ends_at, booking_closes_at</TD></TR>
+        <TR><TD ALIGN="LEFT">status, is_published, review_prompts_sent, is_demo</TD></TR>
+        <TR><TD ALIGN="LEFT">trip_type, budget_tier, difficulty_level, pace_level</TD></TR>
+        <TR><TD ALIGN="LEFT">group_size_label, total_seats, minimum_seats</TD></TR>
+        <TR><TD ALIGN="LEFT">currency, total_trip_price, price_per_person, early_bird_price</TD></TR>
+        <TR><TD ALIGN="LEFT">payment_terms, payment_method, payment_details</TD></TR>
+        <TR><TD ALIGN="LEFT">highlights JSON, itinerary_days JSON, faqs JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">included_items JSON, not_included_items JSON, things_to_carry JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">suitable_for JSON, trip_vibe JSON, draft_form_data JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">traffic_score, banner_image, video_link</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    blogs_blog [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#C97600" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F6C677" ALIGN="LEFT"><B>blogs_blog</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> author_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> slug</TD></TR>
+        <TR><TD ALIGN="LEFT">title, excerpt, body</TD></TR>
+        <TR><TD ALIGN="LEFT">cover_image_url, location, tags JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">reads, reviews_count</TD></TR>
+        <TR><TD ALIGN="LEFT">is_published, is_demo</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    enrollment_enrollmentrequest [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#C97600" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#F6C677" ALIGN="LEFT"><B>enrollment_enrollmentrequest</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> trip_id to trips_trip.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> requester_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> reviewed_by_id to auth_user.id NULL</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> (trip_id, requester_id)</TD></TR>
+        <TR><TD ALIGN="LEFT">message, status, reviewed_at</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_social {
+    label="Social and Messaging";
+    color="#D9C7FF";
+    style="rounded,filled";
+    fillcolor="#FBF9FF";
+
+    social_followrelation [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>social_followrelation</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> follower_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> following_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> (follower_id, following_id)</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>CHK</B> no self-follow</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at</TD></TR>
+      </TABLE>
+    >];
+
+    social_bookmark [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>social_bookmark</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> member_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> (member_id, target_type, target_key)</TD></TR>
+        <TR><TD ALIGN="LEFT">target_type, target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">target_label, target_url</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    interactions_directmessagethread [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>interactions_directmessagethread</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> member_one_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> member_two_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> (member_one_id, member_two_id)</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>CHK</B> no self-thread, ordered pair</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    interactions_directmessage [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#7C3AED" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#EEE6FF" ALIGN="LEFT"><B>interactions_directmessage</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> thread_id to interactions_directmessagethread.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> sender_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT">body</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_engagement {
+    label="Engagement and Trust";
+    color="#F4B8C4";
+    style="rounded,filled";
+    fillcolor="#FFF7F9";
+
+    interactions_comment [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#C2416C" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#FFD9E4" ALIGN="LEFT"><B>interactions_comment</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> author_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> parent_id to interactions_comment.id NULL</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>CHK</B> no self-parent</TD></TR>
+        <TR><TD ALIGN="LEFT">target_type, target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">target_label, target_url</TD></TR>
+        <TR><TD ALIGN="LEFT">text</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    reviews_review [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#C2416C" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#FFD9E4" ALIGN="LEFT"><B>reviews_review</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> author_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> (author_id, target_type, target_key)</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>CHK</B> rating between 1 and 5</TD></TR>
+        <TR><TD ALIGN="LEFT">target_type, target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">target_label, target_url</TD></TR>
+        <TR><TD ALIGN="LEFT">rating, headline, body</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_media {
+    label="Media";
+    color="#B7E4D3";
+    style="rounded,filled";
+    fillcolor="#F3FCF8";
+
+    media_mediaasset [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#1B8A5A" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DDF7EB" ALIGN="LEFT"><B>media_mediaasset</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> owner_id to auth_user.id</TD></TR>
+        <TR><TD ALIGN="LEFT">file, kind, original_name, content_type</TD></TR>
+        <TR><TD ALIGN="LEFT">size_bytes, checksum_sha256</TD></TR>
+        <TR><TD ALIGN="LEFT">width_px, height_px, caption</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    media_mediaattachment [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#1B8A5A" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#DDF7EB" ALIGN="LEFT"><B>media_mediaattachment</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> asset_id to media_mediaasset.id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> (asset_id, target_type, target_key)</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>CHK</B> target_type in trip, blog, review</TD></TR>
+        <TR><TD ALIGN="LEFT">target_type, target_key</TD></TR>
+        <TR><TD ALIGN="LEFT">target_label, target_url</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_runtime {
+    label="Runtime Support";
+    color="#CBD5E1";
+    style="rounded,filled";
+    fillcolor="#F8FAFC";
+
+    runtime_runtimeidempotencyrecord [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#475467" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#E9EEF5" ALIGN="LEFT"><B>runtime_runtimeidempotencyrecord</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>FK</B> owner_id to auth_user.id NULL</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> (scope, idempotency_key)</TD></TR>
+        <TR><TD ALIGN="LEFT">scope, idempotency_key, request_fingerprint</TD></TR>
+        <TR><TD ALIGN="LEFT">status_code, response_payload JSON</TD></TR>
+        <TR><TD ALIGN="LEFT">expires_at, created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+
+    runtime_runtimecounter [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#475467" BGCOLOR="#FFFFFF">
+        <TR><TD BGCOLOR="#E9EEF5" ALIGN="LEFT"><B>runtime_runtimecounter</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>PK</B> id</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>UQ</B> key</TD></TR>
+        <TR><TD ALIGN="LEFT">value, source, expires_at</TD></TR>
+        <TR><TD ALIGN="LEFT">created_at, updated_at</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  polymorphic_note [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="7" COLOR="#98A2B3" BGCOLOR="#FFFFFF">
+      <TR><TD BGCOLOR="#F2F4F7" ALIGN="LEFT"><B>Polymorphic logical targets</B></TD></TR>
+      <TR><TD ALIGN="LEFT">social_bookmark: Trip | Blog | User</TD></TR>
+      <TR><TD ALIGN="LEFT">interactions_comment: Trip | Blog</TD></TR>
+      <TR><TD ALIGN="LEFT">reviews_review: Trip | Blog</TD></TR>
+      <TR><TD ALIGN="LEFT">media_mediaattachment: Trip | Blog | Review</TD></TR>
+      <TR><TD ALIGN="LEFT">Implemented with target_type + target_key, not database FKs</TD></TR>
+    </TABLE>
+  >];
+
+  framework_note [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="7" COLOR="#98A2B3" BGCOLOR="#FFFFFF">
+      <TR><TD BGCOLOR="#F2F4F7" ALIGN="LEFT"><B>Framework tables omitted from main image</B></TD></TR>
+      <TR><TD ALIGN="LEFT">auth_group, auth_permission, auth_group_permissions</TD></TR>
+      <TR><TD ALIGN="LEFT">auth_user_groups, auth_user_user_permissions</TD></TR>
+      <TR><TD ALIGN="LEFT">django_admin_log, django_content_type</TD></TR>
+      <TR><TD ALIGN="LEFT">django_migrations, django_session</TD></TR>
+    </TABLE>
+  >];
+
+  computed_note [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="7" COLOR="#98A2B3" BGCOLOR="#FFFFFF">
+      <TR><TD BGCOLOR="#F2F4F7" ALIGN="LEFT"><B>Computed surfaces not modeled as tables</B></TD></TR>
+      <TR><TD ALIGN="LEFT">home feed, search, and activity are built from live rows</TD></TR>
+      <TR><TD ALIGN="LEFT">There is no separate notifications or destination table</TD></TR>
+    </TABLE>
+  >];
+
+  { rank=same; auth_user; trips_trip; blogs_blog; }
+  { rank=same; social_followrelation; social_bookmark; interactions_directmessagethread; }
+  { rank=same; interactions_comment; reviews_review; media_mediaasset; }
+  { rank=same; polymorphic_note; framework_note; computed_note; }
+
+  auth_user -> accounts_accountprofile [label="1 to 1"];
+  auth_user -> settings_app_membersettings [label="1 to 1"];
+  auth_user -> feed_memberfeedpreference [label="1 to 1"];
+
+  auth_user -> trips_trip [label="hosts many"];
+  auth_user -> blogs_blog [label="authors many"];
+  trips_trip -> enrollment_enrollmentrequest [label="receives many"];
+  auth_user -> enrollment_enrollmentrequest [label="requests or reviews", constraint=false];
+
+  auth_user -> social_followrelation [label="follower role"];
+  social_followrelation -> auth_user [label="following role"];
+  auth_user -> social_bookmark [label="creates many"];
+
+  auth_user -> interactions_directmessagethread [label="participant"];
+  interactions_directmessagethread -> interactions_directmessage [label="contains many"];
+  auth_user -> interactions_directmessage [label="sender role", constraint=false];
+
+  auth_user -> interactions_comment [label="writes many"];
+  interactions_comment -> interactions_comment [label="parent reply"];
+  auth_user -> reviews_review [label="authors many"];
+
+  auth_user -> media_mediaasset [label="owns many"];
+  media_mediaasset -> media_mediaattachment [label="attached as many"];
+
+  auth_user -> runtime_runtimeidempotencyrecord [label="optional owner"];
+
+  social_bookmark -> trips_trip [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+  social_bookmark -> blogs_blog [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+  social_bookmark -> auth_user [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+
+  interactions_comment -> trips_trip [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+  interactions_comment -> blogs_blog [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+
+  reviews_review -> trips_trip [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+  reviews_review -> blogs_blog [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+
+  media_mediaattachment -> trips_trip [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+  media_mediaattachment -> blogs_blog [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+  media_mediaattachment -> reviews_review [style=dashed, color="#98A2B3", label="logical target", constraint=false];
+}
