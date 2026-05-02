@@ -464,6 +464,19 @@ class Trip(models.Model):
                 )
             if banner_url:
                 trip_data["banner_image_url"] = banner_url
+        else:
+            try:
+                from trips.demo_covers import demo_trip_cover_url_for_trip
+
+                banner_url = demo_trip_cover_url_for_trip(
+                    title=self.title,
+                    destination=self.destination,
+                    trip_type=self.trip_type,
+                )
+            except Exception:
+                banner_url = ""
+            if banner_url:
+                trip_data["banner_image_url"] = banner_url
         if self.trip_type:
             trip_data["trip_type"] = self.trip_type
         if self.budget_tier:

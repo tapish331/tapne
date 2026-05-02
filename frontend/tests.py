@@ -952,3 +952,26 @@ class FrontendShellToggleTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/json")
+
+    @override_settings(DEBUG=True, MEDIA_URL="/media/")
+    def test_debug_media_route_serves_files_before_spa_catchall(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            media_root = Path(temp_dir)
+            image_path = media_root / "trip_banners" / "demo.jpg"
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+            image_path.write_bytes(b"demo image bytes")
+
+            with override_settings(MEDIA_ROOT=media_root):
+                self._reload_urlconfs()
+                self.addCleanup(self._reload_urlconfs)
+
+                response = self.client.get("/media/trip_banners/demo.jpg")
+
+        response_content = (
+            b"".join(response.streaming_content)
+            if getattr(response, "streaming", False)
+            else response.content
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b'<div id="root">', response_content)
+        self.assertEqual(response_content, b"demo image bytes")

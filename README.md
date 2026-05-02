@@ -449,12 +449,27 @@ python manage.py bootstrap_search --verbose --member-username tapne --create-mis
 `trips` includes `bootstrap_trips` for creating/updating demo trip rows used by list/detail/search integration.
 
 ```powershell
+# Optional but recommended: sync 10 curated Pexels stock covers into storage once
+# Demo trip and story covers reuse this same curated image pool.
+python manage.py sync_demo_trip_covers --verbose
+
 # Seed trip rows and create missing demo hosts, with verbose logs
 python manage.py bootstrap_trips --verbose --create-missing-hosts
 
 # Seed only when hosts already exist (missing hosts are skipped)
 python manage.py bootstrap_trips --verbose
 ```
+
+`sync_demo_trip_covers` stores one curated stock image per demo trip type
+(`coastal`, `trekking`, `desert`, `city`, `food-culture`,
+`culture-heritage`, `wildlife`, `road-trip`, `camping`, `wellness`) in the
+configured default storage. Local MinIO and production GCS use the same command.
+Trip and story seeders reuse those stored images when present; if sync is
+skipped or a storage object is missing, they fall back to generated local demo
+banners so seeded demo content still renders usable covers.
+For regular user-created trips, an uploaded cover always wins; when no cover is
+uploaded, trip payloads automatically choose the best synced curated stock cover
+by trip type/title/destination.
 
 ---
 
@@ -634,6 +649,7 @@ Recommended seed order when starting from an empty DB:
 
 ```powershell
 python manage.py bootstrap_accounts --verbose
+python manage.py sync_demo_trip_covers --verbose
 python manage.py bootstrap_trips --verbose --create-missing-hosts
 python manage.py bootstrap_blogs --verbose --create-missing-authors
 python manage.py bootstrap_social --verbose --create-missing-members
@@ -1490,6 +1506,73 @@ To avoid “works on my machine” surprises, local should run the Django web ap
 * Production: same container image runs on Cloud Run
 
 > You can still use `python manage.py runserver` for quick debugging, but the “most faithful” path is containerized `web`.
+
+### Temporary No-Docker Lite path (macOS/zsh laptop fallback)
+
+Use this only when you need to test app/API changes on a laptop that does not
+have Docker available yet. It is intentionally not production-faithful:
+
+* SQLite replaces Postgres
+* local filesystem media replaces MinIO/GCS
+* Django local-memory cache replaces Redis when `REDIS_URL` is blank
+* Celery broker/result settings are blank, so do not use this path to validate
+  background-job behavior
+
+What still matters in this mode: Django still serves the built Lovable artifact
+from `artifacts/lovable-production-dist`, so browser routes exercise the same
+checked-in production build artifact that the Docker path serves.
+
+From the repo root, with your Python virtualenv already active:
+
+```zsh
+export SECRET_KEY=dev-only-local-lite
+export DEBUG=true
+export DATABASE_URL=sqlite:///local-dev.sqlite3
+export STORAGE_BACKEND=filesystem
+export REDIS_URL=
+export CELERY_BROKER_URL=
+export CELERY_RESULT_BACKEND=
+
+python manage.py migrate
+
+# Polished local browser demo: full seeded catalog + generated/synced media.
+# This is the recommended path when checking the homepage, trips, stories,
+# destination cards, and detail pages in No-Docker Lite.
+python manage.py sync_demo_trip_covers --verbose
+python manage.py populate_demo_catalog --reset --confirm --verbose
+
+# Smoke-test alternative only: creates a much smaller catalog than the polished demo.
+# Use this when you only need a quick API/data-path check.
+python manage.py bootstrap_accounts --verbose
+python manage.py bootstrap_trips --verbose --create-missing-hosts
+python manage.py bootstrap_blogs --verbose --create-missing-authors
+python manage.py bootstrap_social --verbose --create-missing-members
+python manage.py bootstrap_interactions --verbose --create-missing-members
+python manage.py bootstrap_reviews --verbose --create-missing-members
+python manage.py bootstrap_enrollment --verbose --create-missing-members
+python manage.py bootstrap_activity --verbose --create-missing-members
+
+python manage.py runserver 127.0.0.1:8000
+```
+
+When `lovable/` changes, rebuild the served artifact before using this path:
+
+```zsh
+bash infra/build-lovable-production-frontend.sh --skip-install
+```
+
+Before production, always use the Docker/full-stack path as the final
+verification gate:
+
+* rebuild the Lovable artifact
+* run the production-faithful Docker stack
+* run migrations and seed smoke checks if needed
+* browser-check `/`, `/trips`, and one trip detail route
+
+No-Docker Lite can catch most Django app/API/template-shell issues quickly, but
+it cannot validate Postgres, MinIO/GCS, Redis, gunicorn, container, or Cloud Run
+parity. Once Docker is available on the laptop, remove only this “Temporary
+No-Docker Lite path” subsection and keep the Docker sections unchanged.
 
 ### Use `infra\setup-faithful-local.ps1` as the standard local entrypoint
 
