@@ -12,6 +12,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import Storage, default_storage
 from django.utils.text import slugify
 
+from tapne.storage_urls import should_use_fallback_file_url
+
 from .models import Trip
 
 DemoFont: TypeAlias = ImageFont.ImageFont | ImageFont.FreeTypeFont
@@ -190,6 +192,22 @@ DEMO_TRIP_COVER_IMAGES: tuple[DemoTripCoverImage, ...] = (
     ),
 )
 
+_CURATED_COVER_URL_CACHE: dict[tuple[str, str, str, str, str], str] = {}
+
+
+def clear_demo_trip_cover_url_cache() -> None:
+    _CURATED_COVER_URL_CACHE.clear()
+
+
+def _storage_cache_key(storage: Storage, file_name: str) -> tuple[str, str, str, str, str]:
+    return (
+        storage.__class__.__module__,
+        storage.__class__.__qualname__,
+        str(getattr(storage, "location", "") or getattr(storage, "bucket_name", "") or ""),
+        str(getattr(storage, "custom_domain", "") or getattr(storage, "endpoint_url", "") or ""),
+        file_name,
+    )
+
 
 def normalize_trip_type(value: object) -> str:
     return str(value or "").strip().lower()
@@ -247,6 +265,35 @@ def demo_trip_cover_for_trip(*, title: object, destination: object, trip_type: o
             return entry
 
     return next(entry for entry in DEMO_TRIP_COVER_IMAGES if entry.slot == "road-trip")
+
+
+def demo_trip_cover_url_for_trip(
+    *,
+    title: object,
+    destination: object,
+    trip_type: object,
+    storage: Storage | None = None,
+) -> str:
+    cover = demo_trip_cover_for_trip(title=title, destination=destination, trip_type=trip_type)
+    active_storage = storage or default_storage
+    cache_key = _storage_cache_key(active_storage, cover.storage_path)
+    cached_url = _CURATED_COVER_URL_CACHE.get(cache_key)
+    if cached_url is not None:
+        return cached_url
+
+    try:
+        if not active_storage.exists(cover.storage_path):
+            _CURATED_COVER_URL_CACHE[cache_key] = ""
+            return ""
+        resolved_url = str(active_storage.url(cover.storage_path) or "").strip()
+    except Exception:
+        resolved_url = ""
+
+    if should_use_fallback_file_url(resolved_url):
+        resolved_url = ""
+
+    _CURATED_COVER_URL_CACHE[cache_key] = resolved_url
+    return resolved_url
 
 
 def _load_font(size: int, *, bold: bool = False) -> DemoFont:
@@ -423,6 +470,7 @@ def sync_demo_trip_cover_image(
         if force and active_storage.exists(entry.storage_path):
             active_storage.delete(entry.storage_path)
         saved_name = active_storage.save(entry.storage_path, ContentFile(content, name=Path(entry.storage_path).name))
+        clear_demo_trip_cover_url_cache()
     except Exception as exc:
         return DemoTripCoverSyncResult(
             slot=entry.slot,

@@ -467,6 +467,9 @@ configured default storage. Local MinIO and production GCS use the same command.
 Trip and story seeders reuse those stored images when present; if sync is
 skipped or a storage object is missing, they fall back to generated local demo
 banners so seeded demo content still renders usable covers.
+For regular user-created trips, an uploaded cover always wins; when no cover is
+uploaded, trip payloads automatically choose the best synced curated stock cover
+by trip type/title/destination.
 
 ---
 
