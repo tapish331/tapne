@@ -1014,12 +1014,18 @@ def _catalog_candidates(
     *,
     include_profiles: bool = True,
 ) -> tuple[list[TripData], list[ProfileData], list[BlogData], str]:
+    live_trips = _live_trip_rows()
+    live_profiles = _live_profile_rows() if include_profiles else []
+    live_blogs = _live_blog_rows()
+
+    if live_trips or live_blogs:
+        return live_trips, live_profiles, live_blogs, "live-catalog"
+
     if demo_catalog_enabled():
         demo_profiles = get_demo_profiles() if include_profiles else []
         return get_demo_trips(), demo_profiles, get_demo_blogs(), "demo-catalog"
 
-    live_profiles = _live_profile_rows() if include_profiles else []
-    return _live_trip_rows(), live_profiles, _live_blog_rows(), "live-catalog"
+    return live_trips, live_profiles, live_blogs, "live-catalog"
 
 
 def search_trips(query: str) -> list[TripData]:

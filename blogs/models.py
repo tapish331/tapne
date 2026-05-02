@@ -31,7 +31,7 @@ def build_demo_blog_cover_storage_name(*, slug: str, blog_id: int = 0) -> str:
     normalized_slug = slugify(str(slug or "").strip())[:72]
     normalized_blog_id = int(blog_id or 0)
     storage_token = normalized_slug or (f"blog-{normalized_blog_id}" if normalized_blog_id > 0 else "blog")
-    return f"blog_covers/demo/{storage_token}.png"
+    return f"blog_covers/demo/{storage_token}.jpg"
 
 
 def build_demo_blog_cover_url(*, slug: str) -> str:

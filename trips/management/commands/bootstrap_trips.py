@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandParser
 from django.utils import timezone
 
+from trips.demo_covers import assign_demo_trip_banner
 from trips.models import Trip
 
 UserModel = get_user_model()
@@ -162,6 +163,8 @@ class Command(BaseCommand):
         created_trips_count = 0
         updated_trips_count = 0
         skipped_trips_count = 0
+        curated_banner_count = 0
+        generated_banner_count = 0
 
         now = timezone.localtime(timezone.now()).replace(minute=0, second=0, microsecond=0)
 
@@ -203,8 +206,14 @@ class Command(BaseCommand):
                     "ends_at": ends_at,
                     "traffic_score": seed.traffic_score,
                     "is_published": True,
+                    "is_demo": True,
                 },
             )
+            banner_assignment = assign_demo_trip_banner(trip)
+            if banner_assignment.source.startswith("curated:"):
+                curated_banner_count += 1
+            else:
+                generated_banner_count += 1
 
             if created:
                 created_trips_count += 1
@@ -212,6 +221,10 @@ class Command(BaseCommand):
             else:
                 updated_trips_count += 1
                 self._vprint(verbose_enabled, f"Updated trip id={trip.pk} for @{seed.host_username}")
+            self._vprint(
+                verbose_enabled,
+                f"Assigned {banner_assignment.source} banner to trip id={trip.pk}: {banner_assignment.file_name}",
+            )
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -219,6 +232,8 @@ class Command(BaseCommand):
                 f"created_hosts={created_hosts_count}, "
                 f"created_trips={created_trips_count}, "
                 f"updated_trips={updated_trips_count}, "
-                f"skipped={skipped_trips_count}"
+                f"skipped={skipped_trips_count}, "
+                f"curated_banners={curated_banner_count}, "
+                f"generated_banners={generated_banner_count}"
             )
         )

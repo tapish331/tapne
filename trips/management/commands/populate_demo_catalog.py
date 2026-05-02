@@ -14,7 +14,6 @@ from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
-from django.utils.text import slugify
 
 from accounts.models import AccountProfile
 from blogs.models import Blog, build_demo_blog_cover_storage_name, build_demo_blog_cover_url
@@ -22,6 +21,7 @@ from enrollment.models import EnrollmentRequest
 from interactions.models import Comment, DirectMessage, DirectMessageThread
 from reviews.models import Review
 from social.models import Bookmark, FollowRelation
+from trips.demo_covers import assign_demo_trip_banner, demo_trip_cover_for_trip, normalize_source_image_bytes
 from trips.models import Trip
 
 User = get_user_model()
@@ -1321,20 +1321,6 @@ DM_REPLIES = [
     "Thank you so much! It's always wonderful to have repeat travelers.",
 ]
 
-TRIP_IMAGE_PALETTES = {
-    "city": ((29, 78, 216), (126, 34, 206)),
-    "culture-heritage": ((180, 83, 9), (120, 53, 15)),
-    "food-culture": ((220, 38, 38), (249, 115, 22)),
-    "trekking": ((22, 101, 52), (21, 128, 61)),
-    "coastal": ((8, 145, 178), (14, 116, 144)),
-    "desert": ((217, 119, 6), (120, 53, 15)),
-    "wildlife": ((62, 94, 24), (22, 101, 52)),
-    "road-trip": ((55, 65, 81), (15, 23, 42)),
-    "camping": ((67, 56, 202), (30, 64, 175)),
-    "wellness": ((13, 148, 136), (5, 150, 105)),
-    "adventure-sports": ((190, 24, 93), (157, 23, 77)),
-}
-
 BLOG_IMAGE_PALETTES = (
     ((37, 99, 235), (30, 64, 175)),
     ((8, 145, 178), (14, 116, 144)),
@@ -1472,8 +1458,63 @@ def _render_demo_cover(
         subtitle_y += 46
 
     output = BytesIO()
-    base.convert("RGB").save(output, format="PNG", optimize=True)
+    base.convert("RGB").save(output, format="JPEG", quality=86, optimize=True, progressive=True)
     return output.getvalue()
+
+
+BLOG_COVER_TRIP_TYPE_ALIASES: dict[str, str] = {
+    "africa": "wildlife",
+    "architecture": "culture-heritage",
+    "beach": "coastal",
+    "beaches": "coastal",
+    "budget-travel": "city",
+    "coastal": "coastal",
+    "culture": "culture-heritage",
+    "desert": "desert",
+    "driving": "road-trip",
+    "food": "food-culture",
+    "golden-hour": "culture-heritage",
+    "gorilla": "wildlife",
+    "hawker": "food-culture",
+    "health": "wellness",
+    "heritage": "culture-heritage",
+    "himalaya": "trekking",
+    "hotels": "city",
+    "luxury": "wellness",
+    "maldives": "coastal",
+    "motorcycle": "road-trip",
+    "palaces": "culture-heritage",
+    "packing": "road-trip",
+    "photography": "culture-heritage",
+    "rail": "road-trip",
+    "roadtrip": "road-trip",
+    "safari": "wildlife",
+    "shopping": "culture-heritage",
+    "solo-travel": "road-trip",
+    "street-food": "food-culture",
+    "tapas": "food-culture",
+    "temple": "culture-heritage",
+    "temples": "culture-heritage",
+    "trains": "road-trip",
+    "trekking": "trekking",
+    "wellness": "wellness",
+    "wildlife": "wildlife",
+    "yoga": "wellness",
+}
+
+
+def _demo_blog_cover_trip_type(*, title: str, location: str, tags: list[str]) -> str:
+    values = [*tags, title, location]
+    for value in values:
+        normalized = str(value or "").strip().lower()
+        if normalized in BLOG_COVER_TRIP_TYPE_ALIASES:
+            return BLOG_COVER_TRIP_TYPE_ALIASES[normalized]
+
+    haystack = " ".join(str(value or "").lower() for value in values)
+    for keyword, trip_type in BLOG_COVER_TRIP_TYPE_ALIASES.items():
+        if keyword in haystack:
+            return trip_type
+    return ""
 
 
 class Command(BaseCommand):
@@ -2016,48 +2057,71 @@ class Command(BaseCommand):
 
     def _seed_trip_media(self, verbose: bool) -> None:
         updated_count = 0
+        curated_count = 0
+        generated_count = 0
 
         for trip in Trip.objects.filter(is_demo=True).only("id", "title", "destination", "trip_type", "banner_image"):
-            trip_id = int(getattr(trip, "pk", 0) or 0)
-            title = str(getattr(trip, "title", "") or "").strip() or f"Tapne Trip {trip_id}"
-            destination = str(getattr(trip, "destination", "") or "").strip()
-            trip_type = str(getattr(trip, "trip_type", "") or "").strip()
-            primary, secondary = TRIP_IMAGE_PALETTES.get(trip_type, ((37, 99, 235), (30, 64, 175)))
-            file_name = f"trip_banners/demo/{slugify(title)[:72] or f'trip-{trip_id}'}-{trip_id}.png"
-
-            storage = trip.banner_image.storage
-            if not storage.exists(file_name):
-                content = _render_demo_cover(
-                    title=title,
-                    subtitle=destination or "Handpicked Tapne demo itinerary",
-                    eyebrow=f"Demo trip • {trip_type.replace('-', ' ') or 'travel'}",
-                    primary=primary,
-                    secondary=secondary,
-                )
-                storage.save(file_name, ContentFile(content, name=Path(file_name).name))
-
-            current_name = str(getattr(trip.banner_image, "name", "") or "").strip()
-            if current_name != file_name:
-                trip.banner_image.name = file_name
-                trip.save(update_fields=["banner_image"])
+            assignment = assign_demo_trip_banner(trip)
+            if assignment.source.startswith("curated:"):
+                curated_count += 1
+            else:
+                generated_count += 1
+            if assignment.changed:
                 updated_count += 1
 
         if verbose:
-            self.stdout.write(f"  Trip media updated: {updated_count}")
+            self.stdout.write(
+                f"  Trip media updated: {updated_count} "
+                f"(curated={curated_count}, generated={generated_count})"
+            )
 
     def _seed_blog_media(self, verbose: bool) -> None:
         updated_count = 0
+        curated_count = 0
+        generated_count = 0
+        curated_content_cache: dict[str, bytes] = {}
 
-        for blog in Blog.objects.filter(is_demo=True).only("id", "slug", "title", "location", "cover_image_url"):
+        for blog in Blog.objects.filter(is_demo=True).only("id", "slug", "title", "location", "tags", "cover_image_url"):
             blog_id = int(getattr(blog, "pk", 0) or 0)
             slug = str(getattr(blog, "slug", "") or "").strip() or f"blog-{blog_id}"
             title = str(getattr(blog, "title", "") or "").strip() or f"Tapne Blog {blog_id}"
             location = str(getattr(blog, "location", "") or "").strip()
+            tags = [
+                str(tag or "").strip().lower()
+                for tag in getattr(blog, "tags", [])
+                if str(tag or "").strip()
+            ]
             palette_index = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(BLOG_IMAGE_PALETTES)
             primary, secondary = BLOG_IMAGE_PALETTES[palette_index]
             file_name = build_demo_blog_cover_storage_name(slug=slug, blog_id=blog_id)
 
-            if not default_storage.exists(file_name):
+            trip_type = _demo_blog_cover_trip_type(title=title, location=location, tags=tags)
+            cover = demo_trip_cover_for_trip(
+                title=title,
+                destination=" ".join([location, *tags]),
+                trip_type=trip_type,
+            )
+            saved_curated_cover = False
+            if default_storage.exists(cover.storage_path):
+                try:
+                    if cover.storage_path not in curated_content_cache:
+                        with default_storage.open(cover.storage_path, "rb") as source_file:
+                            curated_content_cache[cover.storage_path] = normalize_source_image_bytes(source_file.read())
+                    if default_storage.exists(file_name):
+                        default_storage.delete(file_name)
+                    default_storage.save(
+                        file_name,
+                        ContentFile(curated_content_cache[cover.storage_path], name=Path(file_name).name),
+                    )
+                    saved_curated_cover = True
+                    curated_count += 1
+                except Exception:
+                    saved_curated_cover = False
+
+            if not saved_curated_cover:
+                generated_count += 1
+
+            if not saved_curated_cover and not default_storage.exists(file_name):
                 content = _render_demo_cover(
                     title=title,
                     subtitle=location or "Tapne community guide",
@@ -2074,4 +2138,7 @@ class Command(BaseCommand):
                 updated_count += 1
 
         if verbose:
-            self.stdout.write(f"  Blog media updated: {updated_count}")
+            self.stdout.write(
+                f"  Blog media updated: {updated_count} "
+                f"(curated={curated_count}, generated={generated_count})"
+            )
