@@ -449,10 +449,6 @@ python manage.py bootstrap_search --verbose --member-username tapne --create-mis
 `trips` includes `bootstrap_trips` for creating/updating demo trip rows used by list/detail/search integration.
 
 ```powershell
-# Optional but recommended: sync 10 curated Pexels stock covers into storage once
-# Demo trip and story covers reuse this same curated image pool.
-python manage.py sync_demo_trip_covers --verbose
-
 # Seed trip rows and create missing demo hosts, with verbose logs
 python manage.py bootstrap_trips --verbose --create-missing-hosts
 
@@ -460,15 +456,13 @@ python manage.py bootstrap_trips --verbose --create-missing-hosts
 python manage.py bootstrap_trips --verbose
 ```
 
-`sync_demo_trip_covers` stores one curated stock image per demo trip type
-(`coastal`, `trekking`, `desert`, `city`, `food-culture`,
-`culture-heritage`, `wildlife`, `road-trip`, `camping`, `wellness`) in the
-configured default storage. Local MinIO and production GCS use the same command.
-Trip and story seeders reuse those stored images when present; if sync is
-skipped or a storage object is missing, they fall back to generated local demo
-banners so seeded demo content still renders usable covers.
+Tapne bundles one static curated stock image per demo trip type (`coastal`,
+`trekking`, `desert`, `city`, `food-culture`, `culture-heritage`, `wildlife`,
+`road-trip`, `camping`, `wellness`) under `static/img/demo-covers/`. Trip and
+story seeders reuse those static assets directly, so local, Docker, and
+production environments do not need a media sync step for demo covers.
 For regular user-created trips, an uploaded cover always wins; when no cover is
-uploaded, trip payloads automatically choose the best synced curated stock cover
+uploaded, trip payloads automatically choose the best curated static stock cover
 by trip type/title/destination.
 
 ---
@@ -649,7 +643,6 @@ Recommended seed order when starting from an empty DB:
 
 ```powershell
 python manage.py bootstrap_accounts --verbose
-python manage.py sync_demo_trip_covers --verbose
 python manage.py bootstrap_trips --verbose --create-missing-hosts
 python manage.py bootstrap_blogs --verbose --create-missing-authors
 python manage.py bootstrap_social --verbose --create-missing-members
@@ -1535,10 +1528,9 @@ export CELERY_RESULT_BACKEND=
 
 python manage.py migrate
 
-# Polished local browser demo: full seeded catalog + generated/synced media.
+# Polished local browser demo: full seeded catalog + bundled static demo media.
 # This is the recommended path when checking the homepage, trips, stories,
 # destination cards, and detail pages in No-Docker Lite.
-python manage.py sync_demo_trip_covers --verbose
 python manage.py populate_demo_catalog --reset --confirm --verbose
 
 # Smoke-test alternative only: creates a much smaller catalog than the polished demo.

@@ -163,8 +163,7 @@ class Command(BaseCommand):
         created_trips_count = 0
         updated_trips_count = 0
         skipped_trips_count = 0
-        curated_banner_count = 0
-        generated_banner_count = 0
+        static_banner_count = 0
 
         now = timezone.localtime(timezone.now()).replace(minute=0, second=0, microsecond=0)
 
@@ -210,10 +209,7 @@ class Command(BaseCommand):
                 },
             )
             banner_assignment = assign_demo_trip_banner(trip)
-            if banner_assignment.source.startswith("curated:"):
-                curated_banner_count += 1
-            else:
-                generated_banner_count += 1
+            static_banner_count += 1
 
             if created:
                 created_trips_count += 1
@@ -233,7 +229,6 @@ class Command(BaseCommand):
                 f"created_trips={created_trips_count}, "
                 f"updated_trips={updated_trips_count}, "
                 f"skipped={skipped_trips_count}, "
-                f"curated_banners={curated_banner_count}, "
-                f"generated_banners={generated_banner_count}"
+                f"static_banners={static_banner_count}"
             )
         )

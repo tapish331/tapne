@@ -8,14 +8,6 @@ from django.dispatch import receiver
 from .models import Trip
 
 
-def _is_protected_demo_banner(file_name: str) -> bool:
-    try:
-        from .demo_covers import is_curated_demo_trip_cover_path
-    except Exception:
-        return False
-    return is_curated_demo_trip_cover_path(file_name)
-
-
 def _normalized_file_name(file_field: object) -> str:
     return str(getattr(file_field, "name", "") or "").strip()
 
@@ -23,8 +15,6 @@ def _normalized_file_name(file_field: object) -> str:
 def _delete_file_if_unreferenced(*, file_name: str, storage: object, exclude_pk: int | None = None) -> None:
     normalized_name = str(file_name or "").strip()
     if not normalized_name:
-        return
-    if _is_protected_demo_banner(normalized_name):
         return
 
     queryset = Trip.objects.filter(banner_image=normalized_name)

@@ -8,13 +8,13 @@ from django.core.files.storage import default_storage
 from django.test import TestCase, override_settings
 from PIL import Image
 
-from blogs.models import Blog, build_demo_blog_cover_storage_name, build_demo_blog_cover_url
+from blogs.models import Blog
 from trips.demo_covers import (
     DEMO_TRIP_COVER_IMAGES,
     REQUIRED_DEMO_COVER_SLOTS,
-    clear_demo_trip_cover_url_cache,
+    demo_blog_cover_url_for_blog,
     demo_trip_cover_for_trip,
-    sync_demo_trip_cover_images,
+    demo_trip_cover_url_for_trip,
     validate_demo_trip_cover_manifest,
 )
 from trips.management.commands.populate_demo_catalog import Command as PopulateDemoCatalogCommand
@@ -103,10 +103,10 @@ class TripsBootstrapCommandTests(TestCase):
         self.assertEqual(Trip.objects.count(), 3)
         self.assertIn("[trips][verbose]", output)
         self.assertIn("Trips bootstrap complete", output)
-        self.assertIn("generated_banners=3", output)
+        self.assertIn("static_banners=3", output)
         self.assertTrue(
             all(
-                str(trip.banner_image.name).startswith("trip_banners/demo/generated/")
+                str(trip.banner_image.name or "") == ""
                 for trip in Trip.objects.all()
             )
         )
@@ -126,31 +126,25 @@ class TripsBootstrapCommandTests(TestCase):
         self.assertEqual(Trip.objects.count(), 0)
         self.assertIn("skipped=3", output)
 
-    def test_bootstrap_trips_uses_synced_curated_cover_when_available(self) -> None:
-        with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
-                cover = demo_trip_cover_for_trip(
-                    title="Kyoto food lanes weekend",
-                    destination="Kyoto, Japan",
-                    trip_type="food-culture",
-                )
-                default_storage.save(cover.storage_path, ContentFile(b"curated image", name="food.jpg"))
-
-                stdout = StringIO()
-                call_command("bootstrap_trips", "--create-missing-hosts", "--verbose", stdout=stdout)
-                output = stdout.getvalue()
+    def test_bootstrap_trips_uses_static_curated_cover_url(self) -> None:
+        stdout = StringIO()
+        call_command("bootstrap_trips", "--create-missing-hosts", "--verbose", stdout=stdout)
+        output = stdout.getvalue()
 
         kyoto = Trip.objects.get(pk=101)
-        self.assertEqual(kyoto.banner_image.name, cover.storage_path)
-        self.assertIn("curated_banners=1", output)
-        self.assertNotEqual(kyoto.to_trip_data().get("banner_image_url"), "/placeholder.svg")
+        self.assertEqual(str(kyoto.banner_image.name or ""), "")
+        self.assertIn("static_banners=3", output)
+        self.assertEqual(
+            kyoto.to_trip_data().get("banner_image_url"),
+            demo_trip_cover_url_for_trip(
+                title=kyoto.title,
+                destination=kyoto.destination,
+                trip_type=kyoto.trip_type,
+            ),
+        )
 
 
 class DemoTripCoverTests(TestCase):
-    def tearDown(self) -> None:
-        clear_demo_trip_cover_url_cache()
-        super().tearDown()
-
     def test_manifest_contains_required_curated_slots(self) -> None:
         validate_demo_trip_cover_manifest()
 
@@ -162,21 +156,9 @@ class DemoTripCoverTests(TestCase):
         for trip_type in REQUIRED_DEMO_COVER_SLOTS:
             cover = demo_trip_cover_for_trip(title="", destination="", trip_type=trip_type)
             self.assertIn(trip_type, cover.preferred_trip_types)
+            self.assertTrue(cover.static_path.startswith("img/demo-covers/"))
 
-    def test_sync_demo_trip_covers_is_idempotent(self) -> None:
-        image_bytes = _test_jpeg_bytes()
-
-        with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
-                with patch("trips.demo_covers.download_demo_trip_cover_image", return_value=image_bytes) as mock_download:
-                    first_results = sync_demo_trip_cover_images()
-                    second_results = sync_demo_trip_cover_images()
-
-        self.assertEqual([result.status for result in first_results], ["synced"] * 10)
-        self.assertEqual([result.status for result in second_results], ["skipped"] * 10)
-        self.assertEqual(mock_download.call_count, 10)
-
-    def test_trip_without_uploaded_banner_uses_synced_curated_cover_url(self) -> None:
+    def test_trip_without_uploaded_banner_uses_static_curated_cover_url(self) -> None:
         host = UserModel.objects.create_user(
             username="stock-cover-host",
             email="stock-cover-host@example.com",
@@ -191,17 +173,17 @@ class DemoTripCoverTests(TestCase):
             is_published=True,
             status=Trip.STATUS_PUBLISHED,
         )
-        cover = demo_trip_cover_for_trip(title=trip.title, destination=trip.destination, trip_type=trip.trip_type)
-
-        with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
-                default_storage.save(cover.storage_path, ContentFile(_test_jpeg_bytes(), name="coastal.jpg"))
-                clear_demo_trip_cover_url_cache()
-
-                trip_data = trip.to_trip_data()
+        trip_data = trip.to_trip_data()
 
         self.assertEqual(str(trip.banner_image.name or ""), "")
-        self.assertEqual(trip_data.get("banner_image_url"), f"/media/{cover.storage_path}")
+        self.assertEqual(
+            trip_data.get("banner_image_url"),
+            demo_trip_cover_url_for_trip(
+                title=trip.title,
+                destination=trip.destination,
+                trip_type=trip.trip_type,
+            ),
+        )
 
     def test_trip_uploaded_banner_wins_over_curated_stock_cover(self) -> None:
         host = UserModel.objects.create_user(
@@ -218,13 +200,9 @@ class DemoTripCoverTests(TestCase):
             is_published=True,
             status=Trip.STATUS_PUBLISHED,
         )
-        cover = demo_trip_cover_for_trip(title=trip.title, destination=trip.destination, trip_type=trip.trip_type)
-
         with tempfile.TemporaryDirectory() as media_root:
             with override_settings(MEDIA_ROOT=media_root):
-                default_storage.save(cover.storage_path, ContentFile(_test_jpeg_bytes(), name="coastal.jpg"))
                 trip.banner_image.save("uploads/user-cover.jpg", ContentFile(_test_jpeg_bytes(), name="user-cover.jpg"))
-                clear_demo_trip_cover_url_cache()
 
                 trip_data = trip.to_trip_data()
 
@@ -232,7 +210,36 @@ class DemoTripCoverTests(TestCase):
 
 
 class PopulateDemoCatalogMediaTests(TestCase):
-    def test_story_media_uses_synced_curated_cover_when_available(self) -> None:
+    def test_trip_media_clears_existing_generated_banner_file(self) -> None:
+        host = UserModel.objects.create_user(
+            username="demo_trip_media_host",
+            email="demo-trip-media-host@example.com",
+            password="DemoPass!12345",
+        )
+        old_banner_name = "trip_banners/demo/generated/old-demo-cover.png"
+
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                default_storage.save(old_banner_name, ContentFile(b"old generated cover", name="old-demo-cover.png"))
+                Trip.objects.create(
+                    host=host,
+                    title="Generated cover cleanup",
+                    summary="Cleanup story.",
+                    destination="Goa, India",
+                    trip_type="coastal",
+                    is_published=True,
+                    is_demo=True,
+                    status=Trip.STATUS_PUBLISHED,
+                    banner_image=old_banner_name,
+                )
+
+                PopulateDemoCatalogCommand()._seed_trip_media(verbose=False)
+
+                trip = Trip.objects.get(title="Generated cover cleanup")
+                self.assertEqual(str(trip.banner_image.name or ""), "")
+                self.assertFalse(default_storage.exists(old_banner_name))
+
+    def test_story_media_uses_static_curated_cover(self) -> None:
         author = UserModel.objects.create_user(
             username="demo_story_host",
             email="demo-story-host@example.com",
@@ -249,58 +256,49 @@ class PopulateDemoCatalogMediaTests(TestCase):
             is_demo=True,
             is_published=True,
         )
-        cover = demo_trip_cover_for_trip(
-            title=blog.title,
-            destination="Asia food street-food",
-            trip_type="food-culture",
-        )
 
-        with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
-                default_storage.save(cover.storage_path, ContentFile(_test_jpeg_bytes(), name="food.jpg"))
-                with patch(
-                    "trips.management.commands.populate_demo_catalog._render_demo_cover",
-                    side_effect=AssertionError("generated fallback should not be used"),
-                ):
-                    PopulateDemoCatalogCommand()._seed_blog_media(verbose=False)
-
-                file_name = build_demo_blog_cover_storage_name(slug=blog.slug, blog_id=int(blog.pk))
-                self.assertTrue(default_storage.exists(file_name))
-                with default_storage.open(file_name, "rb") as saved_cover:
-                    self.assertEqual(saved_cover.read(2), b"\xff\xd8")
+        PopulateDemoCatalogCommand()._seed_blog_media(verbose=False)
 
         blog.refresh_from_db()
-        self.assertEqual(blog.cover_image_url, build_demo_blog_cover_url(slug=blog.slug))
+        self.assertEqual(
+            blog.cover_image_url,
+            demo_blog_cover_url_for_blog(
+                title=blog.title,
+                location=blog.location,
+                tags=["food", "street-food"],
+            ),
+        )
 
-    def test_story_media_generates_cover_when_curated_cover_is_missing(self) -> None:
+    @override_settings(TAPNE_DEMO_CATALOG_VISIBLE=True)
+    def test_old_story_cover_endpoint_redirects_to_static_cover(self) -> None:
         author = UserModel.objects.create_user(
-            username="demo_story_fallback_host",
-            email="demo-story-fallback-host@example.com",
+            username="demo_story_redirect_host",
+            email="demo-story-redirect-host@example.com",
             password="DemoPass!12345",
         )
         blog = Blog.objects.create(
             author=author,
-            slug="missing-curated-story",
-            title="Missing Curated Story",
-            excerpt="Fallback story.",
-            body="Fallback story body.",
-            location="Unknown",
-            tags=["unknown"],
+            slug="static-cover-redirect-story",
+            title="Static Cover Redirect Story",
+            excerpt="Redirect story.",
+            body="Redirect story body.",
+            location="Asia",
+            tags=["food"],
             is_demo=True,
             is_published=True,
         )
 
-        with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
-                PopulateDemoCatalogCommand()._seed_blog_media(verbose=False)
+        response = self.client.get(f"/frontend-api/blogs/{blog.slug}/cover-image/")
 
-                file_name = build_demo_blog_cover_storage_name(slug=blog.slug, blog_id=int(blog.pk))
-                self.assertTrue(default_storage.exists(file_name))
-                with default_storage.open(file_name, "rb") as saved_cover:
-                    self.assertEqual(saved_cover.read(2), b"\xff\xd8")
-
-        blog.refresh_from_db()
-        self.assertEqual(blog.cover_image_url, build_demo_blog_cover_url(slug=blog.slug))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            demo_blog_cover_url_for_blog(
+                title=blog.title,
+                location=blog.location,
+                tags=["food"],
+            ),
+        )
 
 
 def _test_jpeg_bytes() -> bytes:

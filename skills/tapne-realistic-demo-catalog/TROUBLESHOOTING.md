@@ -57,7 +57,6 @@ blogs = Blog.objects.filter(is_demo=True).count()
 profiles = AccountProfile.objects.filter(is_demo=True).count()
 follows = FollowRelation.objects.count()
 bookmarks = Bookmark.objects.count()
-trip_images_missing = Trip.objects.filter(is_demo=True).filter(Q(banner_image='') | Q(banner_image__isnull=True)).count()
 blog_images_missing = Blog.objects.filter(is_demo=True).filter(Q(cover_image_url='') | Q(cover_image_url__isnull=True)).count()
 
 print(f'Trips (demo): {trips} (need ≥65)')
@@ -65,12 +64,11 @@ print(f'Blogs (demo): {blogs} (need ≥33)')
 print(f'Profiles (demo): {profiles} (need ≥70)')
 print(f'FollowRelation total: {follows} (need ≥400)')
 print(f'Bookmark total: {bookmarks} (need ≥280)')
-print(f'Trips missing banner_image: {trip_images_missing} (must be 0)')
 print(f'Blogs missing cover_image_url: {blog_images_missing} (must be 0)')
 "
 ```
 
-**Expected:** All values at or above the threshold, and both missing-image counts equal `0`.
+**Expected:** All values at or above the threshold, and the missing blog-cover count equals `0`. Demo trips intentionally use bundled static curated covers, so verify trip cover coverage through API payloads in Gate G rather than `Trip.banner_image`.
 
 **Fix if failing:** Re-run `python manage.py populate_demo_catalog --verbose`. If still failing, check for exceptions in seed output and examine the specific `_seed_*` function.
 
@@ -257,7 +255,7 @@ print('blog image fallbacks:', len(fallbacks), '(must be 0)')
 
 **Expected:** Both fallback counts are `0`.
 
-**Fix if failing:** Blank DB fields are the usual cause. Seed `Trip.banner_image` and `Blog.cover_image_url` directly in `populate_demo_catalog.py` instead of relying on `feed._default_trip_banner_url(...)`, `build_trip_banner_fallback_url(...)`, `Blog._default_cover_image_url()`, or frontend placeholders.
+**Fix if failing:** Blank or default payload URLs are the usual cause. Demo trip cover URLs should resolve from `static/img/demo-covers/`, and demo blog rows should store static `cover_image_url` values instead of relying on `feed._default_trip_banner_url(...)`, `build_trip_banner_fallback_url(...)`, `Blog._default_cover_image_url()`, or frontend placeholders.
 
 ---
 

@@ -84,12 +84,12 @@ python manage.py populate_demo_catalog --skip-activity
 
 Before running the catalog seed on any fresh environment, make sure the image inputs the command expects are available:
 
-- Trip hero images must be assignable to `Trip.banner_image` through Django storage. Do not leave `banner_image` blank expecting `/trips/<id>/banner/` or frontend placeholders to hide the gap.
-- Blog cover images must be written into `Blog.cover_image_url` as stable, content-relevant HTTPS URLs.
+- Trip hero images use the bundled static curated cover pool under `static/img/demo-covers/`; demo `Trip.banner_image` may be blank.
+- Blog cover images must be written into `Blog.cover_image_url` as stable, content-relevant static URLs.
 - If a trip/blog detail route surfaces gallery media, seed those after the base trip/blog rows exist via `media.MediaAsset` + `MediaAttachment`.
 - `AccountProfile` currently has no image field, so there is no profile-avatar input to prepare yet.
 
-If these inputs are missing, stop and source them first. An image-incomplete seed is a failed seed.
+If these static assets or blog cover URLs are missing, stop and source them first. An image-incomplete seed is a failed seed.
 
 ---
 

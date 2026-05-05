@@ -19,11 +19,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth import login, logout
 from django.core.cache import cache
 from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.core.mail import send_mail
 from django.db.models import Q
 from django.core.serializers.json import DjangoJSONEncoder
-from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.urls import reverse
@@ -1249,11 +1248,21 @@ def blog_detail_api_view(request: HttpRequest, slug: str) -> JsonResponse:
 
 
 @require_GET
-def blog_cover_image_view(request: HttpRequest, slug: str) -> HttpResponse | FileResponse:
-    from blogs.models import Blog, build_demo_blog_cover_storage_name
+def blog_cover_image_view(request: HttpRequest, slug: str) -> HttpResponse:
+    from blogs.models import Blog
     from tapne.features import demo_catalog_visible
+    from trips.demo_covers import demo_blog_cover_url_for_blog
 
-    blog = Blog.objects.only("id", "slug", "author_id", "is_demo", "is_published").filter(slug=slug).first()
+    blog = Blog.objects.only(
+        "id",
+        "slug",
+        "title",
+        "location",
+        "tags",
+        "author_id",
+        "is_demo",
+        "is_published",
+    ).filter(slug=slug).first()
     if blog is None or not bool(getattr(blog, "is_demo", False)):
         raise Http404("Blog cover not found.")
 
@@ -1264,17 +1273,20 @@ def blog_cover_image_view(request: HttpRequest, slug: str) -> HttpResponse | Fil
     if not is_publicly_visible and not is_owner:
         raise Http404("Blog cover not found.")
 
-    file_name = build_demo_blog_cover_storage_name(slug=str(getattr(blog, "slug", "") or ""), blog_id=int(blog.pk or 0))
-    if not default_storage.exists(file_name):
+    tags = [
+        str(tag or "").strip()
+        for tag in getattr(blog, "tags", [])
+        if str(tag or "").strip()
+    ]
+    cover_url = demo_blog_cover_url_for_blog(
+        title=str(getattr(blog, "title", "") or "").strip(),
+        location=str(getattr(blog, "location", "") or "").strip(),
+        tags=tags,
+    )
+    if not cover_url:
         raise Http404("Blog cover not found.")
 
-    try:
-        blog_cover = default_storage.open(file_name, "rb")
-    except Exception as exc:
-        raise Http404("Blog cover not found.") from exc
-
-    content_type, _ = mimetypes.guess_type(file_name)
-    response = FileResponse(blog_cover, content_type=content_type or "application/octet-stream")
+    response = HttpResponseRedirect(cover_url)
     response["Cache-Control"] = "public, max-age=300" if is_publicly_visible else "private, max-age=60"
     return response
 

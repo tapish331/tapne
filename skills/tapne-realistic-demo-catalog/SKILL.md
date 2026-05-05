@@ -64,7 +64,7 @@ python manage.py populate_demo_catalog --verbose
 - 72 users, 70 trips (50 published, 15 completed, 5 draft)
 - 35 blogs, 500+ follows, 300+ bookmarks
 - 130+ enrollments, 180+ reviews, 300+ comments, 50+ DM threads
-- every demo trip that can appear on cards/detail/dashboard has a non-empty, content-relevant `banner_image`
+- every demo trip that can appear on cards/detail/dashboard emits a non-empty, content-relevant `banner_image_url`; demo `Trip.banner_image` may be blank because curated demo covers are bundled static assets
 - every demo blog has a non-empty, content-relevant `cover_image_url`
 - if trip/blog detail pages use `media.MediaAttachment`, seed contextual image attachments for those high-traffic targets after the base rows exist
 - no seeded trip/blog may rely on `feed._default_trip_banner_url(...)`, `build_trip_banner_fallback_url(...)`, `Blog._default_cover_image_url()`, or frontend `/placeholder.svg`
@@ -85,12 +85,11 @@ from django.db.models import Q
 print('Trips (demo):', Trip.objects.filter(is_demo=True).count())
 print('Blogs (demo):', Blog.objects.filter(is_demo=True).count())
 print('Profiles (demo):', AccountProfile.objects.filter(is_demo=True).count())
-print('Trips missing banner_image:', Trip.objects.filter(is_demo=True).filter(Q(banner_image='') | Q(banner_image__isnull=True)).count())
 print('Blogs missing cover_image_url:', Blog.objects.filter(is_demo=True).filter(Q(cover_image_url='') | Q(cover_image_url__isnull=True)).count())
 "
 ```
 
-Expected: trips ≥ 65, blogs ≥ 33, profiles ≥ 70, and both missing-image counts must be `0`.
+Expected: trips ≥ 65, blogs ≥ 33, profiles ≥ 70, and the missing blog-cover count must be `0`. Verify trip cover coverage through API payloads because demo trips intentionally use static curated covers with blank `Trip.banner_image`.
 
 ### Step 5 — Flip demo visibility on
 

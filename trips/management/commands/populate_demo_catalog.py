@@ -3,29 +3,22 @@ from __future__ import annotations
 import hashlib
 import random
 from datetime import timedelta
-from io import BytesIO
-from pathlib import Path
-from typing import TypeAlias
 
-from PIL import Image, ImageDraw, ImageFont
 from django.contrib.auth import get_user_model
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import AccountProfile
-from blogs.models import Blog, build_demo_blog_cover_storage_name, build_demo_blog_cover_url
+from blogs.models import Blog
 from enrollment.models import EnrollmentRequest
 from interactions.models import Comment, DirectMessage, DirectMessageThread
 from reviews.models import Review
 from social.models import Bookmark, FollowRelation
-from trips.demo_covers import assign_demo_trip_banner, demo_trip_cover_for_trip, normalize_source_image_bytes
+from trips.demo_covers import assign_demo_trip_banner, demo_blog_cover_url_for_blog
 from trips.models import Trip
 
 User = get_user_model()
-DemoFont: TypeAlias = ImageFont.ImageFont | ImageFont.FreeTypeFont
 
 
 # ── Host personas (12) ────────────────────────────────────────────────────────
@@ -1321,200 +1314,10 @@ DM_REPLIES = [
     "Thank you so much! It's always wonderful to have repeat travelers.",
 ]
 
-BLOG_IMAGE_PALETTES = (
-    ((37, 99, 235), (30, 64, 175)),
-    ((8, 145, 178), (14, 116, 144)),
-    ((5, 150, 105), (4, 120, 87)),
-    ((234, 88, 12), (194, 65, 12)),
-    ((185, 28, 28), (153, 27, 27)),
-    ((109, 40, 217), (91, 33, 182)),
-)
-
-
 def _rng(seed_str: str) -> random.Random:
     """Deterministic RNG seeded from a string."""
     seed_int = int(hashlib.md5(seed_str.encode()).hexdigest(), 16)
     return random.Random(seed_int)
-
-
-def _load_font(size: int, *, bold: bool = False) -> DemoFont:
-    font_candidates = [
-        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-        "arialbd.ttf" if bold else "arial.ttf",
-    ]
-    for candidate in font_candidates:
-        try:
-            return ImageFont.truetype(candidate, size=size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
-
-def _text_width(draw: ImageDraw.ImageDraw, text: str, font: DemoFont) -> int:
-    left, _top, right, _bottom = draw.textbbox((0, 0), text, font=font)
-    return int(right - left)
-
-
-def _wrap_text(
-    draw: ImageDraw.ImageDraw,
-    text: str,
-    *,
-    font: DemoFont,
-    max_width: int,
-    max_lines: int,
-) -> list[str]:
-    words = [part for part in str(text or "").split() if part]
-    if not words:
-        return [""]
-
-    lines: list[str] = []
-    current = words[0]
-    for word in words[1:]:
-        candidate = f"{current} {word}"
-        if _text_width(draw, candidate, font) <= max_width:
-            current = candidate
-            continue
-        lines.append(current)
-        current = word
-        if len(lines) == max_lines - 1:
-            break
-
-    remaining_words = words[len(" ".join(lines + [current]).split()):]
-    if remaining_words and len(lines) == max_lines - 1:
-        tail = " ".join([current] + remaining_words)
-        while tail and _text_width(draw, f"{tail}...", font) > max_width:
-            tail = tail.rsplit(" ", 1)[0]
-        current = f"{tail}..." if tail else current
-    lines.append(current)
-    return lines[:max_lines]
-
-
-def _draw_pill(
-    draw: ImageDraw.ImageDraw,
-    *,
-    x: int,
-    y: int,
-    text: str,
-    font: DemoFont,
-) -> None:
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
-    width = int(right - left)
-    height = int(bottom - top)
-    padding_x = 22
-    padding_y = 12
-    draw.rounded_rectangle(
-        (x, y, x + width + (padding_x * 2), y + height + (padding_y * 2)),
-        radius=24,
-        fill=(255, 255, 255, 42),
-        outline=(255, 255, 255, 76),
-        width=2,
-    )
-    draw.text((x + padding_x, y + padding_y - 2), text, font=font, fill=(255, 255, 255, 235))
-
-
-def _render_demo_cover(
-    *,
-    title: str,
-    subtitle: str,
-    eyebrow: str,
-    primary: tuple[int, int, int],
-    secondary: tuple[int, int, int],
-) -> bytes:
-    width = 1600
-    height = 900
-    base = Image.new("RGBA", (width, height), primary + (255,))
-    draw = ImageDraw.Draw(base, "RGBA")
-
-    for y in range(height):
-        blend = y / max(1, height - 1)
-        color = tuple(
-            int(primary[idx] + ((secondary[idx] - primary[idx]) * blend))
-            for idx in range(3)
-        )
-        draw.line((0, y, width, y), fill=color + (255,))
-
-    accent = tuple(min(255, channel + 28) for channel in secondary)
-    draw.ellipse((-180, -140, 720, 760), fill=accent + (70,))
-    draw.ellipse((980, 90, 1740, 920), fill=(255, 255, 255, 28))
-    draw.rectangle((0, 0, width, height), fill=(6, 10, 24, 58))
-    draw.rounded_rectangle((84, 84, 1516, 816), radius=46, outline=(255, 255, 255, 48), width=3)
-
-    eyebrow_font = _load_font(30, bold=True)
-    title_font = _load_font(76, bold=True)
-    subtitle_font = _load_font(34)
-
-    _draw_pill(draw, x=124, y=120, text=eyebrow, font=eyebrow_font)
-
-    title_lines = _wrap_text(draw, title, font=title_font, max_width=1180, max_lines=3)
-    title_y = 270
-    for line in title_lines:
-        draw.text((124, title_y), line, font=title_font, fill=(255, 255, 255, 246))
-        title_y += 92
-
-    subtitle_lines = _wrap_text(draw, subtitle, font=subtitle_font, max_width=1060, max_lines=2)
-    subtitle_y = 680
-    for line in subtitle_lines:
-        draw.text((124, subtitle_y), line, font=subtitle_font, fill=(235, 241, 255, 228))
-        subtitle_y += 46
-
-    output = BytesIO()
-    base.convert("RGB").save(output, format="JPEG", quality=86, optimize=True, progressive=True)
-    return output.getvalue()
-
-
-BLOG_COVER_TRIP_TYPE_ALIASES: dict[str, str] = {
-    "africa": "wildlife",
-    "architecture": "culture-heritage",
-    "beach": "coastal",
-    "beaches": "coastal",
-    "budget-travel": "city",
-    "coastal": "coastal",
-    "culture": "culture-heritage",
-    "desert": "desert",
-    "driving": "road-trip",
-    "food": "food-culture",
-    "golden-hour": "culture-heritage",
-    "gorilla": "wildlife",
-    "hawker": "food-culture",
-    "health": "wellness",
-    "heritage": "culture-heritage",
-    "himalaya": "trekking",
-    "hotels": "city",
-    "luxury": "wellness",
-    "maldives": "coastal",
-    "motorcycle": "road-trip",
-    "palaces": "culture-heritage",
-    "packing": "road-trip",
-    "photography": "culture-heritage",
-    "rail": "road-trip",
-    "roadtrip": "road-trip",
-    "safari": "wildlife",
-    "shopping": "culture-heritage",
-    "solo-travel": "road-trip",
-    "street-food": "food-culture",
-    "tapas": "food-culture",
-    "temple": "culture-heritage",
-    "temples": "culture-heritage",
-    "trains": "road-trip",
-    "trekking": "trekking",
-    "wellness": "wellness",
-    "wildlife": "wildlife",
-    "yoga": "wellness",
-}
-
-
-def _demo_blog_cover_trip_type(*, title: str, location: str, tags: list[str]) -> str:
-    values = [*tags, title, location]
-    for value in values:
-        normalized = str(value or "").strip().lower()
-        if normalized in BLOG_COVER_TRIP_TYPE_ALIASES:
-            return BLOG_COVER_TRIP_TYPE_ALIASES[normalized]
-
-    haystack = " ".join(str(value or "").lower() for value in values)
-    for keyword, trip_type in BLOG_COVER_TRIP_TYPE_ALIASES.items():
-        if keyword in haystack:
-            return trip_type
-    return ""
 
 
 class Command(BaseCommand):
@@ -2057,33 +1860,26 @@ class Command(BaseCommand):
 
     def _seed_trip_media(self, verbose: bool) -> None:
         updated_count = 0
-        curated_count = 0
-        generated_count = 0
+        static_count = 0
 
         for trip in Trip.objects.filter(is_demo=True).only("id", "title", "destination", "trip_type", "banner_image"):
             assignment = assign_demo_trip_banner(trip)
-            if assignment.source.startswith("curated:"):
-                curated_count += 1
-            else:
-                generated_count += 1
+            static_count += 1
             if assignment.changed:
                 updated_count += 1
 
         if verbose:
             self.stdout.write(
                 f"  Trip media updated: {updated_count} "
-                f"(curated={curated_count}, generated={generated_count})"
+                f"(static={static_count})"
             )
 
     def _seed_blog_media(self, verbose: bool) -> None:
         updated_count = 0
-        curated_count = 0
-        generated_count = 0
-        curated_content_cache: dict[str, bytes] = {}
+        static_count = 0
 
         for blog in Blog.objects.filter(is_demo=True).only("id", "slug", "title", "location", "tags", "cover_image_url"):
             blog_id = int(getattr(blog, "pk", 0) or 0)
-            slug = str(getattr(blog, "slug", "") or "").strip() or f"blog-{blog_id}"
             title = str(getattr(blog, "title", "") or "").strip() or f"Tapne Blog {blog_id}"
             location = str(getattr(blog, "location", "") or "").strip()
             tags = [
@@ -2091,47 +1887,13 @@ class Command(BaseCommand):
                 for tag in getattr(blog, "tags", [])
                 if str(tag or "").strip()
             ]
-            palette_index = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(BLOG_IMAGE_PALETTES)
-            primary, secondary = BLOG_IMAGE_PALETTES[palette_index]
-            file_name = build_demo_blog_cover_storage_name(slug=slug, blog_id=blog_id)
-
-            trip_type = _demo_blog_cover_trip_type(title=title, location=location, tags=tags)
-            cover = demo_trip_cover_for_trip(
+            cover_image_url = demo_blog_cover_url_for_blog(
                 title=title,
-                destination=" ".join([location, *tags]),
-                trip_type=trip_type,
+                location=location,
+                tags=tags,
             )
-            saved_curated_cover = False
-            if default_storage.exists(cover.storage_path):
-                try:
-                    if cover.storage_path not in curated_content_cache:
-                        with default_storage.open(cover.storage_path, "rb") as source_file:
-                            curated_content_cache[cover.storage_path] = normalize_source_image_bytes(source_file.read())
-                    if default_storage.exists(file_name):
-                        default_storage.delete(file_name)
-                    default_storage.save(
-                        file_name,
-                        ContentFile(curated_content_cache[cover.storage_path], name=Path(file_name).name),
-                    )
-                    saved_curated_cover = True
-                    curated_count += 1
-                except Exception:
-                    saved_curated_cover = False
-
-            if not saved_curated_cover:
-                generated_count += 1
-
-            if not saved_curated_cover and not default_storage.exists(file_name):
-                content = _render_demo_cover(
-                    title=title,
-                    subtitle=location or "Tapne community guide",
-                    eyebrow="Demo story • editorial pick",
-                    primary=primary,
-                    secondary=secondary,
-                )
-                default_storage.save(file_name, ContentFile(content, name=Path(file_name).name))
-
-            cover_image_url = build_demo_blog_cover_url(slug=slug)
+            if cover_image_url:
+                static_count += 1
             if str(getattr(blog, "cover_image_url", "") or "").strip() != cover_image_url:
                 blog.cover_image_url = cover_image_url
                 blog.save(update_fields=["cover_image_url"])
@@ -2140,5 +1902,5 @@ class Command(BaseCommand):
         if verbose:
             self.stdout.write(
                 f"  Blog media updated: {updated_count} "
-                f"(curated={curated_count}, generated={generated_count})"
+                f"(static={static_count})"
             )

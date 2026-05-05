@@ -11,7 +11,6 @@
       "python manage.py bootstrap_accounts --verbose",
       "python manage.py bootstrap_feed --verbose",
       "python manage.py bootstrap_search --verbose",
-      "python manage.py sync_demo_trip_covers --verbose",
       "python manage.py bootstrap_trips --verbose --create-missing-hosts",
       "python manage.py bootstrap_blogs --verbose --create-missing-authors",
       "python manage.py bootstrap_social --verbose --create-missing-members",
