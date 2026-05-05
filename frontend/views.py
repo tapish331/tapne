@@ -1500,7 +1500,8 @@ def trip_draft_create_api_view(request: HttpRequest) -> JsonResponse:
     trip = Trip(host=request.user, is_published=False)
     _apply_trip_payload(trip, _request_payload(request))
     trip.save()
-    return JsonResponse({"ok": True, "draft": _serialize_trip_for_frontend(trip)}, status=201)
+    trip_payload = _serialize_trip_for_frontend(trip)
+    return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload}, status=201)
 
 
 @require_http_methods(["GET", "PATCH", "DELETE"])
@@ -1550,6 +1551,7 @@ def trip_draft_publish_api_view(request: HttpRequest, trip_id: int) -> JsonRespo
     _apply_trip_payload(trip, _request_payload(request))
     if not trip.is_published:
         trip.is_published = True
+    trip.status = Trip.STATUS_PUBLISHED
     trip.save()
     trip_payload = _serialize_trip_for_frontend(trip)
     return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload})

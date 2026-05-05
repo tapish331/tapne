@@ -934,14 +934,14 @@ class FrontendShellToggleTests(TestCase):
         set_urlconf(None)
 
     @override_settings(LOVABLE_FRONTEND_ENABLED=False)
-    def test_trips_route_does_not_render_spa_shell_when_lovable_is_disabled(self) -> None:
+    def test_trips_route_still_serves_spa_shell_when_retired_lovable_flag_is_false(self) -> None:
         self._reload_urlconfs()
         self.addCleanup(self._reload_urlconfs)
 
         response = self.client.get("/trips/")
 
-        self.assertEqual(response.status_code, 404)
-        self.assertNotIn('<div id="root">', response.content.decode("utf-8"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('<div id="root">', response.content.decode("utf-8"))
 
     @override_settings(LOVABLE_FRONTEND_ENABLED=False)
     def test_frontend_api_routes_stay_available_when_lovable_is_disabled(self) -> None:
