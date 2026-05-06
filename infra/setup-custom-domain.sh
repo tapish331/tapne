@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
     --service-name)             SERVICE_NAME="$2";           shift 2 ;;
     --domain)                   DOMAIN="$2";                 shift 2 ;;
     --www-domain)               WWW_DOMAIN="$2";             shift 2 ;;
-    --lb-scope)                 LB_SCOPE="$2";               shift 2 ;;
+    --lb-scope|--load-balancer-scope) LB_SCOPE="$2";         shift 2 ;;
     --resource-prefix)          RESOURCE_PREFIX="$2";        shift 2 ;;
     --network)                  NETWORK="$2";                shift 2 ;;
     --enable-http)              ENABLE_HTTP=1;               shift   ;;
@@ -57,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --cloudflare-proxied)       CLOUDFLARE_PROXIED=1;        shift   ;;
     --no-wait-for-cert)         WAIT_FOR_CERT=0;             shift   ;;
     --cert-wait-timeout)        CERT_WAIT_TIMEOUT="$2";      shift 2 ;;
+    --cert-poll-interval)       CERT_POLL_INTERVAL="$2";     shift 2 ;;
     --no-harden-ingress)        HARDEN_INGRESS=0;            shift   ;;
     --cloud-run-ingress)        CLOUD_RUN_INGRESS="$2";      shift 2 ;;
     --validate-only)            VALIDATE_ONLY=1;             shift   ;;
@@ -89,10 +90,10 @@ HTTPS_RULE_NAME="${PREFIX}-https-rule"
 HTTP_RULE_NAME="${PREFIX}-http-rule"
 HTTP_REDIRECT_MAP_NAME="${PREFIX}-http-redirect"
 
-# Build unique sorted domain list
+# Build unique domain list.
 DOMAINS=()
 for d in "$DOMAIN" "$WWW_DOMAIN"; do
-  d="${d,,}"
+  d="$(printf '%s' "$d" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')"
   [[ -z "$d" ]] && continue
   already=0
   for existing in "${DOMAINS[@]:-}"; do [[ "$existing" == "$d" ]] && { already=1; break; }; done
@@ -102,11 +103,17 @@ done
 
 CANONICAL_HOST="${DOMAINS[0]}"
 
+case "$LB_SCOPE" in
+  global|regional) ;;
+  *) die "--lb-scope must be either 'global' or 'regional'." ;;
+esac
+
 [[ "$VERBOSE" -eq 1 ]] && echo "[verbose] project=$PROJECT_ID region=$REGION service=$SERVICE_NAME domains=${DOMAINS[*]} lb-scope=$LB_SCOPE prefix=$PREFIX"
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 step "Preflight checks"
 command -v gcloud >/dev/null 2>&1 || die "gcloud CLI not found. Install: https://cloud.google.com/sdk/docs/install"
+gcloud --version >/dev/null 2>&1 || die "gcloud is installed but not functioning."
 ok "gcloud is available."
 
 [[ "$VALIDATE_ONLY" -eq 1 ]] && { ok "Validate-only mode: stopping here."; exit 0; }
@@ -124,14 +131,24 @@ fi
 ok "Using account: $ACTIVE_ACCOUNT"
 
 gcloud config set project "$PROJECT_ID" --quiet
+gcloud config set run/region "$REGION" --quiet
+gcloud config set compute/region "$REGION" --quiet
 
 # ── Enable required APIs ──────────────────────────────────────────────────────
 step "Enabling required GCP APIs"
 gcloud services enable \
+  run.googleapis.com \
   compute.googleapis.com \
+  networkservices.googleapis.com \
   certificatemanager.googleapis.com \
   --project="$PROJECT_ID" --quiet
 ok "Required APIs enabled."
+
+SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --format='value(status.url)' 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
+[[ -n "$SERVICE_URL" ]] || die "Cloud Run service '$SERVICE_NAME' was not found in $PROJECT_ID/$REGION."
+ok "Cloud Run service found: $SERVICE_NAME ($SERVICE_URL)"
 
 # ── Static IP ─────────────────────────────────────────────────────────────────
 step "Ensuring static IP address: $STATIC_IP_NAME"

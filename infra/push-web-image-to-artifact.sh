@@ -101,6 +101,7 @@ ok "Using gcloud account: $ACTIVE_ACCOUNT"
 step "Setting gcloud project"
 gcloud config set project "$PROJECT_ID" --quiet
 EFFECTIVE_PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
+[[ "$EFFECTIVE_PROJECT" == "$PROJECT_ID" ]] || die "Active gcloud project is '$EFFECTIVE_PROJECT', expected '$PROJECT_ID'."
 ok "Active project: $EFFECTIVE_PROJECT"
 
 # ── Step 4: Enable Artifact Registry API ──────────────────────────────────────
@@ -155,9 +156,10 @@ gcloud auth configure-docker "$REGISTRY_HOST" --quiet
 ok "Docker auth configured for $REGISTRY_HOST"
 
 # ── Step 8: Build or verify local image ───────────────────────────────────────
-if [[ "$NO_BUILD" -eq 0 ]]; then
-  [[ -f "$DOCKERFILE_ABS" ]] || die "Dockerfile not found: $DOCKERFILE_ABS"
+[[ -f "$DOCKERFILE_ABS" ]] || die "Dockerfile not found: $DOCKERFILE_ABS"
+[[ -d "$BUILD_CONTEXT_ABS" ]] || die "Build context not found: $BUILD_CONTEXT_ABS"
 
+if [[ "$NO_BUILD" -eq 0 ]]; then
   step "Building local web image: $LOCAL_IMAGE_REF"
 
   BUILD_EXTRA_ARGS=()
@@ -205,7 +207,7 @@ ok "Pushed image: $REMOTE_IMAGE_REF"
 step "Post-push verification"
 MANIFEST_JSON="$(docker manifest inspect "$REMOTE_IMAGE_REF" 2>/dev/null || true)"
 if [[ -n "$MANIFEST_JSON" ]]; then
-  if echo "$MANIFEST_JSON" | grep -q '"amd64"'; then
+  if echo "$MANIFEST_JSON" | grep -q '"amd64"' && echo "$MANIFEST_JSON" | grep -q '"linux"'; then
     ok "Manifest includes linux/amd64."
   else
     echo "[WARN] Manifest was read but linux/amd64 was not explicitly detected." >&2

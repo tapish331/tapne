@@ -50,7 +50,7 @@ _failed_ids=()
 _warn_ids=()
 _skipped_ids=()
 
-if [[ -v DOCKER_CONFIG ]]; then
+if [[ "${DOCKER_CONFIG+x}" = "x" ]]; then
   ORIGINAL_DOCKER_CONFIG="$DOCKER_CONFIG"
   ORIGINAL_DOCKER_CONFIG_SET=1
 fi
