@@ -52,7 +52,7 @@ from interactions.models import (
     get_or_create_dm_thread_for_members,
     send_dm_message,
 )
-from reviews.models import submit_review
+from reviews.models import build_reviews_payload_for_target, submit_review
 from search.models import build_search_page_payload_for_user
 from settings_app.models import build_settings_payload_for_member
 from social.models import Bookmark, build_bookmarks_payload_for_member, resolve_bookmark_target
@@ -1101,11 +1101,28 @@ def trip_detail_api_view(request: HttpRequest, trip_id: int) -> JsonResponse:
                 "outcome": "existing",
             }
 
+    # Surface the trip's reviews on the detail payload so the trip page can
+    # render the actual review list — not just the aggregate counter — and
+    # show the viewer their own existing review when they have one.
+    reviews_payload = build_reviews_payload_for_target(
+        target_type="trip",
+        target_id=trip_row.pk,
+        viewer=request.user,
+    )
+    enriched_trip = _enrich_trip_cards([trip_payload])[0]
+    enriched_trip["reviews"] = list(reviews_payload.get("reviews", []) or [])
+    enriched_trip["viewer_review"] = reviews_payload.get("viewer_review")
+    enriched_trip["can_review"] = bool(reviews_payload.get("can_review", False))
+    # Surface the aggregate so the Reviews & Ratings card can render the
+    # star average and review count alongside the per-review list.
+    enriched_trip["average_rating"] = float(reviews_payload.get("average_rating", 0.0) or 0.0)
+    enriched_trip["reviews_count"] = int(reviews_payload.get("review_count", 0) or 0)
+
     return JsonResponse(
         {
             "ok": True,
             **payload,
-            "trip": _enrich_trip_cards([trip_payload])[0],
+            "trip": enriched_trip,
             "host": host_identity,
             "co_host_profiles": co_host_profiles,
             "participants": participants,
@@ -1316,13 +1333,28 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
             return _json_error("Profile update failed.", extra={"errors": _form_errors(form)})
         form.save()
         refreshed_profile = ensure_profile(request.user)
+        update_fields: list[str] = []
         if "avatar_url" in payload:
             refreshed_profile.avatar_url = str(payload.get("avatar_url") or "")
+            update_fields.append("avatar_url")
+        if "cover_photo_url" in payload:
+            refreshed_profile.cover_photo_url = str(payload.get("cover_photo_url") or "")
+            update_fields.append("cover_photo_url")
+        if "instagram_url" in payload:
+            refreshed_profile.instagram_url = str(payload.get("instagram_url") or "").strip()
+            update_fields.append("instagram_url")
         raw_tags = payload.get("travel_tags")
         if isinstance(raw_tags, list):
             refreshed_profile.travel_tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
-        if "avatar_url" in payload or isinstance(raw_tags, list):
-            refreshed_profile.save(update_fields=["avatar_url", "travel_tags", "updated_at"])
+            update_fields.append("travel_tags")
+        raw_gallery = payload.get("gallery_photos")
+        if isinstance(raw_gallery, list):
+            refreshed_profile.gallery_photos = [
+                str(url).strip() for url in raw_gallery if str(url).strip()
+            ]
+            update_fields.append("gallery_photos")
+        if update_fields:
+            refreshed_profile.save(update_fields=[*update_fields, "updated_at"])
         return JsonResponse(
             {
                 "ok": True,
@@ -1333,8 +1365,11 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
                     "bio": str(refreshed_profile.bio or ""),
                     "location": str(refreshed_profile.location or ""),
                     "website": str(refreshed_profile.website or ""),
+                    "instagram_url": str(refreshed_profile.instagram_url or ""),
                     "avatar_url": str(refreshed_profile.avatar_url or ""),
+                    "cover_photo_url": str(refreshed_profile.cover_photo_url or ""),
                     "travel_tags": list(refreshed_profile.travel_tags or []),
+                    "gallery_photos": list(refreshed_profile.gallery_photos or []),
                     "email": str(getattr(request.user, "email", "") or "").strip(),
                 },
             }
@@ -1350,8 +1385,11 @@ def my_profile_api_view(request: HttpRequest) -> JsonResponse:
                 "bio": str(profile.bio or ""),
                 "location": str(profile.location or ""),
                 "website": str(profile.website or ""),
+                "instagram_url": str(profile.instagram_url or ""),
                 "avatar_url": str(profile.avatar_url or ""),
+                "cover_photo_url": str(profile.cover_photo_url or ""),
                 "travel_tags": list(profile.travel_tags or []),
+                "gallery_photos": list(profile.gallery_photos or []),
                 "email": str(getattr(request.user, "email", "") or "").strip(),
             },
             "created_trips": _enrich_trip_cards([dict(row) for row in created_trips]),
@@ -1415,8 +1453,29 @@ def profile_detail_api_view(request: HttpRequest, profile_id: str) -> JsonRespon
     except Exception:
         pass
 
-    from accounts.views import profile_trip_sections_for_member
+    from accounts.views import (
+        host_metrics_for_user,
+        profile_completeness_for_user,
+        profile_trip_sections_for_member,
+        review_distribution_for_host,
+        reviews_received_for_host,
+        reviews_written_by_user,
+    )
+
     created_trips, joined_trips = profile_trip_sections_for_member(target_user)
+    metrics = host_metrics_for_user(target_user)
+    is_host = int(metrics.get("trips_hosted", 0) or 0) > 0
+    is_self = bool(getattr(viewer, "is_authenticated", False)) and (
+        getattr(viewer, "pk", None) == getattr(target_user, "pk", None)
+    )
+    completeness = (
+        profile_completeness_for_user(target_user, is_host=is_host) if is_self else None
+    )
+
+    member_since_dt = getattr(target_user, "date_joined", None)
+    member_since = (
+        member_since_dt.date().isoformat() if isinstance(member_since_dt, datetime) else ""
+    )
 
     return JsonResponse({
         "ok": True,
@@ -1426,25 +1485,31 @@ def profile_detail_api_view(request: HttpRequest, profile_id: str) -> JsonRespon
             "bio": str(profile.bio or ""),
             "location": str(profile.location or ""),
             "website": str(profile.website or ""),
+            "instagram_url": str(profile.instagram_url or ""),
             "avatar_url": str(profile.avatar_url or ""),
-            "email": str(getattr(target_user, "email", "") or "") if (
-                bool(getattr(viewer, "is_authenticated", False)) and
-                getattr(viewer, "pk", None) == getattr(target_user, "pk", None)
-            ) else "",
-            "trips_hosted": len(created_trips),
+            "cover_photo_url": str(profile.cover_photo_url or ""),
+            "email": str(getattr(target_user, "email", "") or "") if is_self else "",
+            "is_host": is_host,
+            "member_since": member_since,
+            "trips_hosted": int(metrics.get("trips_hosted", 0) or 0),
             "trips_joined": len(joined_trips),
             "followers_count": followers_count,
             "is_following": is_following,
             "travel_tags": list(profile.travel_tags or []),
-            "average_rating": None,
-            "reviews_count": 0,
-            "travelers_hosted": 0,
+            "gallery_photos": list(profile.gallery_photos or []),
+            "average_rating": float(metrics.get("average_rating", 0.0) or 0.0),
+            "reviews_count": int(metrics.get("reviews_count", 0) or 0),
+            "travelers_hosted": int(metrics.get("travelers_hosted", 0) or 0),
+            "repeat_travelers_count": int(metrics.get("repeat_travelers_count", 0) or 0),
+            "median_response_hours": metrics.get("median_response_hours"),
+            "profile_completeness": completeness,
+            "reviews_received": reviews_received_for_host(target_user) if is_host else [],
+            "review_distribution": review_distribution_for_host(target_user) if is_host else {},
+            "reviews_written": reviews_written_by_user(target_user),
         },
         "trips_hosted": _enrich_trip_cards([dict(row) for row in created_trips]),
         "trips_joined": _enrich_trip_cards([dict(row) for row in joined_trips]),
         "stories": _published_stories_for_author(target_user),
-        "reviews": [],
-        "gallery": [],
     })
 
 

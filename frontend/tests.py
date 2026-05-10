@@ -436,6 +436,218 @@ class FrontendSessionBEndpointsTests(TestCase):
         self.assertEqual(clear_response.json()["member_profile"]["travel_tags"], [])
 
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_profile_me_persists_gallery_and_cover_photo(self) -> None:
+        self.client.login(username="alice", password=self.password)
+
+        patch_response = self.client.patch(
+            "/frontend-api/profile/me/",
+            data={
+                "gallery_photos": [
+                    "https://example.com/g1.jpg",
+                    "https://example.com/g2.jpg",
+                ],
+                "cover_photo_url": "https://example.com/cover.jpg",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(patch_response.status_code, 200, patch_response.content)
+        member = patch_response.json()["member_profile"]
+        self.assertEqual(member["cover_photo_url"], "https://example.com/cover.jpg")
+        self.assertEqual(
+            member["gallery_photos"],
+            ["https://example.com/g1.jpg", "https://example.com/g2.jpg"],
+        )
+
+        get_response = self.client.get("/frontend-api/profile/me/")
+        self.assertEqual(get_response.status_code, 200)
+        profile = get_response.json()["profile"]
+        self.assertEqual(profile["cover_photo_url"], "https://example.com/cover.jpg")
+        self.assertEqual(len(profile["gallery_photos"]), 2)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_profile_me_persists_instagram_url(self) -> None:
+        self.client.login(username="alice", password=self.password)
+
+        patch_response = self.client.patch(
+            "/frontend-api/profile/me/",
+            data={"instagram_url": "https://instagram.com/alice.travels"},
+            content_type="application/json",
+        )
+        self.assertEqual(patch_response.status_code, 200, patch_response.content)
+        member = patch_response.json()["member_profile"]
+        self.assertEqual(member["instagram_url"], "https://instagram.com/alice.travels")
+
+        get_response = self.client.get("/frontend-api/profile/me/")
+        self.assertEqual(get_response.status_code, 200)
+        profile = get_response.json()["profile"]
+        self.assertEqual(profile["instagram_url"], "https://instagram.com/alice.travels")
+
+        # Public profile endpoint must surface the same value.
+        public_response = self.client.get(f"/frontend-api/profile/{self.alice.username}/")
+        self.assertEqual(public_response.status_code, 200)
+        public_profile = public_response.json()["profile"]
+        self.assertEqual(
+            public_profile["instagram_url"], "https://instagram.com/alice.travels"
+        )
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_profile_detail_api_returns_host_metrics_and_new_fields(self) -> None:
+        # Alice is the host with one published trip; a fresh reviewer leaves a 5-star review.
+        reviewer = UserModel.objects.create_user(
+            username="profile-detail-reviewer",
+            email="profile-detail-reviewer@example.com",
+            password=self.password,
+        )
+        ensure_profile(reviewer)
+
+        trip = Trip.objects.create(
+            host=self.alice,
+            title="Alice's hosted trip",
+            summary="Demo",
+            destination="Tokyo, Japan",
+            trip_type="city",
+            is_published=True,
+            status=Trip.STATUS_PUBLISHED,
+        )
+        Review.objects.create(
+            author=reviewer,
+            target_type=Review.TARGET_TRIP,
+            target_key=str(trip.pk),
+            rating=5,
+            headline="Great",
+            body="Loved it.",
+        )
+
+        response = self.client.get(f"/frontend-api/profile/{self.alice.username}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        profile = body["profile"]
+
+        # New fields must appear on the wire with snake_case names.
+        for required_field in (
+            "is_host",
+            "member_since",
+            "average_rating",
+            "reviews_count",
+            "trips_hosted",
+            "travelers_hosted",
+            "repeat_travelers_count",
+            "median_response_hours",
+            "cover_photo_url",
+            "gallery_photos",
+            "instagram_url",
+        ):
+            self.assertIn(required_field, profile, f"missing field: {required_field}")
+
+        self.assertTrue(profile["is_host"])
+        self.assertEqual(profile["trips_hosted"], 1)
+        self.assertEqual(profile["reviews_count"], 1)
+        self.assertEqual(profile["average_rating"], 5.0)
+
+        # Host-only response contains review feed and distribution — nested inside profile
+        # so Lovable's `data.profile.reviews_received` access path matches.
+        self.assertIn("reviews_received", profile)
+        self.assertIn("review_distribution", profile)
+        self.assertEqual(profile["review_distribution"]["5"], 100.0)
+        self.assertEqual(len(profile["reviews_received"]), 1)
+        self.assertEqual(
+            profile["reviews_received"][0]["author_username"], "profile-detail-reviewer"
+        )
+        self.assertEqual(profile["reviews_received"][0]["trip_id"], trip.pk)
+
+        # reviews_written list also surfaced inside profile (empty for the host).
+        self.assertIn("reviews_written", profile)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_profile_detail_api_traveler_omits_host_only_payload_sections(self) -> None:
+        # A user with no hosted trips is_host=False; review_distribution + reviews_received empty.
+        traveler = UserModel.objects.create_user(
+            username="traveler-only",
+            email="traveler-only@example.com",
+            password=self.password,
+        )
+        ensure_profile(traveler)
+        response = self.client.get(f"/frontend-api/profile/{traveler.username}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["profile"]["is_host"])
+        self.assertEqual(body["profile"]["reviews_received"], [])
+        self.assertEqual(body["profile"]["review_distribution"], {})
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_trip_detail_includes_review_list_and_viewer_review(self) -> None:
+        # Trip hosted by alice; bob writes a review; trip detail must surface
+        # both the list and bob's own viewer_review entry on his next visit.
+        from datetime import timedelta
+        future_start = timezone.now() + timedelta(days=30)
+        trip = Trip.objects.create(
+            host=self.alice,
+            title="Trip with reviews",
+            summary="Demo",
+            destination="Tokyo",
+            trip_type="city",
+            is_published=True,
+            status=Trip.STATUS_PUBLISHED,
+            starts_at=future_start,
+            ends_at=future_start + timedelta(days=5),
+        )
+        Review.objects.create(
+            author=self.bob,
+            target_type=Review.TARGET_TRIP,
+            target_key=str(trip.pk),
+            rating=4,
+            headline="Great",
+            body="Solid time overall.",
+        )
+
+        # Anonymous viewer: list shows the review, viewer_review is null.
+        anon_response = self.client.get(f"/frontend-api/trips/{trip.pk}/")
+        self.assertEqual(anon_response.status_code, 200)
+        anon_trip = anon_response.json()["trip"]
+        self.assertIn("reviews", anon_trip)
+        self.assertEqual(len(anon_trip["reviews"]), 1)
+        self.assertEqual(anon_trip["reviews"][0]["rating"], 4)
+        self.assertIsNone(anon_trip.get("viewer_review"))
+        self.assertFalse(anon_trip.get("can_review"))
+        # Aggregate values are surfaced so the Reviews card renders stars + count.
+        self.assertEqual(anon_trip.get("reviews_count"), 1)
+        self.assertEqual(anon_trip.get("average_rating"), 4.0)
+
+        # Bob (the reviewer) sees his own review surfaced as viewer_review.
+        self.client.login(username="bob", password=self.password)
+        bob_response = self.client.get(f"/frontend-api/trips/{trip.pk}/")
+        bob_trip = bob_response.json()["trip"]
+        self.assertEqual(len(bob_trip["reviews"]), 1)
+        self.assertIsNotNone(bob_trip["viewer_review"])
+        self.assertEqual(bob_trip["viewer_review"]["rating"], 4)
+        self.assertTrue(bob_trip["viewer_review"]["is_mine"])
+        self.assertTrue(bob_trip.get("can_review"))
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_profile_detail_api_includes_completeness_only_for_self(self) -> None:
+        # When viewer is the profile owner, profile_completeness is populated.
+        self.client.login(username="alice", password=self.password)
+        self_response = self.client.get(f"/frontend-api/profile/{self.alice.username}/")
+        self.assertEqual(self_response.status_code, 200)
+        completeness = self_response.json()["profile"]["profile_completeness"]
+        self.assertIsNotNone(completeness)
+        self.assertIn("is_complete", completeness)
+        self.assertIn("missing_fields", completeness)
+
+        # When viewed by someone else, completeness is null.
+        self.client.logout()
+        viewer = UserModel.objects.create_user(
+            username="profile-detail-viewer",
+            email="profile-detail-viewer@example.com",
+            password=self.password,
+        )
+        ensure_profile(viewer)
+        self.client.login(username="profile-detail-viewer", password=self.password)
+        other_response = self.client.get(f"/frontend-api/profile/{self.alice.username}/")
+        self.assertEqual(other_response.status_code, 200)
+        self.assertIsNone(other_response.json()["profile"]["profile_completeness"])
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_trip_list_destination_filter_normalizes_slug_separators(self) -> None:
         now = timezone.now()
         Trip.objects.create(
