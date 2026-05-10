@@ -208,6 +208,17 @@ class DemoTripCoverTests(TestCase):
 
         self.assertEqual(trip_data.get("banner_image_url"), "/media/trip_banners/uploads/user-cover.jpg")
 
+    def test_static_cover_url_falls_back_when_manifest_is_missing(self) -> None:
+        with patch("trips.demo_covers.static", side_effect=ValueError("missing manifest")):
+            self.assertEqual(
+                demo_trip_cover_url_for_trip(
+                    title="Patagonia road trip",
+                    destination="Patagonia",
+                    trip_type="road-trip",
+                ),
+                "/static/img/demo-covers/road-trip-patagonia.jpg",
+            )
+
 
 class PopulateDemoCatalogMediaTests(TestCase):
     def test_trip_media_clears_existing_generated_banner_file(self) -> None:

@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 
 from django.contrib.auth import get_user_model
+from django.http import StreamingHttpResponse
 from django.test import RequestFactory
 from django.test import Client, TestCase, override_settings
 from django.urls import clear_url_caches, set_urlconf
@@ -966,12 +968,15 @@ class FrontendShellToggleTests(TestCase):
                 self.addCleanup(self._reload_urlconfs)
 
                 response = self.client.get("/media/trip_banners/demo.jpg")
+                try:
+                    response_content = (
+                        cast(StreamingHttpResponse, response).getvalue()
+                        if getattr(response, "streaming", False)
+                        else response.content
+                    )
+                finally:
+                    response.close()
 
-        response_content = (
-            b"".join(response.streaming_content)
-            if getattr(response, "streaming", False)
-            else response.content
-        )
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b'<div id="root">', response_content)
         self.assertEqual(response_content, b"demo image bytes")

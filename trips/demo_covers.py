@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
+from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.templatetags.static import static
 
@@ -243,7 +244,24 @@ def demo_trip_cover_for_trip(*, title: object, destination: object, trip_type: o
 
 def demo_trip_cover_url_for_trip(*, title: object, destination: object, trip_type: object) -> str:
     cover = demo_trip_cover_for_trip(title=title, destination=destination, trip_type=trip_type)
-    return str(static(cover.static_path) or "")
+    return demo_cover_static_url(cover.static_path)
+
+
+def demo_cover_static_url(static_path: str) -> str:
+    try:
+        return str(static(static_path) or _raw_static_url(static_path))
+    except ValueError:
+        # Cloud Run seed jobs run before the web container has created a
+        # staticfiles manifest. Store the stable static URL and let the web
+        # service serve it after its collectstatic-on-boot step.
+        return _raw_static_url(static_path)
+
+
+def _raw_static_url(static_path: str) -> str:
+    static_url = str(getattr(settings, "STATIC_URL", "/static/") or "/static/")
+    if not static_url.endswith("/"):
+        static_url = static_url + "/"
+    return static_url + static_path.lstrip("/")
 
 
 def demo_blog_cover_trip_type(*, title: str, location: str, tags: list[str]) -> str:

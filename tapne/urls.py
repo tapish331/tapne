@@ -7,7 +7,7 @@ from django.contrib import admin
 from django.http import HttpRequest, JsonResponse
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import URLPattern, URLResolver, include, path, re_path
-from django.views.generic import RedirectView, TemplateView
+from django.views.generic import RedirectView
 from django.views.static import serve as static_serve
 
 from frontend.views import frontend_entrypoint_view
@@ -64,10 +64,7 @@ urlpatterns += [
     ),
     path(
         "google7c0adbf9fe517d15.html",
-        TemplateView.as_view(
-            template_name="google7c0adbf9fe517d15.html",
-            content_type="text/html",
-        ),
+        seo.google_site_verification_view,
         name="google-site-verification",
     ),
     path("robots.txt", seo.robots_txt_view, name="robots-txt"),

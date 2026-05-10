@@ -12,6 +12,7 @@ from django.views.decorators.http import require_GET, require_safe
 
 SITE_NAME = "tapne"
 DEFAULT_META_DESCRIPTION = "tapne: host trips, write blogs, and grow audiences."
+GOOGLE_SITE_VERIFICATION_FILE = "google7c0adbf9fe517d15.html"
 
 # SPA public routes that should be indexed. Trip/blog detail URLs are added
 # dynamically from the database in `_collect_sitemap_entries`.
@@ -100,6 +101,14 @@ def _render_sitemap(entries: list[tuple[str, datetime | None]]) -> str:
 
     lines.append("</urlset>")
     return "\n".join(lines)
+
+
+@require_GET
+def google_site_verification_view(_request: HttpRequest) -> HttpResponse:
+    return HttpResponse(
+        f"google-site-verification: {GOOGLE_SITE_VERIFICATION_FILE}\n",
+        content_type="text/html; charset=utf-8",
+    )
 
 
 @require_GET
