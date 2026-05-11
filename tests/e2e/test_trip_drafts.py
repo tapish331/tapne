@@ -49,9 +49,14 @@ def test_create_save_and_publish_trip_persists_across_reload(session_factory: Se
     assert page.locator("textarea[placeholder*='A thrilling road trip']").input_value() == summary
 
     page.get_by_role("button", name="Publish Trip").click()
-    # DraftContext.publishDraft navigates to /dashboard/trips on success
-    page.wait_for_url(re.compile(r".*/dashboard/trips/?$"))
+    # DraftContext.publishDraft navigates to the newly published trip detail.
+    page.wait_for_url(re.compile(r".*/trips/\d+/?$"))
+    page.get_by_role("heading", name=title).wait_for()
 
+    page.reload()
+    page.get_by_role("heading", name=title).wait_for()
+
+    page.goto("/dashboard/trips")
     page.get_by_role("tab", name=re.compile(r"^Managed")).click()
     page.get_by_text(title).wait_for()
 
