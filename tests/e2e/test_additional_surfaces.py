@@ -113,16 +113,15 @@ def test_owner_profile_edit_dialog_persists_and_preview_route_renders(session_fa
     page.get_by_role("heading", name="Profile Surface").wait_for()
     page.get_by_role("button", name="Edit Profile").click()
 
-    dialog = page.locator("[role='dialog']").filter(has_text="Edit Profile")
-    dialog.wait_for()
-    textboxes = dialog.get_by_role("textbox")
+    page.wait_for_url(re.compile(r".*/profile/edit/?$"))
+    page.get_by_role("heading", name="Edit Profile").wait_for()
+    textboxes = page.locator("main").get_by_role("textbox")
     textboxes.nth(0).fill(updated_name)
-    textboxes.nth(1).fill(updated_location)
-    textboxes.nth(2).fill(updated_bio)
+    textboxes.nth(1).fill(updated_bio)
+    textboxes.nth(2).fill(updated_location)
     with page.expect_response(re.compile(r"/frontend-api/profile/me/")) as save_response:
-        dialog.get_by_role("button", name="Save Changes").click()
+        page.get_by_role("button", name="Save").click()
     assert save_response.value.ok
-    dialog.wait_for(state="hidden")
 
     page.get_by_role("heading", name=updated_name).wait_for()
     page.get_by_text(updated_location).wait_for()
