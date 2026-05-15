@@ -63,6 +63,7 @@ from trips.models import (
     TRIP_BOOKING_STATUS_VALUES,
     build_trip_detail_payload_for_user,
     build_trip_list_payload_for_user,
+    normalize_application_questions,
 )
 
 PUBLIC_CACHE_SECONDS: Final[int] = 3600
@@ -92,6 +93,46 @@ FRONTEND_MIME_TYPE_OVERRIDES: Final[dict[str, str]] = {
     ".svg": "image/svg+xml",
     ".webmanifest": "application/manifest+json",
 }
+TRIP_DRAFT_PATCH_UPDATE_FIELDS: Final[tuple[str, ...]] = (
+    "title",
+    "destination",
+    "summary",
+    "description",
+    "trip_type",
+    "currency",
+    "difficulty_level",
+    "pace_level",
+    "cancellation_policy",
+    "code_of_conduct",
+    "general_policies",
+    "access_type",
+    "payment_method",
+    "payment_details",
+    "medical_declaration_required",
+    "emergency_contact_required",
+    "contact_preference",
+    "co_hosts",
+    "draft_form_data",
+    "starts_at",
+    "ends_at",
+    "booking_closes_at",
+    "total_seats",
+    "minimum_seats",
+    "price_per_person",
+    "total_trip_price",
+    "early_bird_price",
+    "payment_terms",
+    "highlights",
+    "itinerary_days",
+    "included_items",
+    "not_included_items",
+    "things_to_carry",
+    "suitable_for",
+    "trip_vibe",
+    "faqs",
+    "banner_image",
+    "updated_at",
+)
 OTP_CACHE_TTL: Final[int] = 600  # 10 minutes
 OTP_MAX_ATTEMPTS: Final[int] = 5
 UserModel = get_user_model()
@@ -487,8 +528,19 @@ def _apply_trip_payload(trip: Trip, payload: dict[str, object]) -> None:
     trip.emergency_contact_required = bool(payload.get("emergency_contact_required", trip.emergency_contact_required))
     trip.contact_preference = _normalize_string(payload.get("contact_preference", trip.contact_preference)).lower() or "in_app"
     trip.co_hosts = " ".join(_normalize_string(payload.get("co_hosts", trip.co_hosts)).split())
+    draft_form_data = (
+        _normalize_json_mapping(trip.draft_form_data)
+        if isinstance(trip.draft_form_data, Mapping)
+        else {}
+    )
     if "draft_form_data" in payload:
-        trip.draft_form_data = _normalize_json_mapping(payload.get("draft_form_data"))
+        draft_form_data = _normalize_json_mapping(payload.get("draft_form_data"))
+    if "application_questions" in payload:
+        draft_form_data["application_questions"] = normalize_application_questions(payload.get("application_questions"))
+    if "auto_approve" in payload:
+        draft_form_data["auto_approve"] = bool(payload.get("auto_approve"))
+    if "draft_form_data" in payload or "application_questions" in payload or "auto_approve" in payload:
+        trip.draft_form_data = draft_form_data
 
     starts_at = _normalize_optional_datetime(payload.get("starts_at"))
     ends_at = _normalize_optional_datetime(payload.get("ends_at"))
@@ -969,19 +1021,10 @@ def trip_list_api_view(request: HttpRequest) -> JsonResponse:
             "budget": request.GET.get("budget", "all"),
             "difficulty": request.GET.get("difficulty", "all"),
         },
+        query=request.GET.get("q", ""),
     )
     response_payload: dict[str, object] = dict(payload)
     trips = [dict(row) for row in payload.get("trips", [])]
-
-    query = str(request.GET.get("q", "") or "").strip().lower()
-    if query:
-        def _matches(card: dict[str, object]) -> bool:
-            haystack = " ".join(
-                str(card.get(field, "") or "")
-                for field in ("title", "destination", "summary", "description")
-            ).lower()
-            return query in haystack
-        trips = [card for card in trips if _matches(card)]
 
     sort_order = str(request.GET.get("sort", "") or "").strip().lower()
     if sort_order == "recent":
@@ -1588,8 +1631,22 @@ def trip_draft_detail_api_view(request: HttpRequest, trip_id: int) -> JsonRespon
         return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload})
 
     if request.method == "PATCH":
+        current_state = (
+            Trip.objects
+            .filter(pk=trip_id, host=request.user)
+            .values("status", "is_published")
+            .first()
+        )
         _apply_trip_payload(trip, _request_payload(request))
-        trip.save()
+        if current_state is not None and (
+            current_state["status"] != Trip.STATUS_DRAFT
+            or bool(current_state["is_published"])
+        ):
+            current_status = str(current_state["status"] or "").strip() or Trip.STATUS_PUBLISHED
+            trip.status = current_status
+            trip.is_published = bool(current_state["is_published"]) or current_status != Trip.STATUS_DRAFT
+        trip.save(update_fields=TRIP_DRAFT_PATCH_UPDATE_FIELDS)
+        trip.refresh_from_db()
         trip_payload = _serialize_trip_for_frontend(trip)
         return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload})
 
@@ -1614,9 +1671,8 @@ def trip_draft_publish_api_view(request: HttpRequest, trip_id: int) -> JsonRespo
         return _json_error("Trip not found.", status=404)
 
     _apply_trip_payload(trip, _request_payload(request))
-    if not trip.is_published:
-        trip.is_published = True
     trip.status = Trip.STATUS_PUBLISHED
+    trip.is_published = True
     trip.save()
     trip_payload = _serialize_trip_for_frontend(trip)
     return JsonResponse({"ok": True, "draft": trip_payload, "trip": trip_payload})
@@ -1838,8 +1894,21 @@ def trip_join_request_api_view(request: HttpRequest, trip_id: int) -> JsonRespon
     if outcome == "host-self-request-blocked":
         return _json_error("Hosts cannot request to join their own trip.", status=400)
 
+    response_outcome = str(outcome)
+    draft_form_data = (
+        cast(Mapping[str, object], trip.draft_form_data)
+        if isinstance(trip.draft_form_data, Mapping)
+        else {}
+    )
+    if request_row is not None and bool(draft_form_data.get("auto_approve", False)):
+        request_row.status = EnrollmentRequest.STATUS_APPROVED
+        request_row.reviewed_by = trip.host
+        request_row.reviewed_at = timezone.now()
+        request_row.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        response_outcome = "auto-approved"
+
     row_data = request_row.to_enrollment_request_data() if request_row is not None else None
-    return JsonResponse({"ok": request_row is not None, "outcome": outcome, "request": row_data})
+    return JsonResponse({"ok": request_row is not None, "outcome": response_outcome, "request": row_data})
 
 
 @require_POST

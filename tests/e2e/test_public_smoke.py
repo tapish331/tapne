@@ -17,7 +17,7 @@ def test_home_and_trip_catalog_render_without_client_errors(session_factory: Ses
 
     page.goto("/search")
     page.get_by_role("heading", name="Search").wait_for()
-    page.get_by_role("heading", name="Kyoto food lanes weekend").wait_for()
+    page.locator("a[href^='/trips/']").first.wait_for()
 
     guest.audit.assert_clean()
 

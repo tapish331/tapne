@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
@@ -16,6 +17,7 @@ import frontend.urls as frontend_urls
 import tapne.urls as tapne_urls
 from blogs.models import Blog
 from accounts.models import ensure_profile
+from enrollment.models import EnrollmentRequest
 from frontend.views import frontend_entrypoint_view
 from interactions.models import DirectMessage, DirectMessageThread
 from reviews.models import Review
@@ -107,19 +109,52 @@ class FrontendApiTests(TestCase):
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_trip_draft_crud_and_publish_endpoints_use_live_storage(self) -> None:
         self.client.login(username="frontend-user", password="S3curePassw0rd!!")
+        application_questions = [
+            {
+                "id": "fitness",
+                "question": "What is your trekking experience?",
+                "type": "long",
+                "required": True,
+            },
+            {
+                "id": "meal",
+                "question": "Preferred meal?",
+                "type": "single_select",
+                "required": False,
+                "options": ["Veg", "Non-veg"],
+            },
+        ]
 
         create_response = self.client.post(
             "/frontend-api/trips/drafts/",
-            data=(
-                '{"title":"Live Draft","destination":"Goa","summary":"Draft summary",'
-                '"highlights":["Beach walk","Cafe stops"],"trip_vibe":["Social"],'
-                '"starts_at":"2030-01-10T10:00:00+05:30","ends_at":"2030-01-12T10:00:00+05:30",'
-                '"total_seats":"8","total_trip_price":"24000"}'
+            data=json.dumps(
+                {
+                    "title": "Live Draft",
+                    "destination": "Goa",
+                    "summary": "Draft summary",
+                    "highlights": ["Beach walk", "Cafe stops"],
+                    "trip_vibe": ["Social"],
+                    "starts_at": "2030-01-10T10:00:00+05:30",
+                    "ends_at": "2030-01-12T10:00:00+05:30",
+                    "total_seats": "8",
+                    "total_trip_price": "24000",
+                    "access_type": "apply",
+                    "application_questions": application_questions,
+                    "auto_approve": True,
+                    "payment_method": "show_payment_details",
+                    "payment_details": "UPI: host@upi",
+                }
             ),
             content_type="application/json",
         )
         self.assertEqual(create_response.status_code, 201)
-        created_trip_id = create_response.json()["trip"]["id"]
+        created_trip = create_response.json()["trip"]
+        created_trip_id = created_trip["id"]
+        self.assertEqual(created_trip["access_type"], "apply")
+        self.assertEqual(created_trip["application_questions"], application_questions)
+        self.assertTrue(created_trip["auto_approve"])
+        self.assertEqual(created_trip["payment_method"], "show_payment_details")
+        self.assertEqual(created_trip["payment_details"], "UPI: host@upi")
 
         patch_response = self.client.patch(
             f"/frontend-api/trips/drafts/{created_trip_id}/",
@@ -139,13 +174,74 @@ class FrontendApiTests(TestCase):
 
         published_trip = Trip.objects.get(pk=created_trip_id)
         self.assertTrue(published_trip.is_published)
+        self.assertEqual(published_trip.draft_form_data["application_questions"], application_questions)
+        self.assertTrue(published_trip.draft_form_data["auto_approve"])
 
         detail_response = self.client.get(f"/frontend-api/trips/{created_trip_id}/")
         self.assertEqual(detail_response.status_code, 200)
         detail_payload = detail_response.json()
         self.assertEqual(detail_payload["source"], "live-db")
+        self.assertEqual(detail_payload["trip"]["access_type"], "apply")
+        self.assertEqual(detail_payload["trip"]["application_questions"], application_questions)
+        self.assertTrue(detail_payload["trip"]["auto_approve"])
+        self.assertEqual(detail_payload["trip"]["payment_method"], "show_payment_details")
+        self.assertEqual(detail_payload["trip"]["payment_details"], "UPI: host@upi")
         self.assertEqual(detail_payload["host"]["username"], "frontend-user")
         self.assertGreaterEqual(len(detail_payload["participants"]), 1)
+
+        traveler = UserModel.objects.create_user(
+            username="frontend-traveler",
+            email="traveler@example.com",
+            password="S3curePassw0rd!!",
+        )
+        self.client.logout()
+        self.client.login(username="frontend-traveler", password="S3curePassw0rd!!")
+        long_message = "Application details " + ("x" * 700)
+        join_response = self.client.post(
+            f"/frontend-api/trips/{created_trip_id}/join-request/",
+            data=json.dumps({"message": long_message}),
+            content_type="application/json",
+        )
+        self.assertEqual(join_response.status_code, 200)
+        self.assertEqual(join_response.json()["outcome"], "auto-approved")
+        request_row = EnrollmentRequest.objects.get(trip_id=created_trip_id, requester=traveler)
+        self.assertEqual(request_row.status, EnrollmentRequest.STATUS_APPROVED)
+        self.assertEqual(request_row.message, long_message)
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_late_draft_patch_does_not_demote_published_trip(self) -> None:
+        self.client.login(username="frontend-user", password="S3curePassw0rd!!")
+
+        create_response = self.client.post(
+            "/frontend-api/trips/drafts/",
+            data=(
+                '{"title":"Race Draft","destination":"Goa","summary":"Draft summary",'
+                '"starts_at":"2030-01-10T10:00:00+05:30","ends_at":"2030-01-12T10:00:00+05:30",'
+                '"total_seats":"8","total_trip_price":"24000"}'
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        trip_id = create_response.json()["trip"]["id"]
+
+        publish_response = self.client.post(
+            f"/frontend-api/trips/drafts/{trip_id}/publish/",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(publish_response.status_code, 200)
+
+        late_patch_response = self.client.patch(
+            f"/frontend-api/trips/drafts/{trip_id}/",
+            data='{"summary":"Late autosave after publish"}',
+            content_type="application/json",
+        )
+        self.assertEqual(late_patch_response.status_code, 200)
+
+        trip = Trip.objects.get(pk=trip_id)
+        self.assertEqual(trip.status, Trip.STATUS_PUBLISHED)
+        self.assertTrue(trip.is_published)
+        self.assertEqual(trip.summary, "Late autosave after publish")
 
 
 class FrontendSessionBEndpointsTests(TestCase):

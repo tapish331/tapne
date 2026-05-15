@@ -5,6 +5,7 @@ from io import StringIO
 from urllib.parse import parse_qs, urlsplit
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractUser
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
@@ -47,14 +48,14 @@ class BootstrapAccountsCommandTests(TestCase):
 
 
 class HostMetricsTests(TestCase):
-    def _make_user(self, username: str) -> UserModel:
+    def _make_user(self, username: str) -> AbstractUser:
         return UserModel.objects.create_user(
             username=username,
             email=f"{username}@example.com",
             password="DemoPass!12345",
         )
 
-    def _make_trip(self, host: UserModel, title: str = "Demo trip"):
+    def _make_trip(self, host: AbstractUser, title: str = "Demo trip"):
         from trips.models import Trip
 
         return Trip.objects.create(
@@ -244,7 +245,7 @@ class ProfileCompletenessTests(TestCase):
         location: str = "",
         tags: list[str] | None = None,
         gallery: list[str] | None = None,
-    ) -> UserModel:
+    ) -> AbstractUser:
         user = UserModel.objects.create_user(
             username=username,
             email=f"{username}@example.com",

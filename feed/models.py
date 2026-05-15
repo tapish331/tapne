@@ -15,6 +15,14 @@ from tapne.features import _demo_qs_filter, demo_catalog_enabled, demo_catalog_v
 from tapne.storage_urls import build_trip_banner_fallback_url, resolve_file_url, should_use_fallback_file_url
 
 
+class ApplicationQuestionData(TypedDict):
+    id: str
+    question: str
+    type: str
+    required: bool
+    options: NotRequired[list[str]]
+
+
 class TripData(TypedDict):
     id: int
     title: str
@@ -61,6 +69,8 @@ class TripData(TypedDict):
     access_type: NotRequired[str]
     payment_method: NotRequired[str]
     payment_details: NotRequired[str]
+    application_questions: NotRequired[list[ApplicationQuestionData]]
+    auto_approve: NotRequired[bool]
     includes_label: NotRequired[str]
     highlights: NotRequired[list[str]]
     itinerary_days: NotRequired[list[dict[str, object]]]

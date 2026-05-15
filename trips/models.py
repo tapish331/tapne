@@ -120,6 +120,7 @@ CONTACT_PREFERENCE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("phone", "Phone call"),
     ("whatsapp", "WhatsApp"),
 )
+APPLICATION_QUESTION_TYPES: Final[set[str]] = {"short", "long", "single_select", "multiple_choice"}
 TRIP_BOOKING_STATUS_VALUES: Final[set[str]] = {"open", "closed", "full"}
 TRIP_STATUS_VALUES: Final[set[str]] = {"active", "cancelled"}
 TRIP_RICH_TEXT_ALLOWED_TAGS: Final[tuple[str, ...]] = (
@@ -226,6 +227,45 @@ def _normalize_faqs(raw_faqs: object) -> list[TripFaqItem]:
 
         normalized_faqs.append({"question": question, "answer": answer})
     return normalized_faqs
+
+
+def normalize_application_questions(raw_questions: object) -> list[dict[str, object]]:
+    if not isinstance(raw_questions, list):
+        return []
+
+    normalized_questions: list[dict[str, object]] = []
+    for raw_question in cast(list[object], raw_questions):
+        if not isinstance(raw_question, Mapping):
+            continue
+        question_data = cast(Mapping[str, object], raw_question)
+
+        question = " ".join(str(question_data.get("question", "") or "").strip().split())[:280]
+        if not question:
+            continue
+
+        question_type = str(question_data.get("type", "short") or "short").strip().lower()
+        if question_type not in APPLICATION_QUESTION_TYPES:
+            question_type = "short"
+
+        question_id = " ".join(str(question_data.get("id", "") or "").strip().split())[:80]
+        if not question_id:
+            question_id = f"q{len(normalized_questions) + 1}"
+
+        row: dict[str, object] = {
+            "id": question_id,
+            "question": question,
+            "type": question_type,
+            "required": bool(question_data.get("required", False)),
+        }
+        if question_type in {"single_select", "multiple_choice"}:
+            row["options"] = _normalize_string_list(question_data.get("options"), max_length=120)[:24]
+
+        normalized_questions.append(row)
+        if len(normalized_questions) >= 24:
+            break
+
+    return normalized_questions
+
 
 class Trip(models.Model):
     """
@@ -549,6 +589,11 @@ class Trip(models.Model):
                 for key, value in draft_form_data.items()
                 if str(key).strip()
             }
+            application_questions = normalize_application_questions(draft_form_data.get("application_questions"))
+            if application_questions:
+                trip_data["application_questions"] = cast(Any, application_questions)
+            if "auto_approve" in draft_form_data:
+                trip_data["auto_approve"] = bool(draft_form_data.get("auto_approve"))
             booking_status = str(draft_form_data.get("booking_status", "") or "").strip().lower()
             if booking_status in TRIP_BOOKING_STATUS_VALUES:
                 trip_data["booking_status"] = cast(Any, booking_status)
@@ -908,6 +953,18 @@ def _trip_matches_filters(trip: TripData, filters: TripListFilters) -> bool:
     return True
 
 
+def _trip_matches_query(trip: TripData, query: str) -> bool:
+    normalized_query = " ".join(str(query or "").strip().lower().split())
+    if not normalized_query:
+        return True
+
+    haystack = " ".join(
+        str(trip.get(field, "") or "")
+        for field in ("title", "destination", "summary", "description")
+    )
+    return normalized_query in strip_tags(haystack).lower()
+
+
 def normalize_mine_tab(raw_tab: str) -> str:
     normalized = raw_tab.strip().lower()
     if normalized in MINE_TAB_ALIASES:
@@ -937,6 +994,7 @@ def build_trip_list_payload_for_user(
     limit: int = 24,
     *,
     filters: TripListFilters | Mapping[str, object] | None = None,
+    query: str = "",
 ) -> TripListPayload:
     effective_limit = max(1, int(limit or 24))
     normalized_filters = normalize_trip_filters(filters)
@@ -951,7 +1009,11 @@ def build_trip_list_payload_for_user(
 
     enriched_candidates = [enrich_trip_preview_fields(item) for item in candidate_trips]
     total_count = len(enriched_candidates)
-    filtered_candidates = [trip for trip in enriched_candidates if _trip_matches_filters(trip, normalized_filters)]
+    filtered_candidates = [
+        trip
+        for trip in enriched_candidates
+        if _trip_matches_filters(trip, normalized_filters) and _trip_matches_query(trip, query)
+    ]
     filtered_count = len(filtered_candidates)
     active_filters = has_active_trip_filters(normalized_filters)
 

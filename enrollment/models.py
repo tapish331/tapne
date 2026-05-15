@@ -79,8 +79,7 @@ class EnrollmentRequest(models.Model):
         on_delete=models.CASCADE,
         related_name="trip_enrollment_requests",
     )
-    message = models.CharField(
-        max_length=500,
+    message = models.TextField(
         blank=True,
         help_text="Optional member note shown to the host in hosting inbox.",
     )
