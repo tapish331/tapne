@@ -37,6 +37,7 @@ class TripListFilters(TypedDict):
     trip_type: str
     budget: str
     difficulty: str
+    host: str
 
 
 class TripDetailPayload(TypedDict):
@@ -695,6 +696,7 @@ def _default_trip_filters() -> TripListFilters:
         "trip_type": "all",
         "budget": "all",
         "difficulty": "all",
+        "host": "",
     }
 
 
@@ -708,6 +710,7 @@ def normalize_trip_filters(raw_filters: TripListFilters | Mapping[str, object] |
     trip_type = str(raw_filters.get("trip_type", "all") or "").strip().lower()
     budget = str(raw_filters.get("budget", "all") or "").strip().lower()
     difficulty = str(raw_filters.get("difficulty", "all") or "").strip().lower()
+    host = str(raw_filters.get("host", "") or "").strip().lower()
 
     if duration not in TRIP_DURATION_FILTER_VALUES:
         duration = "all"
@@ -724,6 +727,7 @@ def normalize_trip_filters(raw_filters: TripListFilters | Mapping[str, object] |
         "trip_type": trip_type,
         "budget": budget,
         "difficulty": difficulty,
+        "host": host,
     }
 
 
@@ -734,6 +738,7 @@ def has_active_trip_filters(filters: TripListFilters) -> bool:
         or filters["trip_type"] != "all"
         or filters["budget"] != "all"
         or filters["difficulty"] != "all"
+        or filters["host"]
     )
 
 
@@ -919,6 +924,12 @@ def _normalize_destination_token(value: str) -> str:
 
 
 def _trip_matches_filters(trip: TripData, filters: TripListFilters) -> bool:
+    host_filter = filters["host"]
+    if host_filter:
+        host_username = str(trip.get("host_username", "") or "").strip().lower()
+        if host_username != host_filter:
+            return False
+
     destination_filter = _normalize_destination_token(filters["destination"])
     if destination_filter:
         searchable_destination = _normalize_destination_token(

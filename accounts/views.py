@@ -377,6 +377,20 @@ def profile_completeness_for_user(user: object, *, is_host: bool) -> dict[str, A
     location = str(getattr(profile, "location", "") or "").strip()
     travel_tags = list(getattr(profile, "travel_tags", []) or [])
     gallery_photos = list(getattr(profile, "gallery_photos", []) or [])
+    effective_gallery_photos = [
+        str(url).strip() for url in gallery_photos if str(url).strip()
+    ]
+    if is_host and len(effective_gallery_photos) < HOST_MIN_GALLERY_PHOTOS:
+        try:
+            created_trips, _joined_trips = _profile_trip_sections_for_member(user)
+        except Exception:
+            created_trips = []
+        for trip in created_trips:
+            banner_url = str(trip.get("banner_image_url", "") or "").strip()
+            if banner_url and banner_url not in effective_gallery_photos:
+                effective_gallery_photos.append(banner_url)
+            if len(effective_gallery_photos) >= HOST_MIN_GALLERY_PHOTOS:
+                break
 
     if not avatar_url:
         missing.append("avatar_url")
@@ -387,7 +401,7 @@ def profile_completeness_for_user(user: object, *, is_host: bool) -> dict[str, A
     if is_host:
         if len([tag for tag in travel_tags if str(tag).strip()]) < HOST_MIN_TRAVEL_TAGS:
             missing.append("travel_tags")
-        if len([url for url in gallery_photos if str(url).strip()]) < HOST_MIN_GALLERY_PHOTOS:
+        if len(effective_gallery_photos) < HOST_MIN_GALLERY_PHOTOS:
             missing.append("gallery_photos")
 
     return {"is_complete": not missing, "missing_fields": missing}

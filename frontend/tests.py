@@ -92,6 +92,32 @@ class FrontendApiTests(TestCase):
         self.assertEqual(blog_response.json()["source"], "live-db")
 
     @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
+    def test_trip_endpoint_filters_by_host_and_existing_filters(self) -> None:
+        other_host = UserModel.objects.create_user(
+            username="other-host",
+            email="other@example.com",
+            password="S3curePassw0rd!!",
+        )
+        Trip.objects.create(
+            host=other_host,
+            title="Kerala Backwater Sprint",
+            summary="A second Kerala trip from a different host.",
+            destination="Kerala",
+            starts_at=timezone.now() + timezone.timedelta(days=12),
+            trip_type="trekking",
+            is_published=True,
+        )
+
+        response = self.client.get("/frontend-api/trips/?host=frontend-user&destination=Kerala")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["filters"]["host"], "frontend-user")
+        self.assertEqual(payload["filtered_count"], 1)
+        self.assertEqual(payload["trips"][0]["host_username"], "frontend-user")
+        self.assertEqual(payload["trips"][0]["title"], "Kerala by Houseboat")
+
+    @override_settings(TAPNE_ENABLE_DEMO_DATA=False)
     def test_profile_patch_endpoint_updates_live_profile(self) -> None:
         self.client.login(username="frontend-user", password="S3curePassw0rd!!")
         response = self.client.patch(

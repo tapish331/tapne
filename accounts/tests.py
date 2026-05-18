@@ -302,3 +302,31 @@ class ProfileCompletenessTests(TestCase):
         result = profile_completeness_for_user(user, is_host=True)
         self.assertTrue(result["is_complete"])
         self.assertEqual(result["missing_fields"], [])
+
+    def test_host_trip_banners_count_as_effective_gallery_photos(self) -> None:
+        from trips.models import Trip
+
+        user = self._user_with_profile(
+            "host-with-trip-banners",
+            avatar="https://x/a.jpg",
+            bio="bio",
+            location="here",
+            tags=["beach", "food", "hiking"],
+            gallery=[],
+        )
+        for index, trip_type in enumerate(["coastal", "trekking", "desert"]):
+            Trip.objects.create(
+                host=user,
+                title=f"Visible trip {index + 1}",
+                summary="Trip with visible profile card image.",
+                destination="Goa",
+                trip_type=trip_type,
+                is_published=True,
+                status=Trip.STATUS_PUBLISHED,
+                starts_at=timezone.now() + timedelta(days=index + 1),
+            )
+
+        result = profile_completeness_for_user(user, is_host=True)
+
+        self.assertTrue(result["is_complete"])
+        self.assertNotIn("gallery_photos", result["missing_fields"])

@@ -1020,6 +1020,7 @@ def trip_list_api_view(request: HttpRequest) -> JsonResponse:
             "trip_type": request.GET.get("trip_type", "all"),
             "budget": request.GET.get("budget", "all"),
             "difficulty": request.GET.get("difficulty", "all"),
+            "host": request.GET.get("host", ""),
         },
         query=request.GET.get("q", ""),
     )
