@@ -12,12 +12,8 @@ from tests.e2e.auth import (
     wait_for_authenticated_state,
 )
 from tests.e2e.data import create_booking_scenario, create_trip, ensure_member, unique_username
-from tests.e2e.helpers import unique_suffix
+from tests.e2e.helpers import unique_suffix, visible_chat_message
 from tests.e2e.types import SessionFactory
-
-
-def _visible_message(page, text: str):
-    return page.locator("p.whitespace-pre-wrap:visible").filter(has_text=text).last
 
 
 @pytest.mark.smoke
@@ -43,11 +39,11 @@ def test_navbar_modal_login_then_messages_post_persists_after_reload(session_fac
     with page.expect_response(re.compile(r"/frontend-api/dm/inbox/\d+/messages/")) as send_response:
         composer.press("Enter")
     assert send_response.value.ok, f"Message send failed: HTTP {send_response.value.status}"
-    _visible_message(page, message).wait_for()
+    visible_chat_message(page, message).wait_for()
 
     page.reload()
     page.get_by_role("button", name=re.compile(r"Arun N\.", re.I)).first.click()
-    _visible_message(page, message).wait_for()
+    visible_chat_message(page, message).wait_for()
 
     member.audit.assert_clean(ignore_requests=["/frontend-api/home/", "/frontend-api/activity/"])
 

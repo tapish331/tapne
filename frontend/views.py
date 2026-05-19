@@ -2069,10 +2069,23 @@ def manage_trip_cancel_view(request: HttpRequest, trip_id: int) -> JsonResponse:
     trip_row = Trip.objects.filter(pk=trip_id, host=request.user).first()
     if trip_row is None:
         return _json_error("Trip not found.", status=404)
-    # Unpublish the trip as the closest available cancellation signal.
-    # A dedicated status/cancelled field is tracked in the backlog.
-    trip_row.is_published = False
-    trip_row.save(update_fields=["is_published", "updated_at"])
+    payload = _request_payload(request)
+    draft_form_data = dict(
+        cast(Mapping[str, object], trip_row.draft_form_data)
+        if isinstance(trip_row.draft_form_data, Mapping)
+        else {}
+    )
+    cancellation_reason = _normalize_string(payload.get("reason", ""))
+    if cancellation_reason:
+        draft_form_data["cancellation_reason"] = cancellation_reason
+
+    # The current SPA treats "completed" as the terminal, non-manageable state.
+    # Persist cancellation into that terminal bucket so reloads cannot reopen
+    # host-management controls for a cancelled trip.
+    trip_row.status = Trip.STATUS_COMPLETED
+    trip_row.is_published = True
+    trip_row.draft_form_data = draft_form_data
+    trip_row.save(update_fields=["status", "is_published", "draft_form_data", "updated_at"])
     return JsonResponse({"ok": True})
 
 

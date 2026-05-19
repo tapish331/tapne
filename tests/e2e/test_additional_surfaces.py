@@ -57,6 +57,10 @@ def test_dashboard_routes_render_for_authenticated_member(session_factory: Sessi
     page = member.page
 
     page.goto("/dashboard")
+    page.wait_for_url(re.compile(r".*/dashboard/?$"))
+    page.get_by_role("heading", name="Dashboard").wait_for()
+    page.get_by_role("heading", name=re.compile(r"Welcome back", re.I)).wait_for()
+    page.get_by_role("main").get_by_role("link", name="Trips", exact=True).click()
     page.wait_for_url(re.compile(r".*/dashboard/trips/?$"))
     page.get_by_role("heading", name="Your trips").wait_for()
     page.get_by_role("tab", name=re.compile(r"^Joined")).wait_for()

@@ -73,6 +73,10 @@ def fill_rich_text_editor(page: Page, text: str, *, index: int = 0, replace: boo
     page.keyboard.type(text)
 
 
+def visible_chat_message(page: Page, text: str):
+    return page.locator("p.whitespace-pre-wrap:visible").filter(has_text=text).last
+
+
 @dataclass
 class BrowserAudit:
     page: Page

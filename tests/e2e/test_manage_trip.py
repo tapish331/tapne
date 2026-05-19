@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-from uuid import uuid4
 
 import pytest
+from playwright.sync_api import expect
 
 from tests.e2e.data import create_manage_trip_scenario, create_trip
-from tests.e2e.helpers import unique_suffix
+from tests.e2e.helpers import unique_suffix, visible_chat_message
 from tests.e2e.types import SessionFactory
 
 
@@ -78,9 +78,10 @@ def test_manage_trip_cancel_trip_dialog(session_factory: SessionFactory) -> None
     Previously blocked_by_lovable_showstopper — the Cancel Trip button and
     confirmation dialog were added in the latest Lovable pull.
     """
+    unique_title = unique_suffix("Guardrail Cancel")
     trip_id = create_trip(
         host_username="mei",
-        title=unique_suffix("Guardrail Cancel"),
+        title=unique_title,
     )
     host = session_factory(name="manage-cancel-trip", username="mei")
     page = host.page
@@ -97,6 +98,10 @@ def test_manage_trip_cancel_trip_dialog(session_factory: SessionFactory) -> None
         alert.get_by_role("button", name="Cancel Trip").click()
     assert resp.value.ok, f"Trip cancel failed: HTTP {resp.value.status}"
     alert.wait_for(state="hidden")
+
+    page.reload()
+    page.get_by_role("heading", name=unique_title).wait_for()
+    expect(page.get_by_role("button", name="Cancel Trip")).to_have_count(0)
 
     host.audit.assert_clean()
 
@@ -135,6 +140,7 @@ def test_manage_trip_remove_participant_flow(session_factory: SessionFactory) ->
     page.reload()
     page.get_by_role("heading", name="Applications").wait_for()
     page.wait_for_load_state("networkidle")
+    expect(page.get_by_text(re.compile(r"Confirmed Participants"))).to_have_count(0)
 
     host.audit.assert_clean()
 
@@ -157,7 +163,8 @@ def test_manage_trip_broadcast_message(session_factory: SessionFactory) -> None:
 
     dialog = page.locator("[role='dialog']").filter(has_text="Message All Participants")
     dialog.wait_for(state="visible")
-    dialog.get_by_placeholder("Write your update\u2026").fill("Guardrail broadcast test message.")
+    broadcast_text = unique_suffix("Guardrail broadcast")
+    dialog.get_by_placeholder("Write your update\u2026").fill(broadcast_text)
 
     with page.expect_response(
         re.compile(rf"/frontend-api/trips/{scenario.trip_id}/broadcast/")
@@ -168,4 +175,11 @@ def test_manage_trip_broadcast_message(session_factory: SessionFactory) -> None:
     dialog.wait_for(state="hidden")
     page.get_by_text("Message sent to").wait_for()
 
+    participant = session_factory(name="manage-broadcast-participant", username=scenario.participant_username)
+    participant.page.goto(f"/messages?dm={scenario.host_username}")
+    participant.page.get_by_role("heading", name="Inbox").wait_for()
+    participant.page.get_by_role("button", name=re.compile(r"Mei", re.I)).first.click()
+    visible_chat_message(participant.page, broadcast_text).wait_for()
+
     host.audit.assert_clean()
+    participant.audit.assert_clean()

@@ -55,4 +55,7 @@ def test_trip_review_submit_succeeds(session_factory: SessionFactory) -> None:
     # Modal must close after a successful submission.
     dialog.wait_for(state="hidden")
 
+    page.reload()
+    page.get_by_text(loved_text).wait_for()
+
     reviewer.audit.assert_clean()

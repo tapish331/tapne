@@ -4,12 +4,8 @@ import re
 
 import pytest
 
-from tests.e2e.helpers import unique_suffix
+from tests.e2e.helpers import unique_suffix, visible_chat_message
 from tests.e2e.types import SessionFactory
-
-
-def _visible_message(page, text: str):
-    return page.locator("p.whitespace-pre-wrap:visible").filter(has_text=text).last
 
 
 @pytest.mark.full
@@ -29,12 +25,12 @@ def test_trip_detail_dm_start_creates_thread_visible_to_both_users(session_facto
     with traveler.page.expect_response(re.compile(r"/frontend-api/dm/inbox/\d+/messages/")) as send_resp:
         composer.press("Enter")
     assert send_resp.value.ok, f"Message send failed: {send_resp.value.status}"
-    _visible_message(traveler.page, message).wait_for()
+    visible_chat_message(traveler.page, message).wait_for()
 
     host.page.goto("/messages?dm=arun")
     host.page.get_by_role("heading", name="Inbox").wait_for()
     host.page.get_by_role("button", name=re.compile(r"Arun N\.", re.I)).first.click()
-    _visible_message(host.page, message).wait_for()
+    visible_chat_message(host.page, message).wait_for()
 
     traveler.audit.assert_clean()
     host.audit.assert_clean()
@@ -57,12 +53,12 @@ def test_messages_dm_route_primes_thread_and_allows_reply(session_factory: Sessi
     with host.page.expect_response(re.compile(r"/frontend-api/dm/inbox/\d+/messages/")) as send_resp:
         composer.press("Enter")
     assert send_resp.value.ok, f"Message send failed: {send_resp.value.status}"
-    _visible_message(host.page, reply).wait_for()
+    visible_chat_message(host.page, reply).wait_for()
 
     traveler.page.goto("/messages?dm=mei")
     traveler.page.get_by_role("heading", name="Inbox").wait_for()
     traveler.page.get_by_role("button", name=re.compile(r"Mei", re.I)).first.click()
-    _visible_message(traveler.page, reply).wait_for()
+    visible_chat_message(traveler.page, reply).wait_for()
 
     traveler.audit.assert_clean()
     host.audit.assert_clean()
